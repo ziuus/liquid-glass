@@ -149,147 +149,213 @@ fn liquid_displacement(world_px: vec2<f32>) -> vec2<f32> {
     return dp;
 }
 
-// ── Procedural Etched Glass UI Glyphs (Iconography) ──
-fn render_element_glyph(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, progress: f32, time: f32) -> f32 {
+// ── Struct for Procedural Liquid Element Core & Glyph ──
+struct ElementAppearance {
+    glyph_mask: f32,
+    fluid_color: vec3<f32>,
+    fluid_glow: f32,
+};
+
+// ── Segment distance helper for crisp vector icons ──
+fn dist_segment(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
+    let pa = p - a;
+    let ba = b - a;
+    let h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    return length(pa - ba * h);
+}
+
+// ── Authentic Apple macOS Liquid Glass Controls & Glyphs ──
+fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, progress: f32, time: f32) -> ElementAppearance {
+    var app: ElementAppearance;
+    app.glyph_mask = 0.0;
+    app.fluid_color = vec3<f32>(1.0, 1.0, 1.0);
+    app.fluid_glow = 0.0;
+    
     if el_type <= 0.0 {
-        return 0.0;
+        return app;
     }
     
-    // 1. Header Island: Glowing emerald status dot + capsule badge
+    // 1. Dynamic Island Header Pill: Live Emerald Status Beacon + Status Pill
     if el_type >= 0.9 && el_type <= 1.1 {
-        let dot_pos = local_p - vec2<f32>(-half.x + 18.0, 0.0);
-        let dot_dist = length(dot_pos) - 3.5;
-        let dot = 1.0 - smoothstep(-0.5, 0.5, dot_dist);
+        // Emerald live beacon with gentle breathing pulse
+        let beacon_pos = local_p - vec2<f32>(-half.x + 18.0, 0.0);
+        let pulse = sin(time * 3.5) * 0.4 + 1.0;
+        let d_beacon = length(beacon_pos) - 3.2;
+        let beacon = 1.0 - smoothstep(-0.6, 0.6, d_beacon);
         
-        // Triple dot accent on the right
-        let d1 = length(local_p - vec2<f32>(half.x - 32.0, 0.0)) - 2.0;
-        let d2 = length(local_p - vec2<f32>(half.x - 22.0, 0.0)) - 2.0;
-        let d3 = length(local_p - vec2<f32>(half.x - 12.0, 0.0)) - 2.0;
-        let dots_right = (1.0 - smoothstep(-0.5, 0.5, min(d1, min(d2, d3)))) * 0.5;
+        // Mini cellular signal bars on the right
+        let b1 = rr_sdf(local_p - vec2<f32>(half.x - 30.0, 3.0), vec2<f32>(1.5, 3.0), 0.8);
+        let b2 = rr_sdf(local_p - vec2<f32>(half.x - 22.0, 1.0), vec2<f32>(1.5, 5.0), 0.8);
+        let b3 = rr_sdf(local_p - vec2<f32>(half.x - 14.0, -1.0), vec2<f32>(1.5, 7.0), 0.8);
+        let bars = 1.0 - smoothstep(-0.5, 0.5, min(b1, min(b2, b3)));
         
-        return max(dot, dots_right);
+        app.glyph_mask = max(beacon, bars * 0.85);
+        app.fluid_color = mix(vec3<f32>(0.2, 0.92, 0.55), vec3<f32>(1.0), bars);
+        app.fluid_glow = beacon * 0.9 * pulse;
+        return app;
     }
     
-    // 2. Left Tile: Animated Equalizer Wave Bars
+    // 2. Wi-Fi Glass Capsule: 3 Concentric Apple Wave Arcs + Base Dot + Radiant Cyan Fluid
     if el_type >= 1.9 && el_type <= 2.1 {
-        var wave = 0.0;
-        let num_bars = 5.0;
-        let bar_w = 4.0;
-        let spacing = 12.0;
-        let start_x = -((num_bars - 1.0) * spacing) * 0.5;
+        let center_offset = vec2<f32>(0.0, 9.0);
+        let p_rel = local_p - center_offset;
+        let r = length(p_rel);
         
-        for (var i = 0.0; i < num_bars; i += 1.0) {
-            let bx = start_x + i * spacing;
-            let phase = i * 1.35 + time * 4.8;
-            let bar_h = 9.0 + sin(phase) * 7.0 + cos(phase * 0.7) * 4.5;
-            let b_dist = rr_sdf(local_p - vec2<f32>(bx, 0.0), vec2<f32>(bar_w * 0.5, bar_h * 0.5), 2.0);
-            wave = max(wave, 1.0 - smoothstep(-0.5, 0.5, b_dist));
-        }
-        return wave * 0.85;
+        // Base dot
+        let dot_dist = r - 2.8;
+        let dot_mask = 1.0 - smoothstep(-0.6, 0.6, dot_dist);
+        
+        // 3 concentric arcs with 90° angular fan cutoff
+        let arc1 = abs(r - 10.0) - 1.6;
+        let arc2 = abs(r - 18.0) - 1.6;
+        let arc3 = abs(r - 26.0) - 1.6;
+        let min_arc = min(arc1, min(arc2, arc3));
+        
+        let angle = atan2(p_rel.y, abs(p_rel.x));
+        let in_wedge = select(0.0, 1.0, angle < -0.85);
+        let arcs_mask = (1.0 - smoothstep(-0.6, 0.6, min_arc)) * in_wedge;
+        
+        app.glyph_mask = max(dot_mask, arcs_mask);
+        app.fluid_color = vec3<f32>(0.05, 0.72, 1.0); // Vibrant Apple Cyan
+        app.fluid_glow = 0.45; // Internal bioluminescent fluid core
+        return app;
     }
     
-    // 3. Right Tile: Circular Liquid Gauge Meter
+    // 3. Bluetooth Glass Capsule: Apple Bluetooth Rune + Radiant Indigo Fluid
     if el_type >= 2.9 && el_type <= 3.1 {
-        let r_dist = length(local_p);
-        let ring = abs(r_dist - 17.0) - 2.6;
-        let ring_alpha = 1.0 - smoothstep(-0.5, 0.5, ring);
+        // Vertical spine
+        let d_spine = dist_segment(local_p, vec2<f32>(0.0, -16.0), vec2<f32>(0.0, 16.0)) - 1.5;
+        // Upper chevron lobe
+        let d_up1 = dist_segment(local_p, vec2<f32>(0.0, -16.0), vec2<f32>(9.0, -8.0)) - 1.5;
+        let d_up2 = dist_segment(local_p, vec2<f32>(9.0, -8.0), vec2<f32>(-8.0, 8.0)) - 1.5;
+        // Lower chevron lobe
+        let d_dn1 = dist_segment(local_p, vec2<f32>(0.0, 16.0), vec2<f32>(9.0, 8.0)) - 1.5;
+        let d_dn2 = dist_segment(local_p, vec2<f32>(9.0, 8.0), vec2<f32>(-8.0, -8.0)) - 1.5;
         
-        // Progress angle (75% filled arc)
-        let angle = atan2(local_p.y, local_p.x);
-        let arc_mask = select(0.0, 1.0, angle > -2.3 && angle < 1.7);
-        
-        // Center hub dot
-        let center_dot = 1.0 - smoothstep(-0.5, 0.5, r_dist - 4.5);
-        
-        // Progress tip indicator bead
-        let tip_p = vec2<f32>(cos(1.7), sin(1.7)) * 17.0;
-        let tip_bead = 1.0 - smoothstep(-0.5, 0.5, length(local_p - tip_p) - 3.2);
-        
-        return max(ring_alpha * arc_mask * 0.8, max(center_dot * 0.65, tip_bead * 0.9));
+        let rune = min(d_spine, min(min(d_up1, d_up2), min(d_dn1, d_dn2)));
+        app.glyph_mask = 1.0 - smoothstep(-0.6, 0.6, rune);
+        app.fluid_color = vec3<f32>(0.25, 0.45, 1.0); // Electric Indigo/Sapphire
+        app.fluid_glow = 0.45;
+        return app;
     }
     
-    // 4. Center Hero Card: Concentric Vinyl Record Grooves + Anisotropic Light + Metadata Pills
+    // 4. Display Brightness Liquid Slider: Sun Icon + Golden/Amber Sloshing Fluid Column
     if el_type >= 3.9 && el_type <= 4.1 {
-        let disc_center = vec2<f32>(-half.x + 48.0, 0.0);
-        let p_rel = local_p - disc_center;
-        let r_disc = length(p_rel);
+        // Sun icon on the left
+        let sun_center = vec2<f32>(-half.x + 24.0, 0.0);
+        let sun_p = local_p - sun_center;
+        let sun_r = length(sun_p);
+        let sun_core = 1.0 - smoothstep(-0.6, 0.6, sun_r - 5.5);
         
-        // Disc outer rim
-        let disc_outer = 1.0 - smoothstep(-0.5, 0.5, abs(r_disc - 34.0) - 1.2);
-        // Concentric groove lines
-        let groove1 = 1.0 - smoothstep(-0.5, 0.5, abs(r_disc - 26.0) - 0.7);
-        let groove2 = 1.0 - smoothstep(-0.5, 0.5, abs(r_disc - 18.0) - 0.7);
-        // Center label ring
-        let label_ring = 1.0 - smoothstep(-0.5, 0.5, abs(r_disc - 10.0) - 1.0);
-        let center_hole = 1.0 - smoothstep(-0.5, 0.5, r_disc - 3.0);
+        // 8 radiating sun rays
+        var rays = 0.0;
+        for (var i = 0.0; i < 8.0; i += 1.0) {
+            let theta = i * 0.785398; // pi / 4
+            let ray_start = vec2<f32>(cos(theta), sin(theta)) * 8.5;
+            let ray_end = vec2<f32>(cos(theta), sin(theta)) * 12.0;
+            let d_ray = dist_segment(sun_p, ray_start, ray_end) - 1.2;
+            rays = max(rays, 1.0 - smoothstep(-0.5, 0.5, d_ray));
+        }
+        let sun_icon = max(sun_core, rays);
         
-        // Realistic spinning anisotropic sheen
-        let angle = atan2(p_rel.y, p_rel.x) + time * 0.7;
-        let sheen = pow(abs(cos(angle * 2.0)), 6.0) * 0.35 * select(0.0, 1.0, r_disc > 10.0 && r_disc < 34.0);
+        // Dynamic sloshing liquid fluid column
+        let track_start = -half.x + 4.0;
+        let track_width = half.x * 2.0 - 8.0;
+        let fill_x = track_start + track_width * clamp(progress, 0.05, 0.98);
         
-        let vinyl = (max(disc_outer, max(groove1 * 0.45, max(groove2 * 0.45, label_ring * 0.65))) + sheen) * (1.0 - center_hole);
+        // Liquid wave meniscus profile
+        let slosh = sin(local_p.y * 0.18 + time * 3.5) * 2.2;
+        let meniscus_x = fill_x + slosh;
         
-        // Audio metadata rounded placeholder bars
-        let b1 = rr_sdf(local_p - vec2<f32>(24.0, -10.0), vec2<f32>(42.0, 3.0), 2.0);
-        let b2 = rr_sdf(local_p - vec2<f32>(12.0, 2.0), vec2<f32>(30.0, 2.2), 1.8);
-        let b3 = rr_sdf(local_p - vec2<f32>(32.0, 14.0), vec2<f32>(50.0, 1.8), 1.5);
-        let text_lines = max(
-            (1.0 - smoothstep(-0.5, 0.5, b1)) * 0.8,
-            max((1.0 - smoothstep(-0.5, 0.5, b2)) * 0.55, (1.0 - smoothstep(-0.5, 0.5, b3)) * 0.4)
-        );
+        // Translucent liquid fluid filling
+        let in_liquid = select(0.0, 1.0, local_p.x <= meniscus_x);
+        let meniscus_rim = 1.0 - smoothstep(0.0, 2.5, abs(local_p.x - meniscus_x));
         
-        return max(vinyl * 0.7, text_lines);
+        app.glyph_mask = max(sun_icon * 0.95, meniscus_rim * 0.8);
+        app.fluid_color = vec3<f32>(1.0, 0.76, 0.22); // Radiant Warm Amber/Gold
+        app.fluid_glow = in_liquid * 0.38;
+        return app;
     }
     
-    // 5. Prev Button: Bold Double Triangle Left
+    // 5. Sound Volume Liquid Slider: Speaker Icon + Crystal Azure Sloshing Fluid Column
     if el_type >= 4.9 && el_type <= 5.1 {
-        // Triangle 1
-        let p1 = local_p - vec2<f32>(3.5, 0.0);
-        let d_tri1 = max(abs(p1.y) * 1.4 - (p1.x + 6.0), max(-p1.x - 6.0, p1.x - 6.0));
-        let tri1 = 1.0 - smoothstep(-0.5, 0.5, d_tri1);
+        // Speaker icon on the left
+        let spk_center = vec2<f32>(-half.x + 24.0, 0.0);
+        let spk_p = local_p - spk_center;
         
-        // Triangle 2
-        let p2 = local_p - vec2<f32>(-4.5, 0.0);
-        let d_tri2 = max(abs(p2.y) * 1.4 - (p2.x + 6.0), max(-p2.x - 6.0, p2.x - 6.0));
-        let tri2 = 1.0 - smoothstep(-0.5, 0.5, d_tri2);
+        // Trapezoid speaker body
+        let d_body = max(abs(spk_p.y) - 6.0, abs(spk_p.x + 3.0) - 3.5);
+        let d_cone = max(abs(spk_p.y) - (spk_p.x * 0.7 + 6.0), max(-spk_p.x - 3.0, spk_p.x - 4.5));
+        let speaker = 1.0 - smoothstep(-0.6, 0.6, min(d_body, d_cone));
         
-        return max(tri1, tri2) * 0.85;
+        // Radiating sound wave arcs
+        let arc1 = abs(length(spk_p - vec2<f32>(0.0, 0.0)) - 9.0) - 1.4;
+        let arc2 = abs(length(spk_p - vec2<f32>(0.0, 0.0)) - 14.5) - 1.4;
+        let angle = atan2(abs(spk_p.y), spk_p.x);
+        let in_sound_fan = select(0.0, 1.0, angle < 0.75);
+        let sound_arcs = (1.0 - smoothstep(-0.6, 0.6, min(arc1, arc2))) * in_sound_fan;
+        let spk_icon = max(speaker, sound_arcs);
+        
+        // Dynamic azure liquid fluid column
+        let track_start = -half.x + 4.0;
+        let track_width = half.x * 2.0 - 8.0;
+        let fill_x = track_start + track_width * clamp(progress, 0.05, 0.98);
+        let slosh = sin(local_p.y * 0.18 + time * 3.8) * 2.2;
+        let meniscus_x = fill_x + slosh;
+        
+        let in_liquid = select(0.0, 1.0, local_p.x <= meniscus_x);
+        let meniscus_rim = 1.0 - smoothstep(0.0, 2.5, abs(local_p.x - meniscus_x));
+        
+        app.glyph_mask = max(spk_icon * 0.95, meniscus_rim * 0.8);
+        app.fluid_color = vec3<f32>(0.12, 0.75, 1.0); // Pure Crystal Azure
+        app.fluid_glow = in_liquid * 0.38;
+        return app;
     }
     
-    // 6. Center Hero Play Button: Solid Frosted Play Triangle
+    // 6. Focus / Moon Liquid Lens: Apple Crescent Moon + Luminous Amethyst Core
     if el_type >= 5.9 && el_type <= 6.1 {
-        let p = local_p - vec2<f32>(2.0, 0.0);
-        let d_play = max(abs(p.y) * 1.4 - (-p.x + 8.5), max(p.x - 9.5, -p.x - 8.5));
-        let play = 1.0 - smoothstep(-0.5, 0.5, d_play);
-        return play * 0.95;
+        let moon_outer = length(local_p) - 13.5;
+        let moon_inner = length(local_p - vec2<f32>(6.0, -4.5)) - 11.5;
+        let moon_d = max(moon_outer, -moon_inner);
+        
+        app.glyph_mask = 1.0 - smoothstep(-0.6, 0.6, moon_d);
+        app.fluid_color = vec3<f32>(0.72, 0.38, 0.98); // Luminous Lavender/Amethyst
+        app.fluid_glow = 0.48;
+        return app;
     }
     
-    // 7. Next Button: Bold Double Triangle Right
+    // 7. Screen Mirroring Liquid Lens: Overlapping Display Screens + Radiant Sky Sapphire Core
     if el_type >= 6.9 && el_type <= 7.1 {
-        let p1 = local_p - vec2<f32>(-3.5, 0.0);
-        let d_tri1 = max(abs(p1.y) * 1.4 - (-p1.x + 6.0), max(p1.x - 6.0, -p1.x - 6.0));
-        let tri1 = 1.0 - smoothstep(-0.5, 0.5, d_tri1);
+        // Front rectangle screen
+        let scr1 = rr_sdf(local_p - vec2<f32>(-3.5, 2.5), vec2<f32>(11.0, 7.5), 2.5);
+        let frame1 = abs(scr1) - 1.5;
+        // Rear rectangle screen
+        let scr2 = rr_sdf(local_p - vec2<f32>(3.5, -2.5), vec2<f32>(11.0, 7.5), 2.5);
+        let frame2 = abs(scr2) - 1.5;
         
-        let p2 = local_p - vec2<f32>(4.5, 0.0);
-        let d_tri2 = max(abs(p2.y) * 1.4 - (-p2.x + 6.0), max(p2.x - 6.0, -p2.x - 6.0));
-        let tri2 = 1.0 - smoothstep(-0.5, 0.5, d_tri2);
-        
-        return max(tri1, tri2) * 0.85;
+        let screens = min(frame1, frame2);
+        app.glyph_mask = 1.0 - smoothstep(-0.6, 0.6, screens);
+        app.fluid_color = vec3<f32>(0.15, 0.68, 1.0); // Sapphire/Sky
+        app.fluid_glow = 0.48;
+        return app;
     }
     
-    // 8. Bottom Slider: Liquid Progress Track + Gleaming Glass Knob Bead
+    // 8. Theme / Night Shift Liquid Lens: Dual Harmonized Sun/Moon + Amber Coral Core
     if el_type >= 7.9 && el_type <= 8.1 {
-        let track_len = half.x * 2.0 - 8.0;
-        let knob_x = -half.x + 4.0 + track_len * clamp(progress, 0.1, 0.9);
-        let knob_dist = length(local_p - vec2<f32>(knob_x, 0.0)) - 6.0;
-        let knob = 1.0 - smoothstep(-0.5, 0.5, knob_dist);
+        let circle_d = length(local_p) - 11.0;
+        let circle = 1.0 - smoothstep(-0.6, 0.6, circle_d);
+        // Half-filled divider
+        let left_half = select(0.0, 1.0, local_p.x < 0.0);
+        let right_ring = 1.0 - smoothstep(-0.6, 0.6, abs(circle_d) - 1.6);
+        let theme_glyph = max(circle * left_half, right_ring);
         
-        // Filled liquid bar to the left of the knob
-        let filled_bar = select(0.0, 1.0, local_p.x < knob_x && abs(local_p.y) < 2.5);
-        return max(knob * 0.95, filled_bar * 0.5);
+        app.glyph_mask = theme_glyph;
+        app.fluid_color = vec3<f32>(1.0, 0.58, 0.28); // Sunset Amber Coral
+        app.fluid_glow = 0.48;
+        return app;
     }
     
-    return 0.0;
+    return app;
 }
 
 @fragment
@@ -330,26 +396,30 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let cur_active = select(0.0, 1.0, params.pointer_pos.x >= 0.0);
     
     // Stretch influence radius
-    let stretch_radius = select(110.0, 190.0, is_base_panel);
+    let stretch_radius = select(135.0, 210.0, is_base_panel);
     let stretch_t = clamp(1.0 - (d_to_cur / stretch_radius), 0.0, 1.0) * cur_active;
     let stretch_t2 = stretch_t * stretch_t;
     
-    // 1. Magnetic adhesion pull: droplet contour reaches out toward the cursor
+    // 1. Magnetic adhesion pull: droplet contour reaches out toward the cursor (viscous mercury pull)
     let pull_dir = normalize(cur_local - local_px + vec2<f32>(0.001));
-    let adhesion_pull = pull_dir * stretch_t2 * select(10.5, 4.5, is_base_panel);
+    let adhesion_pull = pull_dir * stretch_t2 * select(28.0, 14.0, is_base_panel);
     
     // 2. Velocity elongation: droplet stretches along cursor velocity vector (jelly shear)
     let vel_px = params.pointer_velocity * params.surface_size;
     let vel_len = length(vel_px);
     let vel_dir = select(vec2<f32>(0.0), normalize(vel_px), vel_len > 0.001);
-    let jelly_elongation = vel_dir * min(vel_len * 0.45, 16.0) * stretch_t;
+    let jelly_elongation = vel_dir * min(vel_len * 0.85, 24.0) * stretch_t;
     
-    // 3. Fluid wave displacement
+    // 3. Volume preservation pinch: droplet narrows along perpendicular axis when pulled
+    let perp_dir = vec2<f32>(-pull_dir.y, pull_dir.x);
+    let volume_pinch = perp_dir * dot(local_px, perp_dir) * (stretch_t2 * 0.12);
+    
+    // 4. Fluid wave displacement
     let liq = liquid_displacement(uv * params.surface_size);
     let liq_factor = select(0.008, 0.015, is_base_panel);
     
     // Net elastic liquid distortion (subtracting pulls contour outward toward cursor)
-    let net_stretch = adhesion_pull + jelly_elongation;
+    let net_stretch = adhesion_pull + jelly_elongation - volume_pinch;
     let deformed_px = local_px - net_stretch + liq * liq_factor;
     
     let sdf = rr_sdf(deformed_px, half_size, r);
@@ -522,21 +592,22 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let fres = pow(1.0 - cos_theta, 4.0) * params.fresnel_strength;
     
     // ════════════════════════════════════════════
-    // 11. ETCHED FROSTED UI ICONOGRAPHY
+    // 11. AUTHENTIC MACOS LIQUID CORE & CRISP GLYPHS
     // ════════════════════════════════════════════
-    let glyph = render_element_glyph(local_px, half_size, params.padding2.x, params.padding2.y, params.time);
-    let glyph_shadow = render_element_glyph(local_px - vec2<f32>(0.0, 1.2), half_size, params.padding2.x, params.padding2.y, params.time);
-    let glyph_depth = max(glyph_shadow - glyph, 0.0) * 0.35;
-    let glyph_crest = glyph * vec3<f32>(0.98, 0.99, 1.0) * (1.0 + cur_spec * 0.5);
+    let app = render_element_appearance(local_px, half_size, params.padding2.x, params.padding2.y, params.time);
+    let glyph_crest = app.glyph_mask * vec3<f32>(1.0, 1.0, 1.0) * (1.15 + cur_spec * 0.6);
+    let fluid_emission = app.fluid_color * app.fluid_glow;
     
     // ════════════════════════════════════════════
     // 12. MASTER COMPOSITE
     // ════════════════════════════════════════════
-    var fin = col * (1.0 - glyph_depth);
+    var fin = col;
+    // Infuse internal bioluminescent liquid fluid into the crystal body
+    fin = mix(fin, fin * (1.0 + fluid_emission * 1.8) + fluid_emission * 0.45, app.fluid_glow);
     fin += vec3<f32>(rim_crest);
     fin += vec3<f32>(spec1 + spec2 + cur_spec + cur_rim_glow);
-    fin += glyph_crest * 0.92;
-    fin = mix(fin, vec3<f32>(1.0, 1.0, 1.0), fres * 0.10);
+    fin += glyph_crest * 0.95;
+    fin = mix(fin, vec3<f32>(1.0, 1.0, 1.0), fres * 0.12);
     
     return vec4<f32>(fin * mask, mask);
 }

@@ -50,7 +50,8 @@ struct AppData {
     hover_pos: [f32; 8],
     hover_vel: [f32; 8],
     is_pressed: bool,
-    slider_progress: f32,
+    brightness_progress: f32,
+    volume_progress: f32,
     
     width: u32,
     height: u32,
@@ -102,8 +103,8 @@ impl CompositorHandler for AppData {
         surface: &wl_surface::WlSurface,
         _time: u32,
     ) {
-        self.draw();
         surface.frame(qh, surface.clone());
+        self.draw();
     }
     fn transform_changed(
         &mut self,
@@ -198,6 +199,7 @@ impl PointerHandler for AppData {
         events: &[PointerEvent],
     ) {
         for event in events {
+            eprintln!("[GLASS] Pointer event: {:?}", event.kind);
             match event.kind {
                 PointerEventKind::Enter { .. } | PointerEventKind::Motion { .. } => {
                     if self.width > 0 && self.height > 0 {
@@ -226,8 +228,10 @@ impl PointerHandler for AppData {
 
 impl AppData {
     fn draw(&mut self) {
-        // Periodically check if wallpaper changed (every ~5 seconds at 60 FPS)
         self.frame_counter += 1;
+        if self.frame_counter % 60 == 1 {
+            eprintln!("[GLASS] Rendered frame {}, cursor={:?}", self.frame_counter, self.cursor_pos);
+        }
         if self.frame_counter % 300 == 0 {
             if let Some((cw, ch, bg_data)) = load_wallpaper_region(40, 40, self.width, self.height) {
                 if let Some(renderer) = &mut self.renderer {
@@ -243,24 +247,24 @@ impl AppData {
             let vx = self.cursor_velocity[0];
             let vy = self.cursor_velocity[1];
 
-            // Specifications: [cx, cy, base_w, base_h]
+            // Authentic macOS Control Center Layout Specifications: [cx, cy, base_w, base_h]
             let specs: [[f32; 4]; 8] = [
-                [0.50, 0.10, 0.84, 0.08],   // 0: header_pill
-                [0.28, 0.25, 0.40, 0.16],   // 1: tile_left
-                [0.72, 0.25, 0.40, 0.16],   // 2: tile_right
-                [0.50, 0.50, 0.84, 0.28],   // 3: center_card
-                [0.22, 0.74, 0.20, 0.12],   // 4: btn_left
-                [0.50, 0.735, 0.24, 0.15],  // 5: btn_center
-                [0.78, 0.74, 0.20, 0.12],   // 6: btn_right
-                [0.50, 0.8725, 0.76, 0.045],// 7: slider_track
+                [0.50, 0.08, 0.86, 0.07],   // 0: Dynamic Island Header
+                [0.28, 0.21, 0.40, 0.15],   // 1: Wi-Fi Capsule
+                [0.72, 0.21, 0.40, 0.15],   // 2: Bluetooth Capsule
+                [0.50, 0.38, 0.86, 0.13],   // 3: Display Brightness Liquid Slider
+                [0.50, 0.54, 0.86, 0.13],   // 4: Sound Volume Liquid Slider
+                [0.22, 0.73, 0.24, 0.16],   // 5: Focus / Moon Liquid Lens
+                [0.50, 0.73, 0.26, 0.17],   // 6: Screen Mirroring Hero Lens
+                [0.78, 0.73, 0.24, 0.16],   // 7: Theme / Night Shift Lens
             ];
 
-            // 1. macOS Dock-style continuous Gaussian proximity wave & 60 FPS second-order spring dynamics
+            // 1. macOS continuous Gaussian proximity wave & 60 FPS second-order spring dynamics
             let sigma = 0.15f32;
             let two_sigma_sq = 2.0 * sigma * sigma;
             let dt = 1.0f32 / 60.0f32;
-            let spring_k = 320.0f32;
-            let damping = 18.0f32;
+            let spring_k = 280.0f32;
+            let damping = 16.0f32;
 
             for i in 0..8 {
                 let [cx, cy, bw, bh] = specs[i];
@@ -282,25 +286,29 @@ impl AppData {
                 self.hover_pos[i] += self.hover_vel[i] * dt;
             }
 
-            // Interactive slider dragging
-            if self.is_pressed && px >= 0.10 && px <= 0.90 && py >= 0.80 && py <= 0.94 {
-                self.slider_progress = ((px - 0.12) / 0.76).clamp(0.05, 0.95);
+            // Interactive continuous liquid slider dragging
+            if self.is_pressed {
+                if py >= 0.31 && py <= 0.45 {
+                    self.brightness_progress = ((px - 0.10) / 0.80).clamp(0.06, 0.96);
+                } else if py >= 0.47 && py <= 0.61 {
+                    self.volume_progress = ((px - 0.10) / 0.80).clamp(0.06, 0.96);
+                }
             }
 
             // Helper to compute volume-preserving elastic jelly stretch
             let calc_stretch_bounds = |idx: usize, press: f32| -> [f32; 4] {
                 let [cx, cy, bw, bh] = specs[idx];
-                let t = self.hover_pos[idx].clamp(0.0, 1.4);
+                let t = self.hover_pos[idx].clamp(0.0, 1.5);
                 let dx = if px >= 0.0 { px - cx } else { 0.0 };
                 let dy = if py >= 0.0 { py - cy } else { 0.0 };
                 
-                // Elastic jelly pull: center slightly tracks the cursor
-                let pull_x = dx * t * 0.035;
-                let pull_y = dy * t * 0.035;
+                // Viscous jelly pull: droplet center reaches out toward the cursor
+                let pull_x = dx * t * 0.095;
+                let pull_y = dy * t * 0.095;
                 
                 // Volume-preserving asymmetric stretch
-                let stretch_w = bw * (1.0 + t * 0.07 + dx.abs() * t * 0.05) + press;
-                let stretch_h = bh * (1.0 + t * 0.07 - dx.abs() * t * 0.025) + press;
+                let stretch_w = bw * (1.0 + t * 0.13 + dx.abs() * t * 0.08) + press;
+                let stretch_h = bh * (1.0 + t * 0.13 - dx.abs() * t * 0.04) + press;
                 
                 [cx + pull_x - stretch_w * 0.5, cy + pull_y - stretch_h * 0.5, stretch_w, stretch_h]
             };
@@ -308,13 +316,13 @@ impl AppData {
             // ── Surface 0: Base Liquid Glass Widget ──
             let panel = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::RoundedRectangle { radius: 32.0 })
+                .shape(Shape::RoundedRectangle { radius: 36.0 })
                 .bounds(0.0, 0.0, 1.0, 1.0)
                 .curvature(0.18)   // Edge highlight rim
-                .bevel(36.0)       // Pill-bevel z-radius
+                .bevel(38.0)       // Pill-bevel z-radius
                 .refraction(0.72)  // Liquid refraction lensing
                 .dispersion(0.04)  // Chromatic dispersion at perimeter
-                .blur(5.0)         // Soft background vibrancy blur
+                .blur(4.5)         // Soft background vibrancy blur
                 .tint(1.0, 1.0, 1.0, 0.0) // Transparent crystal
                 .roughness(0.0)
                 .specular(0.35)
@@ -323,155 +331,159 @@ impl AppData {
                 .pointer_velocity(vx, vy);
 
             // ── Subcomponent 1: Top Status Pill (Dynamic Island) ──
-            let t0 = self.hover_pos[0].clamp(0.0, 1.4);
+            let t0 = self.hover_pos[0].clamp(0.0, 1.5);
             let b0 = calc_stretch_bounds(0, 0.0);
             let header_pill = GlassSurface::new()
-                .material(Material::Acrylic)
+                .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b0[0], b0[1], b0[2], b0[3])
-                .curvature(0.35 + t0 * 0.18)
-                .bevel(10.0 + t0 * 5.0)
-                .refraction(0.42 + t0 * 0.22)
+                .curvature(0.35 + t0 * 0.20)
+                .bevel(12.0 + t0 * 6.0)
+                .refraction(0.48 + t0 * 0.25)
                 .dispersion(0.03 + t0 * 0.02)
-                .blur(8.0 - t0 * 3.0)
-                .tint(1.0, 1.0, 1.0, 0.09 + t0 * 0.08)
-                .specular(0.75 + t0 * 0.45)
+                .blur(4.0)
+                .tint(1.0, 1.0, 1.0, 0.0)
+                .specular(0.95 + t0 * 0.55)
                 .fresnel(0.85 + t0 * 0.15)
                 .element_type(1.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
-            // ── Subcomponent 2 & 3: Dual Metric Quick-Tiles ──
-            let t1 = self.hover_pos[1].clamp(0.0, 1.4);
-            let b1 = calc_stretch_bounds(1, 0.0);
-            let tile_left = GlassSurface::new()
-                .material(Material::Acrylic)
-                .shape(Shape::RoundedRectangle { radius: 18.0 })
+            // ── Subcomponent 2: Wi-Fi Liquid Capsule ──
+            let t1 = self.hover_pos[1].clamp(0.0, 1.5);
+            let p1 = if self.is_pressed && t1 > 0.4 { -0.015 } else { 0.0 };
+            let b1 = calc_stretch_bounds(1, p1);
+            let wifi_capsule = GlassSurface::new()
+                .material(Material::LiquidGlass)
+                .shape(Shape::RoundedRectangle { radius: 20.0 })
                 .bounds(b1[0], b1[1], b1[2], b1[3])
-                .curvature(0.25 + t1 * 0.22)
-                .bevel(12.0 + t1 * 6.0)
-                .refraction(0.48 + t1 * 0.26)
-                .dispersion(0.03 + t1 * 0.02)
-                .blur(8.0 - t1 * 3.0)
-                .tint(0.92, 0.96, 1.0, 0.07 + t1 * 0.10)
-                .specular(0.60 + t1 * 0.55)
-                .fresnel(0.75 + t1 * 0.20)
+                .curvature(0.30 + t1 * 0.22)
+                .bevel(14.0 + t1 * 7.0)
+                .refraction(0.55 + t1 * 0.30)
+                .dispersion(0.035 + t1 * 0.02)
+                .blur(4.0)
+                .tint(1.0, 1.0, 1.0, 0.0)
+                .specular(0.90 + t1 * 0.65)
+                .fresnel(0.80 + t1 * 0.20)
                 .element_type(2.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
-            let t2 = self.hover_pos[2].clamp(0.0, 1.4);
-            let b2 = calc_stretch_bounds(2, 0.0);
-            let tile_right = GlassSurface::new()
-                .material(Material::Acrylic)
-                .shape(Shape::RoundedRectangle { radius: 18.0 })
+            // ── Subcomponent 3: Bluetooth Liquid Capsule ──
+            let t2 = self.hover_pos[2].clamp(0.0, 1.5);
+            let p2 = if self.is_pressed && t2 > 0.4 { -0.015 } else { 0.0 };
+            let b2 = calc_stretch_bounds(2, p2);
+            let bluetooth_capsule = GlassSurface::new()
+                .material(Material::LiquidGlass)
+                .shape(Shape::RoundedRectangle { radius: 20.0 })
                 .bounds(b2[0], b2[1], b2[2], b2[3])
-                .curvature(0.25 + t2 * 0.22)
-                .bevel(12.0 + t2 * 6.0)
-                .refraction(0.48 + t2 * 0.26)
-                .dispersion(0.03 + t2 * 0.02)
-                .blur(8.0 - t2 * 3.0)
-                .tint(0.98, 0.94, 1.0, 0.07 + t2 * 0.10)
-                .specular(0.60 + t2 * 0.55)
-                .fresnel(0.75 + t2 * 0.20)
+                .curvature(0.30 + t2 * 0.22)
+                .bevel(14.0 + t2 * 7.0)
+                .refraction(0.55 + t2 * 0.30)
+                .dispersion(0.035 + t2 * 0.02)
+                .blur(4.0)
+                .tint(1.0, 1.0, 1.0, 0.0)
+                .specular(0.90 + t2 * 0.65)
+                .fresnel(0.80 + t2 * 0.20)
                 .element_type(3.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
-            // ── Subcomponent 4: Center Hero Feature Card ──
-            let t3 = self.hover_pos[3].clamp(0.0, 1.4);
+            // ── Subcomponent 4: Display Brightness Liquid Slider ──
+            let t3 = self.hover_pos[3].clamp(0.0, 1.5);
             let b3 = calc_stretch_bounds(3, 0.0);
-            let center_card = GlassSurface::new()
-                .material(Material::FrostedGlass)
-                .shape(Shape::RoundedRectangle { radius: 22.0 })
+            let brightness_slider = GlassSurface::new()
+                .material(Material::LiquidGlass)
+                .shape(Shape::Capsule)
                 .bounds(b3[0], b3[1], b3[2], b3[3])
                 .curvature(0.28 + t3 * 0.18)
-                .bevel(16.0 + t3 * 7.0)
+                .bevel(16.0 + t3 * 8.0)
                 .refraction(0.58 + t3 * 0.25)
                 .dispersion(0.03 + t3 * 0.02)
-                .blur(10.0 - t3 * 3.0)
-                .tint(1.0, 1.0, 1.0, 0.06 + t3 * 0.09)
-                .specular(0.55 + t3 * 0.50)
+                .blur(4.0)
+                .tint(1.0, 1.0, 1.0, 0.0)
+                .specular(0.85 + t3 * 0.55)
                 .fresnel(0.80 + t3 * 0.15)
                 .element_type(4.0)
+                .progress(self.brightness_progress)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
-            // ── Subcomponents 5, 6, 7: Bottom Action Glass Buttons ──
-            let t4 = self.hover_pos[4].clamp(0.0, 1.4);
-            let p4 = if self.is_pressed && t4 > 0.4 { -0.015 } else { 0.0 };
-            let b4 = calc_stretch_bounds(4, p4);
-            let btn_left = GlassSurface::new()
-                .material(Material::Acrylic)
+            // ── Subcomponent 5: Sound Volume Liquid Slider ──
+            let t4 = self.hover_pos[4].clamp(0.0, 1.5);
+            let b4 = calc_stretch_bounds(4, 0.0);
+            let volume_slider = GlassSurface::new()
+                .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b4[0], b4[1], b4[2], b4[3])
-                .curvature(0.40 + t4 * 0.28)
-                .bevel(10.0 + t4 * 7.0)
-                .refraction(0.40 + t4 * 0.35)
-                .dispersion(0.02 + t4 * 0.03)
-                .blur(6.0)
-                .tint(1.0, 1.0, 1.0, 0.10 + t4 * 0.14)
-                .specular(0.85 + t4 * 0.65)
-                .fresnel(0.75 + t4 * 0.25)
+                .curvature(0.28 + t4 * 0.18)
+                .bevel(16.0 + t4 * 8.0)
+                .refraction(0.58 + t4 * 0.25)
+                .dispersion(0.03 + t4 * 0.02)
+                .blur(4.0)
+                .tint(1.0, 1.0, 1.0, 0.0)
+                .specular(0.85 + t4 * 0.55)
+                .fresnel(0.80 + t4 * 0.15)
                 .element_type(5.0)
+                .progress(self.volume_progress)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
-            let t5 = self.hover_pos[5].clamp(0.0, 1.4);
-            let p5 = if self.is_pressed && t5 > 0.4 { -0.020 } else { 0.0 };
+            // ── Subcomponents 6, 7, 8: Bottom Trio of Liquid Lenses ──
+            let t5 = self.hover_pos[5].clamp(0.0, 1.5);
+            let p5 = if self.is_pressed && t5 > 0.4 { -0.015 } else { 0.0 };
             let b5 = calc_stretch_bounds(5, p5);
-            let btn_center = GlassSurface::new()
+            let focus_lens = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b5[0], b5[1], b5[2], b5[3])
-                .curvature(0.50 + t5 * 0.35)
-                .bevel(14.0 + t5 * 9.0)
-                .refraction(0.65 + t5 * 0.40)
-                .dispersion(0.04 + t5 * 0.03)
-                .blur(8.0)
-                .tint(1.0, 1.0, 1.0, 0.14 + t5 * 0.18)
-                .specular(1.10 + t5 * 0.80)
-                .fresnel(0.90 + t5 * 0.20)
+                .curvature(0.42 + t5 * 0.28)
+                .bevel(12.0 + t5 * 7.0)
+                .refraction(0.48 + t5 * 0.35)
+                .dispersion(0.03 + t5 * 0.03)
+                .blur(4.0)
+                .tint(1.0, 1.0, 1.0, 0.0)
+                .specular(1.10 + t5 * 0.70)
+                .fresnel(0.85 + t5 * 0.15)
                 .element_type(6.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
-            let t6 = self.hover_pos[6].clamp(0.0, 1.4);
-            let p6 = if self.is_pressed && t6 > 0.4 { -0.015 } else { 0.0 };
+            let t6 = self.hover_pos[6].clamp(0.0, 1.5);
+            let p6 = if self.is_pressed && t6 > 0.4 { -0.020 } else { 0.0 };
             let b6 = calc_stretch_bounds(6, p6);
-            let btn_right = GlassSurface::new()
-                .material(Material::Acrylic)
+            let mirror_lens = GlassSurface::new()
+                .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b6[0], b6[1], b6[2], b6[3])
-                .curvature(0.40 + t6 * 0.28)
-                .bevel(10.0 + t6 * 7.0)
-                .refraction(0.40 + t6 * 0.35)
-                .dispersion(0.02 + t6 * 0.03)
-                .blur(6.0)
-                .tint(1.0, 1.0, 1.0, 0.10 + t6 * 0.14)
-                .specular(0.85 + t6 * 0.65)
-                .fresnel(0.75 + t6 * 0.25)
+                .curvature(0.48 + t6 * 0.30)
+                .bevel(14.0 + t6 * 8.0)
+                .refraction(0.58 + t6 * 0.35)
+                .dispersion(0.035 + t6 * 0.03)
+                .blur(4.0)
+                .tint(1.0, 1.0, 1.0, 0.0)
+                .specular(1.20 + t6 * 0.80)
+                .fresnel(0.90 + t6 * 0.15)
                 .element_type(7.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
-            // ── Subcomponent 8: Bottom Slider Groove Track ──
-            let t7 = self.hover_pos[7].clamp(0.0, 1.4);
-            let b7 = calc_stretch_bounds(7, 0.0);
-            let slider_track = GlassSurface::new()
-                .material(Material::Acrylic)
+            let t7 = self.hover_pos[7].clamp(0.0, 1.5);
+            let p7 = if self.is_pressed && t7 > 0.4 { -0.015 } else { 0.0 };
+            let b7 = calc_stretch_bounds(7, p7);
+            let theme_lens = GlassSurface::new()
+                .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b7[0], b7[1], b7[2], b7[3])
-                .curvature(0.20 + t7 * 0.18)
-                .bevel(6.0 + t7 * 4.0)
-                .refraction(0.32 + t7 * 0.18)
-                .dispersion(0.02)
+                .curvature(0.42 + t7 * 0.28)
+                .bevel(12.0 + t7 * 7.0)
+                .refraction(0.48 + t7 * 0.35)
+                .dispersion(0.03 + t7 * 0.03)
                 .blur(4.0)
-                .tint(1.0, 1.0, 1.0, 0.07 + t7 * 0.09)
-                .specular(0.60 + t7 * 0.45)
-                .fresnel(0.60 + t7 * 0.20)
+                .tint(1.0, 1.0, 1.0, 0.0)
+                .specular(1.10 + t7 * 0.70)
+                .fresnel(0.85 + t7 * 0.15)
                 .element_type(8.0)
-                .progress(self.slider_progress)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
@@ -482,13 +494,13 @@ impl AppData {
             let surfaces = vec![
                 panel,
                 header_pill,
-                tile_left,
-                tile_right,
-                center_card,
-                btn_left,
-                btn_center,
-                btn_right,
-                slider_track,
+                wifi_capsule,
+                bluetooth_capsule,
+                brightness_slider,
+                volume_slider,
+                focus_lens,
+                mirror_lens,
+                theme_lens,
             ];
             let _ = renderer.render(&surfaces);
         }
@@ -580,7 +592,8 @@ fn main() {
         hover_pos: [0.0; 8],
         hover_vel: [0.0; 8],
         is_pressed: false,
-        slider_progress: 0.65,
+        brightness_progress: 0.78,
+        volume_progress: 0.62,
         
         width: 360,
         height: 480,
@@ -619,6 +632,18 @@ fn main() {
     while app_data.first_configure {
         event_queue.blocking_dispatch(&mut app_data).unwrap();
     }
+    
+    // Explicitly bind pointer if not already bound
+    if app_data.pointer.is_none() {
+        for seat in app_data.seat_state.seats() {
+            if let Ok(ptr) = app_data.seat_state.get_pointer(&qh, &seat) {
+                eprintln!("[GLASS] Successfully bound wl_pointer to seat!");
+                app_data.pointer = Some(ptr);
+                break;
+            }
+        }
+    }
+    eprintln!("[GLASS] Pointer initialized: {}", app_data.pointer.is_some());
     
     // Initialize WGPU renderer
     let mut renderer = pollster::block_on(GlassRenderer::new(
