@@ -572,8 +572,22 @@ impl GlassRenderer {
             }
         }
 
-        let capture_info = if let Ok(path) = std::env::var("GLASS_SNAPSHOT") {
-            let _ = std::env::remove_var("GLASS_SNAPSHOT");
+        let should_capture = if let Ok(path) = std::env::var("GLASS_SNAPSHOT") {
+            let target_frame: u32 = std::env::var("GLASS_SNAPSHOT_FRAME")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1);
+            if self.frame_count + 1 >= target_frame {
+                let _ = std::env::remove_var("GLASS_SNAPSHOT");
+                Some(path)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let capture_info = if let Some(path) = should_capture {
             let unpadded = self.surface_config.width * 4;
             let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
             let padded = ((unpadded + align - 1) / align) * align;

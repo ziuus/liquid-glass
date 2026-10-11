@@ -324,14 +324,17 @@ impl AppData {
                 active = true;
             }
 
-            // Subtle, anchored Apple button scaling (clean geometric stability)
+            // Authentic liquid glass elastic pull towards cursor pointer
             let calc_stretch_bounds = |idx: usize, press: f32| -> [f32; 4] {
                 let [cx, cy, bw, bh] = specs[idx];
                 let t = self.hover_pos[idx].clamp(0.0, 1.0);
-                let scale = 1.0 + t * 0.02 + press;
+                let scale = 1.0 + t * 0.025 + press;
+                // Reactive liquid surface tension: element stretches towards pointer
+                let pull_x = (px - cx) * t * 0.035;
+                let pull_y = (py - cy) * t * 0.035;
                 let w = bw * scale;
                 let h = bh * scale;
-                [cx - w * 0.5, cy - h * 0.5, w, h]
+                [cx + pull_x - w * 0.5, cy + pull_y - h * 0.5, w, h]
             };
 
             // ── Surface 0: Base macOS Dark Acrylic Glass Panel ──
@@ -358,14 +361,14 @@ impl AppData {
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b0[0], b0[1], b0[2], b0[3])
-                .curvature(0.02)
-                .bevel(2.5)
-                .refraction(0.0)
-                .dispersion(0.0)
+                .curvature(0.04)
+                .bevel(3.5)
+                .refraction(0.25)
+                .dispersion(0.008)
                 .blur(0.0)
                 .tint(1.0, 1.0, 1.0, 0.06 + t0 * 0.08)
-                .specular(0.25 + t0 * 0.10)
-                .fresnel(0.25)
+                .specular(0.30 + t0 * 0.10)
+                .fresnel(0.30)
                 .element_type(1.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
@@ -378,14 +381,14 @@ impl AppData {
                 .material(Material::LiquidGlass)
                 .shape(Shape::RoundedRectangle { radius: 16.0 })
                 .bounds(b1[0], b1[1], b1[2], b1[3])
-                .curvature(0.02)
-                .bevel(2.5)
-                .refraction(0.0)
-                .dispersion(0.0)
+                .curvature(0.05)
+                .bevel(4.0)
+                .refraction(0.28)
+                .dispersion(0.008)
                 .blur(0.0)
                 .tint(1.0, 1.0, 1.0, 0.08 + t1 * 0.10)
-                .specular(0.30 + t1 * 0.10)
-                .fresnel(0.25)
+                .specular(0.35 + t1 * 0.10)
+                .fresnel(0.30)
                 .element_type(2.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
@@ -398,14 +401,14 @@ impl AppData {
                 .material(Material::LiquidGlass)
                 .shape(Shape::RoundedRectangle { radius: 16.0 })
                 .bounds(b2[0], b2[1], b2[2], b2[3])
-                .curvature(0.02)
-                .bevel(2.5)
-                .refraction(0.0)
-                .dispersion(0.0)
+                .curvature(0.05)
+                .bevel(4.0)
+                .refraction(0.28)
+                .dispersion(0.008)
                 .blur(0.0)
                 .tint(1.0, 1.0, 1.0, 0.08 + t2 * 0.10)
-                .specular(0.25 + t2 * 0.10)
-                .fresnel(0.25)
+                .specular(0.30 + t2 * 0.10)
+                .fresnel(0.30)
                 .element_type(3.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
@@ -417,14 +420,14 @@ impl AppData {
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b3[0], b3[1], b3[2], b3[3])
-                .curvature(0.02)
-                .bevel(2.5)
-                .refraction(0.0)
-                .dispersion(0.0)
+                .curvature(0.04)
+                .bevel(3.5)
+                .refraction(0.25)
+                .dispersion(0.008)
                 .blur(0.0)
                 .tint(1.0, 1.0, 1.0, 0.06 + t3 * 0.08)
-                .specular(0.25 + t3 * 0.08)
-                .fresnel(0.25)
+                .specular(0.30 + t3 * 0.08)
+                .fresnel(0.30)
                 .element_type(4.0)
                 .progress(self.brightness_progress)
                 .pointer_pos(px, py)
@@ -437,14 +440,14 @@ impl AppData {
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b4[0], b4[1], b4[2], b4[3])
-                .curvature(0.02)
-                .bevel(2.5)
-                .refraction(0.0)
-                .dispersion(0.0)
+                .curvature(0.04)
+                .bevel(3.5)
+                .refraction(0.25)
+                .dispersion(0.008)
                 .blur(0.0)
                 .tint(1.0, 1.0, 1.0, 0.06 + t4 * 0.08)
-                .specular(0.25 + t4 * 0.08)
-                .fresnel(0.25)
+                .specular(0.30 + t4 * 0.08)
+                .fresnel(0.30)
                 .element_type(5.0)
                 .progress(self.volume_progress)
                 .pointer_pos(px, py)
@@ -456,16 +459,16 @@ impl AppData {
             let b5 = calc_stretch_bounds(5, p5);
             let focus_lens = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::Capsule)
+                .shape(Shape::Circle)
                 .bounds(b5[0], b5[1], b5[2], b5[3])
-                .curvature(0.02)
-                .bevel(2.5)
-                .refraction(0.0)
-                .dispersion(0.0)
+                .curvature(0.06)
+                .bevel(5.0)
+                .refraction(0.32)
+                .dispersion(0.010)
                 .blur(0.0)
                 .tint(1.0, 1.0, 1.0, 0.08 + t5 * 0.10)
-                .specular(0.28 + t5 * 0.10)
-                .fresnel(0.25)
+                .specular(0.35 + t5 * 0.10)
+                .fresnel(0.30)
                 .element_type(6.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
@@ -475,16 +478,16 @@ impl AppData {
             let b6 = calc_stretch_bounds(6, p6);
             let mirror_lens = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::Capsule)
+                .shape(Shape::Circle)
                 .bounds(b6[0], b6[1], b6[2], b6[3])
-                .curvature(0.02)
-                .bevel(2.5)
-                .refraction(0.0)
-                .dispersion(0.0)
+                .curvature(0.06)
+                .bevel(5.0)
+                .refraction(0.32)
+                .dispersion(0.010)
                 .blur(0.0)
                 .tint(1.0, 1.0, 1.0, 0.08 + t6 * 0.10)
-                .specular(0.28 + t6 * 0.10)
-                .fresnel(0.25)
+                .specular(0.35 + t6 * 0.10)
+                .fresnel(0.30)
                 .element_type(7.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
@@ -494,16 +497,16 @@ impl AppData {
             let b7 = calc_stretch_bounds(7, p7);
             let theme_lens = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::Capsule)
+                .shape(Shape::Circle)
                 .bounds(b7[0], b7[1], b7[2], b7[3])
-                .curvature(0.02)
-                .bevel(2.5)
-                .refraction(0.0)
-                .dispersion(0.0)
+                .curvature(0.06)
+                .bevel(5.0)
+                .refraction(0.32)
+                .dispersion(0.010)
                 .blur(0.0)
                 .tint(1.0, 1.0, 1.0, 0.08 + t7 * 0.10)
-                .specular(0.28 + t7 * 0.10)
-                .fresnel(0.25)
+                .specular(0.35 + t7 * 0.10)
+                .fresnel(0.30)
                 .element_type(8.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
@@ -611,7 +614,12 @@ fn main() {
         window_wrapper: None,
         
         pointer: None,
-        cursor_pos: [-10.0, -10.0],
+        cursor_pos: if let Ok(s) = std::env::var("GLASS_CURSOR") {
+            let parts: Vec<f32> = s.split(',').filter_map(|p| p.trim().parse().ok()).collect();
+            if parts.len() == 2 { [parts[0], parts[1]] } else { [-10.0, -10.0] }
+        } else {
+            [-10.0, -10.0]
+        },
         cursor_velocity: [0.0, 0.0],
         hover_pos: [0.0; 8],
         hover_vel: [0.0; 8],
@@ -697,7 +705,13 @@ fn main() {
     
     // Start drawing frame callback
     surface.frame(&qh, surface.clone());
-    app_data.draw();
+    if std::env::var("GLASS_CURSOR").is_ok() {
+        for _ in 0..12 {
+            app_data.draw();
+        }
+    } else {
+        app_data.draw();
+    }
     
     while !app_data.exit {
         event_queue.blocking_dispatch(&mut app_data).unwrap();

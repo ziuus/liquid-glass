@@ -70,17 +70,24 @@ fn rr_sdf(p: vec2<f32>, b: vec2<f32>, r: f32) -> f32 {
     return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - r;
 }
 
-// ── Precision Apple Frosted Glass Profile (Planar Body + Micro Meniscus Edge) ──
+// ── Authentic Apple Liquid Glass Profile (Fluid Meniscus + Optical Lens) ──
 fn droplet_height(p: vec2<f32>, b: vec2<f32>, r: f32, z_radius: f32) -> f32 {
     let d = -rr_sdf(p, b, r);
     if d <= 0.0 {
         return 0.0;
     }
     
-    // Flat planar body with a razor-thin 3.5px perimeter bevel
-    let meniscus_w = min(z_radius, 3.5);
+    // 1. Capillary Surface Tension Meniscus (steep curve at perimeter, smooth roll-off)
+    let meniscus_w = min(z_radius, 6.0);
     let rim_t = clamp(d / meniscus_w, 0.0, 1.0);
-    return sin(rim_t * 1.5707963) * meniscus_w;
+    let meniscus = 1.0 - pow(1.0 - rim_t, 2.2);
+    
+    // 2. Continuous Fluid Volume (subtle lens curve across interior)
+    let min_d = min(b.x, b.y);
+    let norm_d = clamp(d / max(min_d, 1.0), 0.0, 1.0);
+    let fluid_lens = sin(norm_d * 1.5707963) * 0.16;
+    
+    return (meniscus * 0.84 + fluid_lens) * z_radius;
 }
 
 // ── 10-tap Optimized Golden Spiral Blur (Lightweight & Smooth) ──
@@ -310,12 +317,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // CLEAN GEOMETRIC CONTOUR & INTERACTIVE DYNAMICS
     // ════════════════════════════════════════════
     let cur_local = params.pointer_pos * params.surface_size - center;
-    let d_to_cur = length(cur_local - local_px);
     let cur_active = select(0.0, 1.0, params.pointer_pos.x >= 0.0);
-    
-    // Subtle proximity influence for optical tilt and light interaction
-    let stretch_radius = select(110.0, 180.0, is_base_panel);
-    let stretch_t = clamp(1.0 - (d_to_cur / stretch_radius), 0.0, 1.0) * cur_active;
     
     // Crisp, stable rounded-rectangle SDF (no teardrop egg distortion)
     let sdf = rr_sdf(local_px, half_size, r);
@@ -360,78 +362,109 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let h_d = droplet_height(local_px - vec2<f32>(0.0, eps), half_size, r, z_radius);
     
     let h_grad = vec2<f32>(h_r - h_l, h_u - h_d) / (2.0 * eps);
-    // Subtle optical parallax tilt towards cursor
-    let tilt_3d = (cur_local / max(half_size, vec2<f32>(1.0))) * 0.04 * stretch_t;
-    let N = normalize(vec3<f32>(-(h_grad * 1.5 + tilt_3d), 1.0));
+    
+    // Reactive fluid pull: liquid surface tension draws towards pointer
+    let cur_vec = cur_local - local_px;
+    let dist_cur = length(cur_vec);
+    let cur_dir = cur_vec / max(dist_cur, 0.001);
+    let stretch_radius = select(100.0, 160.0, is_base_panel);
+    let pull_t = clamp(1.0 - (dist_cur / stretch_radius), 0.0, 1.0) * cur_active;
+    let fluid_tilt = cur_dir * (pull_t * pull_t) * 0.08;
+    
+    let N = normalize(vec3<f32>(-(h_grad * params.curvature * 2.2 + fluid_tilt), 1.0));
     
     // ════════════════════════════════════════════
-    // 4. PRECISION BORDER REFRACTION (No bubble bulging)
+    // 4. TRUE OPTICAL REFRACTION & FLUID STRETCH (Snell's Law)
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
     let ior = params.ior;
     let refr_pow = 1.0 - 1.0 / ior;
     
-    // Subtle 3.5px perimeter meniscus refraction only at outer boundary of base panel
-    let refr_scale = select(0.0, 3.5, is_base_panel);
+    // Optical ray bending through liquid glass
+    let refr_scale = select(14.0, 18.0, is_base_panel) * params.refraction_strength;
     let refr_ray = N.xy * refr_pow * refr_scale;
-    let refr = refr_ray * px_to_uv;
     
-    let ca_scale = select(0.0, params.dispersion * 8.0 * edge, is_base_panel);
-    let ca_offset = N.xy * ca_scale * px_to_uv;
+    // Reactive background stretch: wallpaper behind glass is pulled toward cursor
+    let fluid_stretch = cur_dir * pow(pull_t, 1.5) * select(12.0, 16.0, is_base_panel) * params.refraction_strength;
+    
+    let total_refr_px = refr_ray + fluid_stretch;
+    let refr = total_refr_px * px_to_uv;
+    
+    // Chromatic dispersion (prismatic rainbow edges)
+    let ca_scale = params.dispersion * select(22.0, 30.0, is_base_panel) * (edge * 0.8 + 0.2);
+    let ca_offset = (N.xy + cur_dir * pull_t * 0.3) * ca_scale * px_to_uv;
     
     let uv_r = clamp(uv + refr + ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
     let uv_g = clamp(uv + refr, vec2<f32>(0.001), vec2<f32>(0.999));
     let uv_b = clamp(uv + refr - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
     
     // ════════════════════════════════════════════
-    // 5. BACKGROUND SAMPLING & ACRYLIC MATERIAL
+    // 5. BACKGROUND SAMPLING & LIQUID CLARITY
     // ════════════════════════════════════════════
+    let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
+    let sharp_g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
+    let sharp_b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
+    let sharp = vec3<f32>(sharp_r, sharp_g, sharp_b);
+    
     let blur = params.blur_radius;
     let blur_r = blurred_sample(uv_r, blur).r;
     let blur_g = blurred_sample(uv_g, blur).g;
     let blur_b = blurred_sample(uv_b, blur).b;
     let blurred = vec3<f32>(blur_r, blur_g, blur_b);
     
-    var col = blurred;
+    // Edge-weighted sharpness: liquid rim has crystalline optical clarity
+    var col = mix(blurred, sharp, pow(edge, 1.4) * 0.45);
     
     if is_base_panel {
-        // Authentic macOS Sonoma Dark Frosted Acrylic Window:
-        // Deep smoked obsidian glass that harmonizes with any wallpaper
+        // Deep macOS Dark Acrylic Glass
         let dark_acrylic = vec3<f32>(0.07, 0.08, 0.11);
         let lum = dot(col, vec3<f32>(0.299, 0.587, 0.114));
         let saturated = mix(vec3<f32>(lum), col, 1.30); // 30% saturation lift
-        col = mix(saturated * 0.65, dark_acrylic, 0.64);
+        col = mix(saturated * 0.65, dark_acrylic, 0.62);
     } else {
-        // Subcomponent plate on the acrylic canvas:
+        // Subcomponent on the base panel
         let plate_tint = params.tint.rgb;
         let plate_alpha = params.tint.a;
         col = mix(col, plate_tint, plate_alpha);
     }
     
     // ════════════════════════════════════════════
-    // 6. PRECISION 1PX BORDER & INNER RIM LIGHT
+    // 6. DIRECTIONAL RIM & LIQUID SPECULAR GLEAM
     // ════════════════════════════════════════════
-    let border_1px = smoothstep(1.0, 0.0, inside);
     let L_dir = normalize(vec2<f32>(-0.45, -0.7));
     let N_2d = N.xy;
-    let border_light = max(dot(N_2d, L_dir), 0.0) * 0.20 + select(0.06, 0.12, is_base_panel);
+    
+    // Directional meniscus bevel catch
+    let rim_alignment = max(dot(N_2d, L_dir), 0.0);
+    let rim_crest = pow(edge, 1.8) * rim_alignment * 0.38 * params.specular_strength;
+    
+    // Ambient liquid specular sheen
+    let V = vec3<f32>(0.0, 0.0, 1.0);
+    let L1 = normalize(vec3<f32>(-0.4, -0.65, 0.75));
+    let H1 = normalize(L1 + V);
+    let spec1 = pow(max(dot(N, H1), 0.0), 48.0) * 0.35 * params.specular_strength;
+    
+    // 1px hairline border
+    let border_1px = smoothstep(1.0, 0.0, inside);
+    let border_light = max(dot(N_2d, L_dir), 0.0) * 0.22 + select(0.06, 0.12, is_base_panel);
     let border_crest = border_1px * border_light * params.specular_strength;
     
-    // Delicate top-edge inner catch
-    let inner_rim = smoothstep(1.0, 0.0, abs(inside - 1.5)) * max(-N_2d.y, 0.0) * 0.10 * params.specular_strength;
-    
     // ════════════════════════════════════════════
-    // 7. INTERACTIVE FLUID LIGHT (Cursor Sheen)
+    // 7. INTERACTIVE CURSOR LIQUID SPOTLIGHT
     // ════════════════════════════════════════════
-    let cur_pos_px = params.pointer_pos * params.surface_size;
-    let delta_cur = cur_pos_px - (uv * params.surface_size);
-    let dist_cur = length(delta_cur);
-    let cur_radius = 80.0;
-    
-    var cur_glow = 0.0;
-    if dist_cur < cur_radius && params.pointer_pos.x >= 0.0 {
-        let cur_t = 1.0 - (dist_cur / cur_radius);
-        cur_glow = cur_t * cur_t * 0.15 * params.specular_strength;
+    var cur_spec = 0.0;
+    var cur_rim_glow = 0.0;
+    if dist_cur < stretch_radius && params.pointer_pos.x >= 0.0 {
+        let cur_t = 1.0 - (dist_cur / stretch_radius);
+        let cur_t2 = cur_t * cur_t;
+        
+        let L_cur = normalize(vec3<f32>(cur_vec, 30.0));
+        let H_cur = normalize(L_cur + V);
+        cur_spec = pow(max(dot(N, H_cur), 0.0), 96.0) * cur_t2 * 0.40 * params.specular_strength;
+        
+        let cur_dir_2d = normalize(cur_vec + vec2<f32>(0.001));
+        let rim_face_cur = max(dot(N_2d, cur_dir_2d), 0.0);
+        cur_rim_glow = pow(edge, 1.6) * rim_face_cur * cur_t * 0.32 * params.specular_strength;
     }
     
     // ════════════════════════════════════════════
@@ -458,7 +491,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 9. MASTER COMPOSITE
     // ════════════════════════════════════════════
     var fin = col;
-    fin += vec3<f32>(border_crest + inner_rim + cur_glow);
+    fin += vec3<f32>(border_crest + rim_crest);
+    fin += vec3<f32>(spec1 + cur_spec + cur_rim_glow);
     fin = mix(fin, glyph_color, app.glyph_mask);
     
     return vec4<f32>(fin * mask, mask);
