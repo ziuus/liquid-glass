@@ -70,17 +70,25 @@ fn rr_sdf(p: vec2<f32>, b: vec2<f32>, r: f32) -> f32 {
     return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - r;
 }
 
-// ── Planar Frosted Glass with Curved Edge Bevel Profile ──
+// ── Refined Liquid Glass Surface Profile (Meniscus Rim + Gentle Optical Dome) ──
 fn droplet_height(p: vec2<f32>, b: vec2<f32>, r: f32, z_radius: f32) -> f32 {
     let d = -rr_sdf(p, b, r);
     if d <= 0.0 {
         return 0.0;
     }
     
-    // Apple Glass: flat planar body with a smooth, subtle curved perimeter bevel
-    let meniscus_w = max(z_radius, 3.0);
+    // 1. Crisp Meniscus Perimeter Bevel (where fluid meets border via surface tension)
+    let meniscus_w = max(z_radius, 4.0);
     let rim_t = clamp(d / meniscus_w, 0.0, 1.0);
-    return (1.0 - cos(rim_t * 1.5707963)) * meniscus_w;
+    let meniscus = sin(rim_t * 1.5707963);
+    
+    // 2. Continuous Convex Volume Dome (subtle liquid optical curve across entire body)
+    let max_d = min(b.x, b.y);
+    let norm_d = clamp(d / max(max_d, 1.0), 0.0, 1.0);
+    let dome = sin(norm_d * 1.5707963);
+    
+    // 65% meniscus edge definition + 35% gentle dome curvature
+    return (meniscus * 0.65 + dome * 0.35) * z_radius;
 }
 
 // ── 10-tap Optimized Golden Spiral Blur (Lightweight & Smooth) ──
@@ -358,7 +366,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let h_grad = vec2<f32>(h_r - h_l, h_u - h_d) / (2.0 * eps);
     // Dynamic optical tilt towards cursor: creates responsive parallax without changing geometry
     let tilt_3d = (cur_local / max(half_size, vec2<f32>(1.0))) * 0.06 * stretch_t;
-    let N = normalize(vec3<f32>(-(h_grad + tilt_3d), 1.0));
+    let N = normalize(vec3<f32>(-(h_grad * params.curvature * 3.0 + tilt_3d), 1.0));
     
     // Optical thickness
     let thick_norm = clamp(h_c / max(z_radius, 1.0), 0.0, 1.0);
@@ -370,13 +378,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let ior = params.ior;
     let refr_pow = 1.0 - 1.0 / ior;
     
-    // Subtle optical magnification
-    let magnification_strength = select(0.08, 0.04, is_base_panel);
+    // Physical optical magnification through convex liquid lens
+    let magnification_strength = select(0.12, 0.06, is_base_panel);
     let center_dir = -local_px / max(half_size, vec2<f32>(1.0));
-    let lens_magnify = center_dir * magnification_strength * thick_norm * params.refraction_strength * 10.0;
+    let lens_magnify = center_dir * magnification_strength * thick_norm * params.refraction_strength * 22.0;
     
-    // Surface normal refraction ray displacement
-    let refr_ray = h_grad * refr_pow * params.refraction_strength * select(8.0, 14.0, is_base_panel);
+    // Surface normal refraction ray displacement (Snell's law projection)
+    let refr_ray = N.xy * refr_pow * params.refraction_strength * select(20.0, 28.0, is_base_panel);
     
     let refr_px = lens_magnify + refr_ray;
     let refr = refr_px * px_to_uv;
@@ -384,7 +392,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     // 5. CHROMATIC ABERRATION (Dispersion along curvature)
     // ════════════════════════════════════════════
-    let ca_scale = params.dispersion * 16.0 * (edge * 0.8 + 0.2);
+    let ca_scale = params.dispersion * 28.0 * (edge * 0.75 + 0.25);
     let ca_offset = N.xy * ca_scale * px_to_uv;
     
     let base_uv = clamp(uv + refr, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -415,40 +423,44 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     let lum = dot(col, vec3<f32>(0.299, 0.587, 0.114));
     col = mix(vec3<f32>(lum), col, 1.10); // Rich 10% saturation lift
-    col *= 1.0 + params.curvature * 0.05 * thick_norm; // Luminous volume lift
+    col *= 1.0 + params.curvature * 0.08 * thick_norm; // Luminous volume lift
+    
+    // Subtle frosted milky transmission
+    let body_lift = select(0.045, 0.025, is_base_panel);
+    col += vec3<f32>(body_lift);
     
     if params.tint.a > 0.0 {
-        col = mix(col, col * vec3<f32>(0.93, 0.96, 1.03), params.tint.a);
+        col = mix(col, params.tint.rgb, params.tint.a);
     }
     
     // ════════════════════════════════════════════
-    // 8. DIRECTIONAL ILLUMINATION (No fake white outline!)
+    // 8. DIRECTIONAL ILLUMINATION (Apple Glass Bevel)
     // ════════════════════════════════════════════
-    // Sunlight direction from top-left:
+    // Key light direction from top-left:
     let L_dir = normalize(vec2<f32>(-0.45, -0.7));
     let N_2d = N.xy;
     
-    // 8a. Subtle Directional Bevel Catch (Delicate, soft rim light)
+    // 8a. Directional Bevel Catch (Crisp liquid edge glint)
     let rim_alignment = max(dot(N_2d, L_dir), 0.0);
-    let rim_crest = pow(edge, 2.5) * rim_alignment * 0.22 * params.specular_strength;
+    let rim_crest = pow(edge, 1.8) * rim_alignment * 0.50 * params.specular_strength;
     
     // 8b. Subtle Ambient Edge Softening
     let shadow_alignment = max(dot(N_2d, -L_dir), 0.0);
-    let edge_ao = pow(edge, 3.0) * shadow_alignment * 0.06;
+    let edge_ao = pow(edge, 2.5) * shadow_alignment * 0.08;
     col *= (1.0 - edge_ao);
     
     // ════════════════════════════════════════════
-    // 9. SOFT DIFFUSE FROSTED SPECULAR
+    // 9. HIGH-CLARITY LIQUID SPECULAR HIGHLIGHTS
     // ════════════════════════════════════════════
     let V = vec3<f32>(0.0, 0.0, 1.0);
-    let L1 = normalize(vec3<f32>(-0.4, -0.65, 0.7));
+    let L1 = normalize(vec3<f32>(-0.45, -0.65, 0.65));
     let H1 = normalize(L1 + V);
-    let spec1 = pow(max(dot(N, H1), 0.0), 28.0) * 0.25 * params.specular_strength;
+    let spec1 = pow(max(dot(N, H1), 0.0), 64.0) * 0.70 * params.specular_strength;
     
-    // Softer ambient sky sheen
-    let L2 = normalize(vec3<f32>(0.3, -0.3, 0.9));
+    // Softer ambient sky sheen across dome
+    let L2 = normalize(vec3<f32>(0.35, -0.25, 0.85));
     let H2 = normalize(L2 + V);
-    let spec2 = pow(max(dot(N, H2), 0.0), 16.0) * 0.10 * params.specular_strength;
+    let spec2 = pow(max(dot(N, H2), 0.0), 28.0) * 0.22 * params.specular_strength;
     
     // ════════════════════════════════════════════
     // 9b. DYNAMIC CURSOR SPOTLIGHT (Apple Liquid Sheen)
@@ -456,7 +468,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let cur_pos_px = params.pointer_pos * params.surface_size;
     let delta_cur = cur_pos_px - (uv * params.surface_size);
     let dist_cur = length(delta_cur);
-    let cur_radius = 140.0;
+    let cur_radius = 160.0;
     
     var cur_spec = 0.0;
     var cur_rim_glow = 0.0;
@@ -466,18 +478,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         
         let L_cur = normalize(vec3<f32>(delta_cur, 35.0));
         let H_cur = normalize(L_cur + V);
-        cur_spec = pow(max(dot(N, H_cur), 0.0), 24.0) * cur_t2 * 0.40 * params.specular_strength;
+        cur_spec = pow(max(dot(N, H_cur), 0.0), 40.0) * cur_t2 * 0.85 * params.specular_strength;
         
         let cur_dir_2d = normalize(delta_cur + vec2<f32>(0.001));
         let rim_face_cur = max(dot(N_2d, cur_dir_2d), 0.0);
-        cur_rim_glow = pow(edge, 2.5) * rim_face_cur * cur_t * 0.22;
+        cur_rim_glow = pow(edge, 1.8) * rim_face_cur * cur_t * 0.38;
     }
     
     // ════════════════════════════════════════════
-    // 10. FRESNEL GRAZING-ANGLE REFLECTION
+    // 10. FRESNEL GRAZING-ANGLE REFLECTION & INNER RIM
     // ════════════════════════════════════════════
     let cos_theta = clamp(abs(N.z), 0.0, 1.0);
-    let fres = pow(1.0 - cos_theta, 3.5) * params.fresnel_strength;
+    let fres = pow(1.0 - cos_theta, 3.2) * params.fresnel_strength;
+    
+    // Precision inner top-edge light catch
+    let inner_rim = smoothstep(0.5, 2.0, inside) * (1.0 - smoothstep(2.0, 4.0, inside)) * max(-N_2d.y, 0.0) * 0.30 * params.specular_strength;
     
     // ════════════════════════════════════════════
     // 11. AUTHENTIC CRISP MINIMAL GLYPHS
@@ -492,10 +507,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var fin = col;
     // Infuse subtle internal crystal fluid tone
     fin = mix(fin, fin * (1.0 + fluid_emission * 1.2) + fluid_emission * 0.3, app.fluid_glow);
-    fin += vec3<f32>(rim_crest);
+    fin += vec3<f32>(rim_crest + inner_rim);
     fin += vec3<f32>(spec1 + spec2 + cur_spec + cur_rim_glow);
     fin += glyph_crest;
-    fin = mix(fin, vec3<f32>(1.0, 1.0, 1.0), fres * 0.08);
+    fin = mix(fin, vec3<f32>(1.0, 1.0, 1.0), fres * 0.16);
     
     return vec4<f32>(fin * mask, mask);
 }
