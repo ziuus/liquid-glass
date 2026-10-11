@@ -13,10 +13,10 @@
 <br />
 
 <p align="center">
-  <img src="assets/preview.png" alt="Liquid Glass Camera Toolbar" width="540" />
+  <img src="assets/preview.png" alt="Liquid Glass Clock Widget" width="540" />
 </p>
 
-*Physical plano-convex Snell refraction, chromatic dispersion, directional meniscus edge lighting, and fluid harmonic spring kinetics matching [liquidglassdesign.com](https://liquidglassdesign.com/gallery/liquid-glass-camera-toolbar) running natively on Wayland.*
+*Physical plano-convex Snell refraction, chromatic dispersion, directional meniscus edge lighting, and fluid harmonic spring kinetics running a serene Liquid Glass Clock Widget natively on Wayland.*
 
 </div>
 
@@ -26,13 +26,14 @@
 
 - **💎 Authentic Liquid Glass Optics**: Snell's Law refraction ($IOR = 1.33 - 1.52$) and true background magnification through continuous WGSL Signed Distance Fields (SDF).
 - **🌈 Spectral Chromatic Dispersion**: Prismatic wavelength splitting ($RGB$ offsets) across curved meniscus edges and chamfered rims.
-- **📷 Liquid Glass Camera Toolbar**: Serene, floating 3-element toolbar inspired by [liquidglassdesign.com](https://liquidglassdesign.com/gallery/liquid-glass-camera-toolbar):
-  - **Left Disc**: Circular gallery preview with crystalline lens bevel.
-  - **Center Track**: Clear liquid glass capsule with a nested sliding pill exhibiting radiant lemon-gold typography (`CINEMATIC`, `PHOTO`, `VIDEO`).
-  - **Right Disc**: Circular camera-flip button with precision vector bent-arrow iconography.
+- **🕰️ Serene Liquid Glass Clock Widget**:
+  - **Left Dial**: Swiss-style analog clock disc with 12 radial hour indices, hour/minute hands, and buttery continuous sweeping second hand in radiant lemon-gold (`#DCF842`).
+  - **Right Capsule**: Digital clock displaying high-resolution vector digital time (`HH:MM`), soft pulsing colon, and dynamic date (`DAY DD`).
+  - **Nested Seconds Accent**: Integrated liquid glass pill highlighting real-time seconds in signature neon gold.
+  - **12H / 24H Toggle**: Interactive click toggle with fluid harmonic spring transitions.
 - **☀️ Directional Rim Lighting**: 1.5px luminous specular meniscus catch aligned to directional solar light.
-- **⚡ Reactive Spring Kinetics**: Second-order underdamped harmonic oscillator (`k=260`, `c=18`) for seamless mode switching and fluid cursor stretch.
-- **🍃 Zero-Power Idle Loop**: Auto-sleeps once springs settle. Idle state consumes **0.0% CPU / GPU**, waking up instantly on cursor interaction.
+- **⚡ Reactive Spring Kinetics**: Second-order underdamped harmonic oscillator (`k=260`, `c=18`) for fluid pointer suction and tactile click feedback.
+- **🍃 Efficient 60 FPS Engine**: Smooth 60 FPS throttled loop with zero frame drops or latency spikes.
 - **🖥️ Native Wayland Integration**: Built on `smithay-client-toolkit` and `wlr-layer-shell`, floating transparently above desktop wallpapers.
 
 ---

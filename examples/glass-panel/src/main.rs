@@ -47,10 +47,10 @@ struct AppData {
     pointer: Option<wl_pointer::WlPointer>,
     cursor_pos: [f32; 2],
     cursor_velocity: [f32; 2],
-    hover_pos: [f32; 3],
-    hover_vel: [f32; 3],
+    hover_pos: [f32; 2], // [0]: Left dial, [1]: Right capsule
+    hover_vel: [f32; 2],
     is_pressed: bool,
-    selected_mode: usize,
+    is_12h: bool,
     pill_offset_x: f32,
     pill_vel_x: f32,
     
@@ -225,6 +225,10 @@ impl PointerHandler for AppData {
                 PointerEventKind::Press { .. } => {
                     had_event = true;
                     self.is_pressed = true;
+                    // Clicking the right capsule toggles between 12H and 24H mode
+                    if self.cursor_pos[0] >= 0.22 && self.cursor_pos[0] <= 0.98 {
+                        self.is_12h = !self.is_12h;
+                    }
                 }
                 PointerEventKind::Release { .. } => {
                     had_event = true;
@@ -240,81 +244,68 @@ impl PointerHandler for AppData {
     }
 }
 
+fn get_local_time() -> (f32, f32, f32, u32, u32) {
+    let mut now_time: libc::time_t = 0;
+    unsafe {
+        libc::time(&mut now_time);
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&now_time, &mut tm);
+        
+        // Also get subsecond microsecond precision for buttery 60 FPS sweeping second hand
+        let mut tv: libc::timeval = std::mem::zeroed();
+        libc::gettimeofday(&mut tv, std::ptr::null_mut());
+        let subsecond = (tv.tv_usec as f32) / 1_000_000.0;
+        
+        let hr = tm.tm_hour as f32;
+        let min = tm.tm_min as f32;
+        let sec = tm.tm_sec as f32 + subsecond;
+        let wday = tm.tm_wday as u32; // 0 = Sunday
+        let mday = tm.tm_mday as u32;
+        (hr, min, sec, wday, mday)
+    }
+}
+
 impl AppData {
     fn draw(&mut self) -> bool {
         self.frame_counter += 1;
 
-        // Render authentic Liquid Glass Camera Toolbar (liquidglassdesign.com reference)
         if let Some(renderer) = &mut self.renderer {
             let px = self.cursor_pos[0];
             let py = self.cursor_pos[1];
             let vx = self.cursor_velocity[0];
             let vy = self.cursor_velocity[1];
 
-            // Camera Toolbar Specifications: [cx, cy, base_w, base_h]
-            // 0: Left Circular Camera Lens / Gallery Disc (diameter 56px)
-            // 1: Center Glass Track Capsule (290px x 56px)
-            // 2: Right Circular Switch Camera Button (diameter 56px)
-            let specs: [[f32; 4]; 3] = [
-                [68.0 / 540.0, 0.50, 56.0 / 540.0, 56.0 / 84.0],
-                [0.50, 0.50, 290.0 / 540.0, 56.0 / 84.0],
-                [(540.0 - 68.0) / 540.0, 0.50, 56.0 / 540.0, 56.0 / 84.0],
+            let (hr, min, sec, wday, mday) = get_local_time();
+
+            // Clock Widget Layout Specifications: [cx, cy, base_w, base_h]
+            // Window is 460 x 104
+            // 0: Left Analog Clock Dial (Circle diameter 80px)
+            // 1: Right Digital Clock Capsule (310px x 80px)
+            let specs: [[f32; 4]; 2] = [
+                [58.0 / 460.0, 0.50, 80.0 / 460.0, 80.0 / 104.0],
+                [275.0 / 460.0, 0.50, 310.0 / 460.0, 80.0 / 104.0],
             ];
 
             let dt = 1.0f32 / 60.0f32;
             let spring_k = 260.0f32;
             let damping = 18.0f32;
-            let mut active = false;
+            let mut active = true; // Continuous 60 FPS clock animation for sweeping second hand
 
-            // Interactive mode selection on click / drag
-            if self.is_pressed {
-                active = true;
-                let track_min_x = 0.50 - (290.0 / 540.0) * 0.5;
-                let track_max_x = 0.50 + (290.0 / 540.0) * 0.5;
-                if px >= track_min_x && px <= track_max_x && py >= 0.15 && py <= 0.85 {
-                    if px < 0.40 {
-                        self.selected_mode = 0; // PHOTO
-                    } else if px <= 0.60 {
-                        self.selected_mode = 2; // VIDEO
-                    } else {
-                        self.selected_mode = 1; // CINEMATIC
-                    }
-                }
-            }
-
-            // Target offset in pixels: -72.5 for PHOTO (left), 72.5 for CINEMATIC (right), 0.0 for VIDEO (center)
-            let target_pill_x = match self.selected_mode {
-                0 => -72.5f32,
-                1 => 72.5f32,
-                _ => 0.0f32,
-            };
-
-            // Fluid second-order harmonic oscillator for sliding liquid pill
-            let pill_force = -spring_k * (self.pill_offset_x - target_pill_x) - damping * self.pill_vel_x;
-            self.pill_vel_x += pill_force * dt;
-            self.pill_offset_x += self.pill_vel_x * dt;
-
-            if (self.pill_offset_x - target_pill_x).abs() > 0.05 || self.pill_vel_x.abs() > 0.05 {
-                active = true;
-            }
-
-            // Hover springs for the 3 main elements
-            for i in 0..3 {
+            // Hover springs for the 2 main glass surfaces
+            for i in 0..2 {
                 let [cx, cy, bw, bh] = specs[i];
                 let in_box = px >= cx - bw * 0.5 && px <= cx + bw * 0.5 && py >= cy - bh * 0.5 && py <= cy + bh * 0.5;
                 let target = if in_box { 1.0f32 } else { 0.0f32 };
                 let force = -spring_k * (self.hover_pos[i] - target) - damping * self.hover_vel[i];
                 self.hover_vel[i] += force * dt;
                 self.hover_pos[i] += self.hover_vel[i] * dt;
-
-                if (self.hover_pos[i] - target).abs() > 0.002 || self.hover_vel[i].abs() > 0.002 {
-                    active = true;
-                }
             }
 
-            if self.cursor_velocity[0].abs() > 0.0001 || self.cursor_velocity[1].abs() > 0.0001 {
-                active = true;
-            }
+            // Target pill offset inside the right capsule: toggles position smoothly
+            let target_pill_x = if self.is_12h { 98.0f32 } else { 108.0f32 };
+            let pill_force = -spring_k * (self.pill_offset_x - target_pill_x) - damping * self.pill_vel_x;
+            self.pill_vel_x += pill_force * dt;
+            self.pill_offset_x += self.pill_vel_x * dt;
 
             // Reactive liquid surface tension stretch
             let calc_stretch_bounds = |idx: usize| -> [f32; 4] {
@@ -328,83 +319,70 @@ impl AppData {
                 [cx + pull_x - w * 0.5, cy + pull_y - h * 0.5, w, h]
             };
 
-            // 1. Left Circular Camera Gallery Disc Button
+            let date_code = (wday as f32 * 100.0) + (mday as f32);
+            let format_flag = if self.is_12h { 1.0f32 } else { 0.0f32 };
+
+            // 1. Left Swiss Minimalist Analog Liquid Glass Dial
             let b0 = calc_stretch_bounds(0);
             let t0 = self.hover_pos[0].clamp(0.0, 1.0);
-            let left_lens = GlassSurface::new()
+            let analog_dial = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::Circle)
                 .bounds(b0[0], b0[1], b0[2], b0[3])
                 .curvature(0.06)
-                .bevel(5.5)
-                .refraction(0.22)
+                .bevel(6.0)
+                .refraction(0.24)
                 .dispersion(0.010)
                 .blur(0.0)
-                .tint(1.0, 1.0, 1.0, 0.0)
-                .specular(0.55 + t0 * 0.15)
+                .tint(hr, min, sec, format_flag)
+                .specular(0.58 + t0 * 0.15)
                 .fresnel(0.35)
-                .element_type(10.0)
+                .element_type(20.0)
+                .progress(date_code)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
-            // 2. Center Outer Glass Track Capsule (Serene clear glass)
+            // 2. Right Digital Liquid Glass Clock Capsule
             let b1 = calc_stretch_bounds(1);
             let t1 = self.hover_pos[1].clamp(0.0, 1.0);
-            let center_track = GlassSurface::new()
+            let digital_capsule = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b1[0], b1[1], b1[2], b1[3])
-                .curvature(0.04)
-                .bevel(4.5)
-                .refraction(0.18)
+                .curvature(0.045)
+                .bevel(5.0)
+                .refraction(0.20)
                 .dispersion(0.008)
                 .blur(0.0)
-                .tint(1.0, 1.0, 1.0, 0.0)
-                .specular(0.48 + t1 * 0.12)
-                .fresnel(0.30)
-                .element_type(11.0)
+                .tint(hr, min, sec, format_flag)
+                .specular(0.50 + t1 * 0.12)
+                .fresnel(0.32)
+                .element_type(21.0)
+                .progress(date_code)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
-            // 3. Right Circular Switch Camera Button
-            let b2 = calc_stretch_bounds(2);
-            let t2 = self.hover_pos[2].clamp(0.0, 1.0);
-            let right_button = GlassSurface::new()
-                .material(Material::LiquidGlass)
-                .shape(Shape::Circle)
-                .bounds(b2[0], b2[1], b2[2], b2[3])
-                .curvature(0.06)
-                .bevel(5.5)
-                .refraction(0.22)
-                .dispersion(0.010)
-                .blur(0.0)
-                .tint(1.0, 1.0, 1.0, 0.0)
-                .specular(0.55 + t2 * 0.15)
-                .fresnel(0.35)
-                .element_type(13.0)
-                .pointer_pos(px, py)
-                .pointer_velocity(vx, vy);
-
-            // 4. Center Active Sliding Liquid Glass Pill (Flush nested layer)
-            let pill_cx = (270.0 + self.pill_offset_x) / 540.0;
-            let pill_w = 145.0 / 540.0;
-            let pill_h = 56.0 / 84.0;
+            // 3. Nested Seconds Liquid Glass Accent Pill (Radiant Gold #DCF842)
+            // Positioned gracefully at the right end of the digital capsule
+            let pill_cx = (275.0 + self.pill_offset_x) / 460.0;
+            let pill_w = 48.0 / 460.0;
+            let pill_h = 32.0 / 104.0;
             let pull_pill_x = (px - pill_cx) * t1 * 0.025;
             let pull_pill_y = (py - 0.50) * t1 * 0.025;
-            let active_pill = GlassSurface::new()
+            let seconds_pill = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(pill_cx + pull_pill_x - pill_w * 0.5, 0.50 + pull_pill_y - pill_h * 0.5, pill_w, pill_h)
                 .curvature(0.05)
-                .bevel(5.0)
+                .bevel(4.0)
                 .refraction(0.24)
                 .dispersion(0.012)
                 .blur(0.0)
-                .tint(1.0, 1.0, 1.0, 0.03)
-                .specular(0.58)
+                .tint(hr, min, sec, format_flag)
+                .specular(0.60)
                 .fresnel(0.35)
-                .element_type(12.0)
-                .progress(self.selected_mode as f32)
+                .element_type(22.0)
+                .progress(date_code)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
@@ -413,10 +391,9 @@ impl AppData {
             self.cursor_velocity[1] *= 0.85;
 
             let surfaces = vec![
-                left_lens,
-                center_track,
-                right_button,
-                active_pill,
+                analog_dial,
+                digital_capsule,
+                seconds_pill,
             ];
             let _ = renderer.render(&surfaces);
             active
@@ -491,21 +468,7 @@ fn load_wallpaper_region(x: u32, y: u32, w: u32, h: u32) -> Option<(u32, u32, Ve
     }
     
     let sub = image::imageops::crop_imm(&img, sx, sy, sw, sh).to_image();
-    let mut resized = image::imageops::resize(&sub, w, h, image::imageops::FilterType::Lanczos3);
-
-    // Composite circular avatar thumbnail behind left disc (center: 68, 42; top-left: 40, 14; 56x56)
-    let avatar_candidates = [
-        "assets/avatar.png",
-        "../../assets/avatar.png",
-        "/home/zius/Projects/liquid-glass/assets/avatar.png",
-    ];
-    for p in &avatar_candidates {
-        if let Ok(avatar_img) = image::open(p) {
-            let avatar_rgba = avatar_img.resize_exact(56, 56, image::imageops::FilterType::Lanczos3).to_rgba8();
-            image::imageops::overlay(&mut resized, &avatar_rgba, 40, 14);
-            break;
-        }
-    }
+    let resized = image::imageops::resize(&sub, w, h, image::imageops::FilterType::Lanczos3);
 
     Some((w, h, resized.into_raw()))
 }
@@ -546,15 +509,15 @@ fn main() {
             [-10.0, -10.0]
         },
         cursor_velocity: [0.0, 0.0],
-        hover_pos: [0.0; 3],
-        hover_vel: [0.0; 3],
+        hover_pos: [0.0; 2],
+        hover_vel: [0.0; 2],
         is_pressed: false,
-        selected_mode: 1, // CINEMATIC
-        pill_offset_x: 72.5, // Aligns flush with right half of track (liquidglassdesign.com)
+        is_12h: false,
+        pill_offset_x: 108.0,
         pill_vel_x: 0.0,
         
-        width: 540,
-        height: 84,
+        width: 460,
+        height: 104,
         first_configure: true,
         exit: false,
         frame_counter: 0,

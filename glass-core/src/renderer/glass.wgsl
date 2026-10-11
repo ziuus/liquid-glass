@@ -239,36 +239,200 @@ fn draw_word_photo(p: vec2<f32>, scale: f32) -> f32 {
     return min(d0, min(d1, min(d2, min(d3, d4))));
 }
 
-fn draw_word_video(p: vec2<f32>, scale: f32) -> f32 {
-    let sp = 8.2 * scale;
-    let d0 = draw_letter(p - vec2<f32>(-2.0 * sp, 0.0), 86u, scale);
-    let d1 = draw_letter(p - vec2<f32>(-1.0 * sp, 0.0), 73u, scale);
-    let d2 = draw_letter(p - vec2<f32>( 0.0 * sp, 0.0), 68u, scale);
-    let d3 = draw_letter(p - vec2<f32>( 1.0 * sp, 0.0), 69u, scale);
-    let d4 = draw_letter(p - vec2<f32>( 2.0 * sp, 0.0), 79u, scale);
-    return min(d0, min(d1, min(d2, min(d3, d4))));
-}
-
-fn dist_bent_arrow(p: vec2<f32>) -> f32 {
-    let s = 1.45;
-    let q = p / s;
-    // Arrow top: horizontal shaft to the left from x = 1.8 to x = -6.0 at y = -4.5
-    let h_shaft = dist_segment(q, vec2<f32>(-6.0, -4.5), vec2<f32>(1.8, -4.5));
-    // Vertical shaft on the right from (4.8, -1.5) to (4.8, 1.8)
-    let v_shaft = dist_segment(q, vec2<f32>(4.8, -1.5), vec2<f32>(4.8, 1.8));
-    // 90 deg corner arc between (1.8, -4.5) and (4.8, -1.5) centered at (1.8, -1.5) with radius 3.0
-    var corner = 999.0;
-    if q.x >= 1.8 && q.y <= -1.5 {
-        corner = abs(length(q - vec2<f32>(1.8, -1.5)) - 3.0);
+// ── Precision Vector Digit SDFs for High-Resolution Liquid Glass Clock Typography ──
+fn draw_digit(p: vec2<f32>, dig: u32, scale: f32) -> f32 {
+    let q = p / scale;
+    var d = 999.0;
+    switch dig {
+        case 0u: {
+            let outer = rr_sdf(q, vec2<f32>(3.0, 5.0), 2.2);
+            d = abs(outer);
+        }
+        case 1u: {
+            let stem = dist_segment(q, vec2<f32>(0.0, -5.0), vec2<f32>(0.0, 5.0));
+            let serif = dist_segment(q, vec2<f32>(-2.0, -3.2), vec2<f32>(0.0, -5.0));
+            d = min(stem, serif);
+        }
+        case 2u: {
+            let base = dist_segment(q, vec2<f32>(-2.8, 5.0), vec2<f32>(2.8, 5.0));
+            let diag = dist_segment(q, vec2<f32>(2.6, -1.8), vec2<f32>(-2.8, 5.0));
+            // Semi-circular arch for top of '2' centered at (0.0, -2.4) with radius 2.6
+            let arch = abs(length(q - vec2<f32>(0.0, -2.4)) - 2.6);
+            let arch_clipped = select(999.0, arch, q.y <= -1.8 || (q.x >= 0.0 && q.y <= -0.5));
+            let hook = dist_segment(q, vec2<f32>(-2.6, -2.4), vec2<f32>(-2.6, -1.6));
+            d = min(min(base, diag), min(arch_clipped, hook));
+        }
+        case 3u: {
+            let top_bar = dist_segment(q, vec2<f32>(-2.8, -5.0), vec2<f32>(2.8, -5.0));
+            let mid_diag = dist_segment(q, vec2<f32>(2.8, -5.0), vec2<f32>(0.0, -0.4));
+            let mid_bar = dist_segment(q, vec2<f32>(0.0, -0.4), vec2<f32>(2.6, 0.5));
+            let bot_arc = dist_segment(q, vec2<f32>(2.6, 0.5), vec2<f32>(2.6, 3.2));
+            let bot_bar = dist_segment(q, vec2<f32>(2.6, 3.2), vec2<f32>(-2.8, 5.0));
+            d = min(min(top_bar, mid_diag), min(mid_bar, min(bot_arc, bot_bar)));
+        }
+        case 4u: {
+            let v_stem = dist_segment(q, vec2<f32>(1.6, -5.0), vec2<f32>(1.6, 5.0));
+            let diag = dist_segment(q, vec2<f32>(1.6, -5.0), vec2<f32>(-2.8, 1.5));
+            let h_bar = dist_segment(q, vec2<f32>(-2.8, 1.5), vec2<f32>(2.8, 1.5));
+            d = min(v_stem, min(diag, h_bar));
+        }
+        case 5u: {
+            let top = dist_segment(q, vec2<f32>(2.8, -5.0), vec2<f32>(-2.6, -5.0));
+            let v_upper = dist_segment(q, vec2<f32>(-2.6, -5.0), vec2<f32>(-2.6, -0.5));
+            let mid = dist_segment(q, vec2<f32>(-2.6, -0.5), vec2<f32>(2.6, 0.2));
+            let bot_arc = dist_segment(q, vec2<f32>(2.6, 0.2), vec2<f32>(2.6, 3.2));
+            let bot = dist_segment(q, vec2<f32>(2.6, 3.2), vec2<f32>(-2.8, 5.0));
+            d = min(min(top, v_upper), min(mid, min(bot_arc, bot)));
+        }
+        case 6u: {
+            let spine = dist_segment(q, vec2<f32>(1.8, -4.8), vec2<f32>(-2.6, -0.5));
+            let v_lower = dist_segment(q, vec2<f32>(-2.6, -0.5), vec2<f32>(-2.6, 4.0));
+            let loop_bot = dist_segment(q, vec2<f32>(-2.6, 4.0), vec2<f32>(2.6, 4.0));
+            let loop_side = dist_segment(q, vec2<f32>(2.6, 4.0), vec2<f32>(2.6, 0.2));
+            let loop_top = dist_segment(q, vec2<f32>(2.6, 0.2), vec2<f32>(-2.6, 0.2));
+            d = min(min(spine, v_lower), min(loop_bot, min(loop_side, loop_top)));
+        }
+        case 7u: {
+            let top = dist_segment(q, vec2<f32>(-2.8, -5.0), vec2<f32>(2.8, -5.0));
+            let diag = dist_segment(q, vec2<f32>(2.8, -5.0), vec2<f32>(-1.2, 5.0));
+            d = min(top, diag);
+        }
+        case 8u: {
+            let top_ring = abs(length(q - vec2<f32>(0.0, -2.4)) - 2.4);
+            let bot_ring = abs(length(q - vec2<f32>(0.0, 2.4)) - 2.5);
+            d = min(top_ring, bot_ring);
+        }
+        case 9u: {
+            let loop_top = dist_segment(q, vec2<f32>(-2.6, -4.0), vec2<f32>(2.6, -4.0));
+            let loop_side = dist_segment(q, vec2<f32>(-2.6, -4.0), vec2<f32>(-2.6, -0.2));
+            let loop_bot = dist_segment(q, vec2<f32>(-2.6, -0.2), vec2<f32>(2.6, -0.2));
+            let v_upper = dist_segment(q, vec2<f32>(2.6, -4.0), vec2<f32>(2.6, 0.5));
+            let spine = dist_segment(q, vec2<f32>(2.6, 0.5), vec2<f32>(-1.8, 4.8));
+            d = min(min(loop_top, loop_side), min(loop_bot, min(v_upper, spine)));
+        }
+        default: {}
     }
-    // Arrowhead at (-6.0, -4.5) pointing left
-    let barb_top = dist_segment(q, vec2<f32>(-6.0, -4.5), vec2<f32>(-2.8, -7.8));
-    let barb_bot = dist_segment(q, vec2<f32>(-6.0, -4.5), vec2<f32>(-2.8, -1.2));
-    return min(min(h_shaft, v_shaft), min(corner, min(barb_top, barb_bot))) * s;
+    return d * scale;
 }
 
-// ── Clean Minimal Liquid Glass Camera Toolbar Elements ──
-fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, progress: f32, time: f32) -> ElementAppearance {
+// ── Soft Glowing Pulsing Colon SDF ──
+fn draw_colon(p: vec2<f32>, scale: f32) -> f32 {
+    let q = p / scale;
+    let d_top = length(q - vec2<f32>(0.0, -2.2));
+    let d_bot = length(q - vec2<f32>(0.0, 2.2));
+    return (min(d_top, d_bot) - 0.75) * scale;
+}
+
+// ── Extended Letters for Date & Clock Display ──
+fn draw_clock_letter(p: vec2<f32>, ch: u32, scale: f32) -> f32 {
+    let q = p / scale;
+    var d = 999.0;
+    switch ch {
+        // 'S'
+        case 83u: {
+            let top = dist_segment(q, vec2<f32>(2.2, -4.2), vec2<f32>(-1.8, -4.2));
+            let side_top = dist_segment(q, vec2<f32>(-1.8, -4.2), vec2<f32>(-1.8, -0.5));
+            let mid = dist_segment(q, vec2<f32>(-1.8, -0.5), vec2<f32>(1.8, 0.5));
+            let side_bot = dist_segment(q, vec2<f32>(1.8, 0.5), vec2<f32>(1.8, 4.2));
+            let bot = dist_segment(q, vec2<f32>(1.8, 4.2), vec2<f32>(-2.2, 4.2));
+            d = min(min(top, side_top), min(mid, min(side_bot, bot)));
+        }
+        // 'U'
+        case 85u: {
+            let left = dist_segment(q, vec2<f32>(-2.2, -4.2), vec2<f32>(-2.2, 2.0));
+            let right = dist_segment(q, vec2<f32>(2.2, -4.2), vec2<f32>(2.2, 2.0));
+            let bot = dist_segment(q, vec2<f32>(-2.2, 2.0), vec2<f32>(2.2, 2.0));
+            d = min(min(left, right), bot);
+        }
+        // 'N'
+        case 78u: {
+            d = min(dist_segment(q, vec2<f32>(-2.4, -4.2), vec2<f32>(-2.4, 4.2)),
+                min(dist_segment(q, vec2<f32>(-2.4, -4.2), vec2<f32>(2.4, 4.2)),
+                    dist_segment(q, vec2<f32>(2.4, -4.2), vec2<f32>(2.4, 4.2))));
+        }
+        // 'M'
+        case 77u: {
+            d = min(dist_segment(q, vec2<f32>(-2.8, 4.2), vec2<f32>(-2.8, -4.2)),
+                min(dist_segment(q, vec2<f32>(-2.8, -4.2), vec2<f32>(0.0, 0.5)),
+                min(dist_segment(q, vec2<f32>(0.0, 0.5), vec2<f32>(2.8, -4.2)),
+                    dist_segment(q, vec2<f32>(2.8, -4.2), vec2<f32>(2.8, 4.2)))));
+        }
+        // 'T'
+        case 84u: {
+            d = min(dist_segment(q, vec2<f32>(-2.5, -4.2), vec2<f32>(2.5, -4.2)),
+                    dist_segment(q, vec2<f32>(0.0, -4.2), vec2<f32>(0.0, 4.2)));
+        }
+        // 'W'
+        case 87u: {
+            d = min(dist_segment(q, vec2<f32>(-2.8, -4.2), vec2<f32>(-1.5, 4.2)),
+                min(dist_segment(q, vec2<f32>(-1.5, 4.2), vec2<f32>(0.0, -0.5)),
+                min(dist_segment(q, vec2<f32>(0.0, -0.5), vec2<f32>(1.5, 4.2)),
+                    dist_segment(q, vec2<f32>(1.5, 4.2), vec2<f32>(2.8, -4.2)))));
+        }
+        // 'F'
+        case 70u: {
+            d = min(dist_segment(q, vec2<f32>(-2.2, -4.2), vec2<f32>(-2.2, 4.2)),
+                min(dist_segment(q, vec2<f32>(-2.2, -4.2), vec2<f32>(2.2, -4.2)),
+                    dist_segment(q, vec2<f32>(-2.2, 0.0), vec2<f32>(1.5, 0.0))));
+        }
+        // 'R'
+        case 82u: {
+            let stem = dist_segment(q, vec2<f32>(-2.2, -4.2), vec2<f32>(-2.2, 4.2));
+            let top = dist_segment(q, vec2<f32>(-2.2, -4.2), vec2<f32>(1.5, -4.2));
+            let mid = dist_segment(q, vec2<f32>(-2.2, 0.0), vec2<f32>(1.5, 0.0));
+            let side = dist_segment(q, vec2<f32>(1.5, -4.2), vec2<f32>(1.5, 0.0));
+            let leg = dist_segment(q, vec2<f32>(-0.5, 0.0), vec2<f32>(2.2, 4.2));
+            d = min(min(stem, top), min(mid, min(side, leg)));
+        }
+        // 'A'
+        case 65u: {
+            d = min(dist_segment(q, vec2<f32>(-2.4, 4.2), vec2<f32>(0.0, -4.2)),
+                min(dist_segment(q, vec2<f32>(0.0, -4.2), vec2<f32>(2.4, 4.2)),
+                    dist_segment(q, vec2<f32>(-1.3, 1.0), vec2<f32>(1.3, 1.0))));
+        }
+        // 'H'
+        case 72u: {
+            d = min(dist_segment(q, vec2<f32>(-2.2, -4.2), vec2<f32>(-2.2, 4.2)),
+                min(dist_segment(q, vec2<f32>(2.2, -4.2), vec2<f32>(2.2, 4.2)),
+                    dist_segment(q, vec2<f32>(-2.2, 0.0), vec2<f32>(2.2, 0.0))));
+        }
+        // 'O'
+        case 79u: {
+            d = abs(length(q) - 3.2);
+        }
+        // 'C'
+        case 67u: {
+            let ang = atan2(q.y, q.x);
+            if abs(ang) < 0.85 {
+                let end_top = vec2<f32>(3.2 * cos(0.85), -3.2 * sin(0.85));
+                let end_bot = vec2<f32>(3.2 * cos(0.85),  3.2 * sin(0.85));
+                d = min(length(q - end_top), length(q - end_bot));
+            } else {
+                d = abs(length(q) - 3.2);
+            }
+        }
+        // 'E'
+        case 69u: {
+            d = min(dist_segment(q, vec2<f32>(-2.2, -4.2), vec2<f32>(-2.2, 4.2)),
+                min(dist_segment(q, vec2<f32>(-2.2, -4.2), vec2<f32>(2.0, -4.2)),
+                min(dist_segment(q, vec2<f32>(-2.2, 0.0),  vec2<f32>(1.4, 0.0)),
+                    dist_segment(q, vec2<f32>(-2.2, 4.2),  vec2<f32>(2.0, 4.2)))));
+        }
+        // 'P'
+        case 80u: {
+            let stem = dist_segment(q, vec2<f32>(-2.2, 4.2), vec2<f32>(-2.2, -4.2));
+            let loop_top = dist_segment(q, vec2<f32>(-2.2, -4.2), vec2<f32>(1.5, -4.2));
+            let loop_bot = dist_segment(q, vec2<f32>(-2.2, -0.2), vec2<f32>(1.5, -0.2));
+            let loop_side = dist_segment(q, vec2<f32>(1.5, -4.2), vec2<f32>(1.5, -0.2));
+            d = min(stem, min(loop_top, min(loop_bot, loop_side)));
+        }
+        default: {}
+    }
+    return d * scale;
+}
+
+// ── Serene Liquid Glass Clock Appearance ──
+fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, progress: f32, time: f32, tint: vec4<f32>) -> ElementAppearance {
     var app: ElementAppearance;
     app.glyph_mask = 0.0;
     app.glyph_color = vec3<f32>(1.0, 1.0, 1.0);
@@ -278,55 +442,182 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
     if el_type <= 0.0 {
         return app;
     }
-    
-    // 10. Left Element: Circular Camera Gallery Preview Disc
-    if el_type >= 9.9 && el_type <= 10.1 {
+
+    // ─────────────────────────────────────────────────────────────
+    // 20. Left Element: Swiss Minimalist Analog Liquid Glass Dial
+    // ─────────────────────────────────────────────────────────────
+    if el_type >= 19.9 && el_type <= 20.1 {
         let r_p = length(local_p);
-        let ring = abs(r_p - 26.5) - 0.55;
-        let ring_mask = (1.0 - smoothstep(-0.35, 0.35, ring)) * 0.45;
-        app.glyph_mask = ring_mask;
-        app.glyph_color = vec3<f32>(0.98, 0.99, 1.0);
-        return app;
-    }
-    
-    // 11. Center Element: Outer Glass Track Capsule (Serene, clear liquid glass)
-    if el_type >= 10.9 && el_type <= 11.1 {
-        // Track has no text - pristine clear glass
-        return app;
-    }
-    
-    // 12. Active Sliding Liquid Glass Mode Pill: Radiant Mode Name in neon gold #DCF842
-    if el_type >= 11.9 && el_type <= 12.1 {
-        let text_scale = 0.84;
-        var d_text = 999.0;
-        if progress < 0.5 {
-            d_text = draw_word_photo(local_p, text_scale);
-        } else if progress < 1.5 {
-            d_text = draw_word_cinematic(local_p, text_scale);
-        } else {
-            d_text = draw_word_video(local_p, text_scale);
+        let ang = atan2(local_p.y, local_p.x); // [-pi, pi]
+        
+        let hr = tint.x;
+        let mn = tint.y;
+        let sec = tint.z;
+        
+        // 12 Minimalist Radial Hour Ticks
+        let mod_ang = (ang + 3.14159265 / 12.0) % (3.14159265 / 6.0) - (3.14159265 / 12.0);
+        let tick_dist = abs(mod_ang) * r_p;
+        let tick_rad = (r_p >= 27.5 && r_p <= 33.0);
+        var tick_mask = 0.0;
+        if tick_rad {
+            tick_mask = 1.0 - smoothstep(0.4, 1.1, tick_dist);
         }
         
-        let stroke_mask = 1.0 - smoothstep(-0.35, 0.35, d_text - 0.58);
-        app.glyph_mask = stroke_mask * 0.98;
-        // Signature luminous liquid gold #DCF842 from liquidglassdesign.com
-        let gold = vec3<f32>(0.86, 0.97, 0.26);
-        app.glyph_color = gold;
+        // Analog Hands angles (clockwise from 12 o'clock = -pi/2)
+        let hour_angle = (hr % 12.0 + mn / 60.0 + sec / 3600.0) * (3.14159265 / 6.0) - 1.5707963;
+        let min_angle = (mn + sec / 60.0) * (3.14159265 / 30.0) - 1.5707963;
+        let sec_angle = sec * (3.14159265 / 30.0) - 1.5707963;
         
-        // Soft radiant gold bloom around the active text (additive emission)
-        let text_glow = exp(-max(d_text, 0.0) * 0.65) * 0.45;
-        app.fluid_color = gold;
-        app.fluid_glow = text_glow;
+        let p_hour = vec2<f32>(cos(hour_angle), sin(hour_angle));
+        let p_min = vec2<f32>(cos(min_angle), sin(min_angle));
+        let p_sec = vec2<f32>(cos(sec_angle), sin(sec_angle));
+        
+        // Hour hand: thick (2.6px), length 19px, tapered
+        let d_hour = dist_segment(local_p, -p_hour * 3.5, p_hour * 19.0) - 1.3;
+        let mask_hour = 1.0 - smoothstep(-0.35, 0.35, d_hour);
+        
+        // Minute hand: sleek (1.8px), length 28px
+        let d_min = dist_segment(local_p, -p_min * 4.5, p_min * 28.0) - 0.9;
+        let mask_min = 1.0 - smoothstep(-0.35, 0.35, d_min);
+        
+        // Center Pin
+        let d_pin = length(local_p) - 2.8;
+        let mask_pin = 1.0 - smoothstep(-0.35, 0.35, d_pin);
+        
+        // Second hand: signature radiant lemon-gold #DCF842, length 33px with tail
+        let d_sec = dist_segment(local_p, -p_sec * 7.0, p_sec * 33.0) - 0.55;
+        let mask_sec = 1.0 - smoothstep(-0.3, 0.3, d_sec);
+        
+        let gold = vec3<f32>(0.86, 0.97, 0.26);
+        let white = vec3<f32>(0.98, 0.99, 1.0);
+        
+        // Outer aesthetic perimeter glint ring
+        let outer_ring = abs(r_p - 36.5) - 0.45;
+        let mask_ring = (1.0 - smoothstep(-0.35, 0.35, outer_ring)) * 0.35;
+        
+        let white_mask = max(max(tick_mask * 0.65, mask_hour), max(mask_min, mask_pin));
+        
+        if mask_sec > 0.05 {
+            app.glyph_mask = mask_sec;
+            app.glyph_color = gold;
+            app.fluid_color = gold;
+            app.fluid_glow = exp(-max(d_sec, 0.0) * 0.8) * 0.35;
+        } else {
+            app.glyph_mask = max(white_mask, mask_ring);
+            app.glyph_color = white;
+        }
         return app;
     }
-    
-    // 13. Right Element: Circular Switch Camera Button (Exact bent loop arrows)
-    if el_type >= 12.9 && el_type <= 13.1 {
-        let d_arrow = min(dist_bent_arrow(local_p), dist_bent_arrow(-local_p)) - 0.72;
-        let icon = 1.0 - smoothstep(-0.35, 0.35, d_arrow);
+
+    // ─────────────────────────────────────────────────────────────
+    // 21. Right Element: Digital Liquid Glass Clock Capsule
+    // ─────────────────────────────────────────────────────────────
+    if el_type >= 20.9 && el_type <= 21.1 {
+        let is_12h = (tint.w > 0.5);
+        var hr = tint.x;
+        var is_pm = false;
+        if is_12h {
+            if hr >= 12.0 {
+                is_pm = true;
+            }
+            if hr == 0.0 {
+                hr = 12.0;
+            } else if hr > 12.0 {
+                hr = hr - 12.0;
+            }
+        }
+        let mn = tint.y;
+        let sec = tint.z;
         
-        app.glyph_mask = icon * 0.98;
+        let h_tens = u32(hr / 10.0);
+        let h_ones = u32(hr % 10.0);
+        let m_tens = u32(mn / 10.0);
+        let m_ones = u32(mn % 10.0);
+        
+        // Digital Clock Row: Left-biased (x_center = -26.0, y = -7.0) to balance gracefully with right seconds pill
+        let center_x = -26.0;
+        let clock_y = -7.0;
+        let num_scale = 2.35;
+        let sp = 16.0;
+        
+        let d_h0 = draw_digit(local_p - vec2<f32>(center_x - 2.1 * sp, clock_y), h_tens, num_scale);
+        let d_h1 = draw_digit(local_p - vec2<f32>(center_x - 1.1 * sp, clock_y), h_ones, num_scale);
+        let d_colon = draw_colon(local_p - vec2<f32>(center_x, clock_y), num_scale);
+        let d_m0 = draw_digit(local_p - vec2<f32>(center_x + 1.1 * sp, clock_y), m_tens, num_scale);
+        let d_m1 = draw_digit(local_p - vec2<f32>(center_x + 2.1 * sp, clock_y), m_ones, num_scale);
+        
+        // Pulse colon gently with fractional seconds
+        let colon_pulse = 0.55 + 0.45 * sin(sec * 3.14159265);
+        
+        let d_digits = min(min(d_h0, d_h1), min(d_m0, d_m1)) - 0.72;
+        let mask_digits = 1.0 - smoothstep(-0.4, 0.4, d_digits);
+        let mask_colon = (1.0 - smoothstep(-0.35, 0.35, d_colon)) * colon_pulse;
+        
+        // Date / Day Row: Elegant sub-row (y = 18.5)
+        // Decoded from progress: wday * 100 + mday
+        let wday_code = u32(progress / 100.0);
+        let mday_code = u32(progress % 100.0);
+        let d_tens = mday_code / 10u;
+        let d_ones = mday_code % 10u;
+        
+        let date_y = 18.5;
+        let date_scale = 0.90;
+        let dsp = 8.5;
+        let date_cx = center_x;
+        
+        // Weekday 3 letters: e.g. SUN, MON, TUE, WED, THU, FRI, SAT
+        var w0 = 83u; var w1 = 85u; var w2 = 78u; // SUN
+        if wday_code == 1u { w0 = 77u; w1 = 79u; w2 = 78u; } // MON
+        else if wday_code == 2u { w0 = 84u; w1 = 85u; w2 = 69u; } // TUE
+        else if wday_code == 3u { w0 = 87u; w1 = 69u; w2 = 68u; } // WED
+        else if wday_code == 4u { w0 = 84u; w1 = 72u; w2 = 85u; } // THU
+        else if wday_code == 5u { w0 = 70u; w1 = 82u; w2 = 73u; } // FRI
+        else if wday_code == 6u { w0 = 83u; w1 = 65u; w2 = 84u; } // SAT
+        
+        let dw0 = draw_clock_letter(local_p - vec2<f32>(date_cx - 2.8 * dsp, date_y), w0, date_scale);
+        let dw1 = draw_clock_letter(local_p - vec2<f32>(date_cx - 1.8 * dsp, date_y), w1, date_scale);
+        let dw2 = draw_clock_letter(local_p - vec2<f32>(date_cx - 0.8 * dsp, date_y), w2, date_scale);
+        
+        // Date day number
+        let dd0 = draw_digit(local_p - vec2<f32>(date_cx + 1.0 * dsp, date_y), d_tens, date_scale);
+        let dd1 = draw_digit(local_p - vec2<f32>(date_cx + 2.0 * dsp, date_y), d_ones, date_scale);
+        
+        let d_date = min(min(dw0, min(dw1, dw2)), min(dd0, dd1)) - 0.45;
+        let mask_date = (1.0 - smoothstep(-0.35, 0.35, d_date)) * 0.78;
+        
+        let total_mask = max(max(mask_digits, mask_colon), mask_date);
+        
+        app.glyph_mask = total_mask;
         app.glyph_color = vec3<f32>(0.98, 0.99, 1.0);
+        return app;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 22. Nested Seconds / Format Glass Pill (Luminous Accent in Neon Gold)
+    // ─────────────────────────────────────────────────────────────
+    if el_type >= 21.9 && el_type <= 22.1 {
+        let sec = tint.z;
+        let is_12h = (tint.w > 0.5);
+        let sec_u = u32(sec);
+        let s_tens = sec_u / 10u;
+        let s_ones = sec_u % 10u;
+        
+        let scale = 1.35;
+        let sp = 8.5;
+        let d0 = draw_digit(local_p - vec2<f32>(-0.6 * sp, 0.0), s_tens, scale);
+        let d1 = draw_digit(local_p - vec2<f32>( 0.6 * sp, 0.0), s_ones, scale);
+        
+        let d_sec = min(d0, d1) - 0.50;
+        let mask = 1.0 - smoothstep(-0.35, 0.35, d_sec);
+        
+        // Signature radiant liquid gold #DCF842
+        let gold = vec3<f32>(0.86, 0.97, 0.26);
+        app.glyph_mask = mask * 0.98;
+        app.glyph_color = gold;
+        
+        let bloom = exp(-max(d_sec, 0.0) * 0.70) * 0.40;
+        app.fluid_color = gold;
+        app.fluid_glow = bloom;
         return app;
     }
     
@@ -469,7 +760,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     
     // Pure, serene Liquid Glass transmission (liquidglassdesign.com aesthetic)
-    if params.tint.a > 0.0 {
+    if params.padding2.x >= 19.5 {
+        // Clock elements use params.tint as data uniform; keep transmission pristine
+        col = col * 1.02 + vec3<f32>(0.02, 0.02, 0.03);
+    } else if params.tint.a > 0.0 {
         col = mix(col, params.tint.rgb, params.tint.a);
     } else {
         // Pristine clear liquid glass: subtle luminous lift
@@ -518,7 +812,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     // 8. CONTROLS, FLUID EMISSION & GLYPHS
     // ════════════════════════════════════════════
-    let app = render_element_appearance(local_px, half_size, params.padding2.x, params.padding2.y, params.time);
+    let app = render_element_appearance(local_px, half_size, params.padding2.x, params.padding2.y, params.time, params.tint);
     
     // ════════════════════════════════════════════
     // 9. MASTER COMPOSITE

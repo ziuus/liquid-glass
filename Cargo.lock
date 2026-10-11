@@ -707,6 +707,7 @@ dependencies = [
  "glass-platform",
  "glass-ui",
  "image",
+ "libc",
  "log",
  "pollster",
  "raw-window-handle",
