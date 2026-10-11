@@ -239,9 +239,9 @@ impl PointerHandler for AppData {
                 self.animating = true;
                 if let Some(wrapper) = &self.window_wrapper {
                     wrapper.surface.frame(qh, wrapper.surface.clone());
+                    wrapper.surface.commit();
                 }
             }
-            self.draw();
         }
     }
 }
@@ -249,16 +249,6 @@ impl PointerHandler for AppData {
 impl AppData {
     fn draw(&mut self) -> bool {
         self.frame_counter += 1;
-        if self.frame_counter % 60 == 1 {
-            eprintln!("[GLASS] Rendered frame {}, cursor={:?}", self.frame_counter, self.cursor_pos);
-        }
-        if self.frame_counter % 300 == 0 {
-            if let Some((cw, ch, bg_data)) = load_wallpaper_region(40, 40, self.width, self.height) {
-                if let Some(renderer) = &mut self.renderer {
-                    renderer.update_background(cw, ch, &bg_data);
-                }
-            }
-        }
 
         // Render authentic Liquid Glass Camera Toolbar (liquidglassdesign.com reference)
         if let Some(renderer) = &mut self.renderer {

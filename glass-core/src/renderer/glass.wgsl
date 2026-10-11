@@ -456,14 +456,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let sharp_b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
     let sharp = vec3<f32>(sharp_r, sharp_g, sharp_b);
     
+    var col: vec3<f32>;
     let blur = params.blur_radius;
-    let blur_r = blurred_sample(uv_r, blur).r;
-    let blur_g = blurred_sample(uv_g, blur).g;
-    let blur_b = blurred_sample(uv_b, blur).b;
-    let blurred = vec3<f32>(blur_r, blur_g, blur_b);
-    
-    // Edge-weighted sharpness: liquid rim has crystalline optical clarity
-    var col = mix(blurred, sharp, pow(edge, 1.4) * 0.45);
+    if blur <= 0.5 {
+        col = sharp;
+    } else {
+        let blur_r = blurred_sample(uv_r, blur).r;
+        let blur_g = blurred_sample(uv_g, blur).g;
+        let blur_b = blurred_sample(uv_b, blur).b;
+        let blurred = vec3<f32>(blur_r, blur_g, blur_b);
+        col = mix(blurred, sharp, pow(edge, 1.4) * 0.45);
+    }
     
     // Pure, serene Liquid Glass transmission (liquidglassdesign.com aesthetic)
     if params.tint.a > 0.0 {

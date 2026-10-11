@@ -657,7 +657,7 @@ impl GlassRenderer {
             }
         }
         
-        if self.frame_count % 60 == 0 {
+        if self.frame_count % 60 == 0 && std::env::var("GLASS_BENCHMARK").is_ok() {
             if let Some(destination_buffer) = &self.query_destination_buffer {
                 let buffer_slice = destination_buffer.slice(..);
                 let (tx, rx) = std::sync::mpsc::channel();
