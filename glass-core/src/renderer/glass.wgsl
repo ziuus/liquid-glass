@@ -322,10 +322,35 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let local_px = uv * params.surface_size - center;
     let r = min(params.corner_radius, min(half_size.x, half_size.y));
     
-    // Fluid displacement (viscous organic sway)
-    let liq_factor = select(0.005, 0.012, is_base_panel);
+    // ════════════════════════════════════════════
+    // VISCOUS ELASTIC JELLY STRETCH (macOS Liquid Glass)
+    // ════════════════════════════════════════════
+    let cur_local = params.pointer_pos * params.surface_size - center;
+    let d_to_cur = length(cur_local - local_px);
+    let cur_active = select(0.0, 1.0, params.pointer_pos.x >= 0.0);
+    
+    // Stretch influence radius
+    let stretch_radius = select(110.0, 190.0, is_base_panel);
+    let stretch_t = clamp(1.0 - (d_to_cur / stretch_radius), 0.0, 1.0) * cur_active;
+    let stretch_t2 = stretch_t * stretch_t;
+    
+    // 1. Magnetic adhesion pull: droplet contour reaches out toward the cursor
+    let pull_dir = normalize(cur_local - local_px + vec2<f32>(0.001));
+    let adhesion_pull = pull_dir * stretch_t2 * select(10.5, 4.5, is_base_panel);
+    
+    // 2. Velocity elongation: droplet stretches along cursor velocity vector (jelly shear)
+    let vel_px = params.pointer_velocity * params.surface_size;
+    let vel_len = length(vel_px);
+    let vel_dir = select(vec2<f32>(0.0), normalize(vel_px), vel_len > 0.001);
+    let jelly_elongation = vel_dir * min(vel_len * 0.45, 16.0) * stretch_t;
+    
+    // 3. Fluid wave displacement
     let liq = liquid_displacement(uv * params.surface_size);
-    let deformed_px = local_px + liq * liq_factor;
+    let liq_factor = select(0.008, 0.015, is_base_panel);
+    
+    // Net elastic liquid distortion (subtracting pulls contour outward toward cursor)
+    let net_stretch = adhesion_pull + jelly_elongation;
+    let deformed_px = local_px - net_stretch + liq * liq_factor;
     
     let sdf = rr_sdf(deformed_px, half_size, r);
     
@@ -338,7 +363,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             return vec4<f32>(0.0, 0.0, 0.0, 0.0);
         }
         let shadow_offset = vec2<f32>(0.0, select(2.0, 3.5, is_base_panel));
-        let shadow_sdf = rr_sdf(local_px - shadow_offset, half_size, r);
+        let shadow_sdf = rr_sdf(deformed_px - shadow_offset, half_size, r);
         let d = max(shadow_sdf, 0.0);
         let spread = select(6.5, 13.0, is_base_panel);
         let outer_shadow = exp(-d * d / (spread * spread)) * select(0.32, 0.38, is_base_panel);
@@ -369,8 +394,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let h_d = droplet_height(deformed_px - vec2<f32>(0.0, eps), half_size, r, z_radius);
     
     let h_grad = vec2<f32>(h_r - h_l, h_u - h_d) / (2.0 * eps);
+    let tilt_3d = (cur_local / max(half_size, vec2<f32>(1.0))) * 0.18 * stretch_t;
     let wave_slope = liq * 0.003;
-    let N = normalize(vec3<f32>(-(h_grad + wave_slope), 1.0));
+    let N = normalize(vec3<f32>(-(h_grad + wave_slope + tilt_3d), 1.0));
     
     // Optical thickness
     let thick_norm = clamp(h_c / max(z_radius, 1.0), 0.0, 1.0);
@@ -387,11 +413,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let center_dir = -local_px / max(half_size, vec2<f32>(1.0));
     let lens_magnify = center_dir * magnification_strength * thick_norm * params.refraction_strength * 20.0;
     
-    // Surface normal refraction ray displacement
+    // Surface normal refraction ray displacement + stretch streaking
     let refr_ray = h_grad * refr_pow * params.refraction_strength * select(16.0, 24.0, is_base_panel);
+    let lens_stretch = net_stretch * 0.38;
     let liq_advection = liq * 0.12;
     
-    let refr_px = lens_magnify + refr_ray + liq_advection;
+    let refr_px = lens_magnify + refr_ray + liq_advection + lens_stretch;
     let refr = refr_px * px_to_uv;
     
     // ════════════════════════════════════════════
