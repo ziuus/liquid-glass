@@ -208,23 +208,12 @@ impl PointerHandler for AppData {
 
 impl AppData {
     fn draw(&mut self) {
-        // 1. Process any freshly captured background frame from screencopy
-        if self.screencopy.done {
-            if let Some(bg_data) = self.screencopy.data.take() {
-                let cw = self.screencopy.width;
-                let ch = self.screencopy.height;
+        // Periodically check if wallpaper changed (every ~5 seconds at 60 FPS)
+        self.frame_counter += 1;
+        if self.frame_counter % 300 == 0 {
+            if let Some((cw, ch, bg_data)) = load_wallpaper_region(40, 40, self.width, self.height) {
                 if let Some(renderer) = &mut self.renderer {
                     renderer.update_background(cw, ch, &bg_data);
-                }
-            }
-        }
-
-        // 2. Schedule continuous background re-capture every 3 frames (~20 FPS desktop refresh)
-        self.frame_counter += 1;
-        if self.frame_counter % 3 == 0 && !self.screencopy.is_capturing {
-            if let Some(qh) = &self.qh {
-                if let Some(output) = self.output_state.outputs().next() {
-                    self.screencopy.capture(&output, 40, 40, self.width as i32, self.height as i32, qh);
                 }
             }
         }
@@ -233,17 +222,17 @@ impl AppData {
         if let Some(renderer) = &mut self.renderer {
             let panel = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::RoundedRectangle { radius: 28.0 })
+                .shape(Shape::RoundedRectangle { radius: 32.0 })
                 .bounds(0.0, 0.0, 1.0, 1.0)
-                .curvature(0.85) // True optical 3D convex dome
-                .bevel(24.0)     // Smooth curved meniscus rim
-                .refraction(1.85) // Strong optical stretching & barrel magnification
-                .dispersion(0.04) // Subtle physically accurate chromatic separation
-                .blur(22.0)      // Creamy 64-tap Vogel vibrancy blur
-                .tint(1.0, 1.0, 1.0, 0.02) // Pure crystalline optical transmission
-                .roughness(0.0)   // Silky glass polish
-                .specular(1.2)   // Dual-light specular highlights
-                .fresnel(0.9)    // Edge Fresnel rim luminescence
+                .curvature(0.15)   // Edge highlight intensity (maps to edgeHL)
+                .bevel(40.0)       // Z-radius: bevel depth (pill cross-section depth)
+                .refraction(0.69)  // Reference default: how much glass bends the image
+                .dispersion(0.05)  // Chromatic aberration at edges
+                .blur(6.0)         // Light background blur  
+                .tint(1.0, 1.0, 1.0, 0.0) // No tint
+                .roughness(0.0)    // No micro-distortion
+                .specular(0.15)    // Subtle specular highlights
+                .fresnel(1.0)      // Full Fresnel (reference default)
                 .pointer_pos(self.cursor_pos[0], self.cursor_pos[1])
                 .pointer_velocity(self.cursor_velocity[0], self.cursor_velocity[1]);
             
@@ -276,6 +265,36 @@ impl ProvidesRegistryState for AppData {
         &mut self.registry_state
     }
     registry_handlers![OutputState, SeatState];
+}
+
+fn load_wallpaper_region(x: u32, y: u32, w: u32, h: u32) -> Option<(u32, u32, Vec<u8>)> {
+    let path = std::process::Command::new("awww")
+        .arg("query")
+        .output()
+        .ok()
+        .and_then(|out| {
+            let s = String::from_utf8_lossy(&out.stdout);
+            s.split("image: ").nth(1).map(|p| p.trim().to_string())
+        })
+        .unwrap_or_else(|| "/home/zius/Pictures/wallpaper/Fantasy-Landscape3.png".to_string());
+
+    let img = image::open(&path).ok()?.to_rgba8();
+    let (img_w, img_h) = img.dimensions();
+    
+    let screen_w = 1920.0f32;
+    let screen_h = 1080.0f32;
+    let sx = (x as f32 / screen_w * img_w as f32).round() as u32;
+    let sy = (y as f32 / screen_h * img_h as f32).round() as u32;
+    let sw = ((w as f32 / screen_w * img_w as f32).round() as u32).min(img_w.saturating_sub(sx));
+    let sh = ((h as f32 / screen_h * img_h as f32).round() as u32).min(img_h.saturating_sub(sy));
+    
+    if sw == 0 || sh == 0 {
+        return None;
+    }
+    
+    let sub = image::imageops::crop_imm(&img, sx, sy, sw, sh).to_image();
+    let resized = image::imageops::resize(&sub, w, h, image::imageops::FilterType::Lanczos3);
+    Some((w, h, resized.into_raw()))
 }
 
 fn main() {
@@ -355,15 +374,15 @@ fn main() {
         app_data.height
     )).expect("Failed to init WGPU");
     
-    // Capture background behind the panel
-    if let Some(output) = app_data.output_state.outputs().next() {
+    // 1. Primary: load authentic wallpaper background directly
+    if let Some((cw, ch, bg_data)) = load_wallpaper_region(40, 40, app_data.width, app_data.height) {
+        renderer.update_background(cw, ch, &bg_data);
+    } else if let Some(output) = app_data.output_state.outputs().next() {
+        // Fallback: screencopy capture
         app_data.screencopy.capture(&output, 40, 40, app_data.width as i32, app_data.height as i32, &qh);
-        
-        // Pump events until capture is done
         while !app_data.screencopy.done {
             event_queue.blocking_dispatch(&mut app_data).unwrap();
         }
-        
         if let Some(bg_data) = app_data.screencopy.data.take() {
             let cw = app_data.screencopy.width;
             let ch = app_data.screencopy.height;

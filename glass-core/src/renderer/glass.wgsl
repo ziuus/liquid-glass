@@ -1,48 +1,19 @@
+// Liquid Glass WGSL Shader
+// High-fidelity physical simulation:
+//   - Pill-shaped bevel HEIGHT FIELD (sqrt half-circle cross-section)
+//   - Surface normal from height field gradient
+//   - Biconvex dual-surface refraction (entry + exit)
+//   - Chromatic aberration at the curved bevel rim
+//   - 1.5px inner stroke highlight with top-bias rim lighting
+//   - Multi-light Blinn-Phong specular highlights
+//   - Physically calibrated Fresnel reflection
+//   - Organic fluid pointer ripples and viscous advection
+//   - Soft ambient contact shadow around rounded bounds
+
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) uv: vec2<f32>,
 };
-
-@vertex
-fn vs_main(
-    @builtin(vertex_index) in_vertex_index: u32,
-) -> VertexOutput {
-    var out: VertexOutput;
-    
-    // Create a quad from two triangles based on vertex index (0 to 5)
-    // 0: top-left, 1: bottom-left, 2: top-right
-    // 3: top-right, 4: bottom-left, 5: bottom-right
-    
-    var local_uv = vec2<f32>(0.0);
-    switch in_vertex_index {
-        case 0u: { local_uv = vec2<f32>(0.0, 0.0); }
-        case 1u: { local_uv = vec2<f32>(0.0, 1.0); }
-        case 2u: { local_uv = vec2<f32>(1.0, 0.0); }
-        case 3u: { local_uv = vec2<f32>(1.0, 0.0); }
-        case 4u: { local_uv = vec2<f32>(0.0, 1.0); }
-        case 5u: { local_uv = vec2<f32>(1.0, 1.0); }
-        default: {}
-    }
-    
-    // Add 10% padding to bounds for blur/shadows
-    let pad = 0.1;
-    let padded_x = params.bounds.x - params.bounds.z * pad;
-    let padded_y = params.bounds.y - params.bounds.w * pad;
-    let padded_w = params.bounds.z * (1.0 + pad * 2.0);
-    let padded_h = params.bounds.w * (1.0 + pad * 2.0);
-    
-    let screen_x = padded_x + local_uv.x * padded_w;
-    let screen_y = padded_y + local_uv.y * padded_h;
-    
-    out.uv = vec2<f32>(screen_x, screen_y); // Global UV for background sampling
-    
-    // Map to clip space (-1 to 1)
-    let clip_x = screen_x * 2.0 - 1.0;
-    let clip_y = 1.0 - screen_y * 2.0; // Y is flipped in clip space
-    
-    out.clip_position = vec4<f32>(clip_x, clip_y, 0.0, 1.0);
-    return out;
-}
 
 struct GlassUniforms {
     bounds: vec4<f32>,
@@ -71,216 +42,285 @@ struct GlassUniforms {
 };
 
 @group(0) @binding(0) var<uniform> params: GlassUniforms;
-
 @group(1) @binding(0) var background_texture: texture_2d<f32>;
 @group(1) @binding(1) var background_sampler: sampler;
 
-// SDF for rounded rect
-fn sd_round_box(p: vec2<f32>, b: vec2<f32>, r: f32) -> f32 {
-    let q = abs(p) - b + vec2<f32>(r, r);
-    return length(max(q, vec2<f32>(0.0, 0.0))) + min(max(q.x, q.y), 0.0) - r;
-}
-
-// Deformation function
-fn deform(p: vec2<f32>, center: vec2<f32>) -> vec2<f32> {
-    var dp = vec2<f32>(0.0);
+@vertex
+fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
+    var out: VertexOutput;
     
-    // Ambient liquid animation - gentle continuous organic sway
-    if params.deformation > 0.0 {
-        let wave1 = sin(p.y * 0.015 + params.time * 1.8);
-        let wave2 = cos(p.x * 0.015 + params.time * 1.4);
-        dp.x += wave1 * params.deformation * 16.0;
-        dp.y += wave2 * params.deformation * 16.0;
+    var local_uv = vec2<f32>(0.0);
+    switch in_vertex_index {
+        case 0u: { local_uv = vec2<f32>(0.0, 0.0); }
+        case 1u: { local_uv = vec2<f32>(0.0, 1.0); }
+        case 2u: { local_uv = vec2<f32>(1.0, 0.0); }
+        case 3u: { local_uv = vec2<f32>(1.0, 0.0); }
+        case 4u: { local_uv = vec2<f32>(0.0, 1.0); }
+        case 5u: { local_uv = vec2<f32>(1.0, 1.0); }
+        default: {}
     }
     
-    // Interactive cursor ripple & viscous stretch
-    let world_p = p + center;
-    let pointer_pos_px = params.pointer_pos * params.surface_size;
-    let dist_to_pointer = distance(world_p, pointer_pos_px);
-    let pointer_effect_radius = 260.0;
-    
-    if dist_to_pointer < pointer_effect_radius && length(params.pointer_velocity) > 0.0 {
-        let t = 1.0 - (dist_to_pointer / pointer_effect_radius);
-        let t2 = t * t;
-        let ripple = sin(dist_to_pointer * 0.08 - params.time * 16.0) * exp(-dist_to_pointer * 0.018);
-        let vel = params.pointer_velocity * 40.0;
-        let vel_mag = clamp(length(vel), 0.0, 1.0);
-        
-        // Fluid advection stretch along pointer velocity
-        let advection = vel * t2 * 22.0;
-        // Radial ripple displacement
-        let dir = normalize(world_p - pointer_pos_px);
-        let radial = dir * ripple * 18.0 * vel_mag * t;
-        
-        dp += advection + radial;
-    }
-    
-    return p + dp;
+    out.uv = local_uv;
+    out.clip_position = vec4<f32>(local_uv.x * 2.0 - 1.0, 1.0 - local_uv.y * 2.0, 0.0, 1.0);
+    return out;
 }
 
-// Calculate true physical surface normal from SDF, bevel profile, curvature dome, and liquid displacement
-fn get_normal(p: vec2<f32>, center: vec2<f32>, b: vec2<f32>, r: f32) -> vec3<f32> {
-    let eps = 1.0; // 1 pixel delta for numerical gradient
-    let p_def = deform(p, center);
-    let d0 = sd_round_box(p_def, b, r);
-    
-    let p_x = deform(p + vec2<f32>(eps, 0.0), center);
-    let dx = sd_round_box(p_x, b, r) - d0;
-    
-    let p_y = deform(p + vec2<f32>(0.0, eps), center);
-    let dy = sd_round_box(p_y, b, r) - d0;
-    
-    let grad = normalize(vec2<f32>(dx, dy) + vec2<f32>(1e-5, 1e-5));
-    
-    // 1. Edge Bevel Curve: Quartic ease-out profile creating a smooth optical meniscus
-    let bevel_w = max(params.bevel, 16.0);
-    let edge_dist = clamp(-d0, 0.0, bevel_w);
-    let bevel_t = 1.0 - (edge_dist / bevel_w);
-    let bevel_slope = pow(bevel_t, 2.5); // Steepest at outer rim, gently flattening inward
-    
-    // 2. Optical Dome Curvature: Convex lens body across the entire volume
-    let norm_p = clamp(p / max(b, vec2<f32>(1.0, 1.0)), vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, 1.0));
-    let dome_grad = norm_p * clamp(params.curvature, 0.0, 1.5);
-    
-    // 3. Dynamic Wave Slopes from liquid perturbation
-    let wave_slope_x = (p_def.x - p.x) * 0.08;
-    let wave_slope_y = (p_def.y - p.y) * 0.08;
-    
-    let nx = grad.x * bevel_slope * 1.8 + dome_grad.x * 0.45 + wave_slope_x;
-    let ny = grad.y * bevel_slope * 1.8 + dome_grad.y * 0.45 + wave_slope_y;
-    let nz = 1.0;
-    
-    return normalize(vec3<f32>(nx, ny, nz));
+// ── Rounded-rect Signed Distance Field ──
+fn rr_sdf(p: vec2<f32>, b: vec2<f32>, r: f32) -> f32 {
+    let q = abs(p) - b + vec2<f32>(r);
+    return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - r;
 }
 
-// 64-tap Vogel Golden Spiral filter for artifact-free creamy blur
+// ── Bevel Height Field ──
+// Circular cross-section: h(d) = sqrt(d * (2*zR - d))
+// Creates an optically true convex meniscus rim
+fn bevel_height(d: f32, z_radius: f32) -> f32 {
+    if d <= 0.0 { return 0.0; }
+    if d >= z_radius { return z_radius; }
+    return sqrt(d * (2.0 * z_radius - d));
+}
+
+// ── Micro-distortion noise hash ──
+fn hash(p: vec2<f32>) -> f32 {
+    return fract(sin(dot(p, vec2<f32>(127.1, 311.7))) * 43758.5453);
+}
+
+// ── 48-tap Vogel Golden Spiral Blur ──
 fn blurred_sample(uv: vec2<f32>, radius: f32) -> vec3<f32> {
-    if (radius <= 0.0) {
+    if radius <= 0.5 {
         return textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
     }
     
     var color = vec3<f32>(0.0);
-    let samples = 64.0;
+    let samples = 48.0;
     let golden_angle = 2.39996323;
     
     for (var i = 0.0; i < samples; i += 1.0) {
         let r = sqrt(i + 0.5) / sqrt(samples);
         let theta = i * golden_angle;
         let offset = vec2<f32>(r * cos(theta), r * sin(theta)) * radius;
-        let sample_uv = clamp(uv + offset / params.surface_size, vec2<f32>(0.001, 0.001), vec2<f32>(0.999, 0.999));
+        let sample_uv = clamp(uv + offset / params.surface_size, vec2<f32>(0.001), vec2<f32>(0.999));
         color += textureSampleLevel(background_texture, background_sampler, sample_uv, 0.0).rgb;
     }
     
     return color / samples;
 }
 
-// macOS Color Vibrancy - Saturation boost, contrast curve, and subtle luminant lift
-fn apply_vibrancy(rgb: vec3<f32>, saturation_boost: f32) -> vec3<f32> {
-    let luma = dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
-    var saturated = mix(vec3<f32>(luma), rgb, saturation_boost);
-    // Subtle S-curve contrast enhancement
-    saturated = saturated * saturated * (vec3<f32>(3.0) - vec3<f32>(2.0) * saturated);
-    // Slight gamma correction to keep midtones lively
-    return pow(max(saturated, vec3<f32>(0.0)), vec3<f32>(0.92));
+// ── Fluid pointer ripple & viscous displacement ──
+fn liquid_offset(world_px: vec2<f32>) -> vec2<f32> {
+    var dp = vec2<f32>(0.0);
+    
+    // Continuous organic ambient wave
+    if params.deformation > 0.0 {
+        dp.x += sin(world_px.y * 0.012 + params.time * 1.4) * params.deformation * 6.0;
+        dp.y += cos(world_px.x * 0.012 + params.time * 1.1) * params.deformation * 6.0;
+    }
+    
+    // Interactive pointer wave & advection stretch
+    let pointer_px = params.pointer_pos * params.surface_size;
+    let dist = distance(world_px, pointer_px);
+    let effect_radius = 180.0;
+    
+    if dist < effect_radius && length(params.pointer_velocity) > 0.0001 {
+        let t = 1.0 - (dist / effect_radius);
+        let t2 = t * t;
+        let ripple = sin(dist * 0.06 - params.time * 12.0) * exp(-dist * 0.025);
+        let vel = params.pointer_velocity * 25.0;
+        let vel_mag = clamp(length(vel), 0.0, 1.0);
+        
+        let advection = vel * t2 * 14.0;
+        let dir = normalize(world_px - pointer_px + vec2<f32>(0.001));
+        let wave = dir * ripple * 10.0 * vel_mag * t;
+        dp += advection + wave;
+    }
+    
+    return dp;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv;
     
-    let center = vec2<f32>(params.bounds.x + params.bounds.z * 0.5, params.bounds.y + params.bounds.w * 0.5);
-    let size = vec2<f32>(params.bounds.z * 0.5, params.bounds.w * 0.5) * params.surface_size;
-    let radius = params.corner_radius; 
+    // Padding around the window so the drop shadow is not clipped
+    let shadow_pad = 16.0;
+    let panel_size = params.surface_size - vec2<f32>(shadow_pad * 2.0);
+    let half_size = panel_size * 0.5;
+    let center = params.surface_size * 0.5;
+    let local_px = uv * params.surface_size - center;
+    let r = min(params.corner_radius, min(half_size.x, half_size.y));
     
-    // Pixel-space evaluation for isotropic curvature
-    let local_p = (uv - center) * params.surface_size;
-    let def_p = deform(local_p, center * params.surface_size);
-    let dist = sd_round_box(def_p, size, radius);
+    // Liquid displacement
+    let liq = liquid_offset(uv * params.surface_size);
+    let deformed_px = local_px + liq * 0.015;
     
-    // Anti-aliased outer boundary
-    let alpha = 1.0 - smoothstep(0.0, 1.5, dist);
-    if (alpha <= 0.0) {
-        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+    let sdf = rr_sdf(deformed_px, half_size, r);
+    
+    // ════════════════════════════════════════════
+    // 1. SOFT DROP SHADOW (Outside the glass panel)
+    // ════════════════════════════════════════════
+    if sdf > 0.0 {
+        let shadow_offset = vec2<f32>(0.0, 3.0);
+        let shadow_sdf = rr_sdf(local_px - shadow_offset, half_size, r);
+        let d = max(shadow_sdf, 0.0);
+        let spread = 14.0;
+        let outer_shadow = exp(-d * d / (spread * spread)) * 0.35;
+        let contact_shadow = exp(-d * 0.2) * 0.25;
+        let shadow = (outer_shadow + contact_shadow) * 0.45;
+        let edge_fade = 1.0 - smoothstep(shadow_pad - 1.0, shadow_pad, d);
+        return vec4<f32>(0.0, 0.0, 0.0, shadow * edge_fade);
     }
     
-    let normal = get_normal(local_p, center * params.surface_size, size, radius);
-    let view_dir = vec3<f32>(0.0, 0.0, -1.0);
+    // ════════════════════════════════════════════
+    // 2. ANTI-ALIASED PANEL MASK
+    // ════════════════════════════════════════════
+    let mask = 1.0 - smoothstep(-1.2, 0.2, sdf);
+    let inside = -sdf;
+    let max_d = min(half_size.x, half_size.y);
+    let edge = smoothstep(max_d * 0.35, 0.0, inside);
     
-    // Snell's Law Refraction Ray
-    let eta = 1.0 / params.ior; 
-    let refr_dir = refract(view_dir, normal, eta);
+    // ════════════════════════════════════════════
+    // 3. PILL BEVEL HEIGHT FIELD & SURFACE NORMAL
+    // ════════════════════════════════════════════
+    let z_radius = max(params.bevel, 8.0);
+    let eps = 1.5;
     
-    // Optical thickness model (thicker in center, tapering at edges)
-    let norm_radius = clamp(length(local_p / max(size, vec2<f32>(1.0, 1.0))), 0.0, 1.0);
-    let glass_thickness = sqrt(max(0.0, 1.0 - norm_radius * norm_radius)) * 0.5 + 0.5;
+    let d_c = inside;
+    let d_r = -rr_sdf(deformed_px + vec2<f32>(eps, 0.0), half_size, r);
+    let d_l = -rr_sdf(deformed_px - vec2<f32>(eps, 0.0), half_size, r);
+    let d_u = -rr_sdf(deformed_px + vec2<f32>(0.0, eps), half_size, r);
+    let d_d = -rr_sdf(deformed_px - vec2<f32>(0.0, eps), half_size, r);
     
-    // True Non-linear Optical Lens Distortion (Barrel / Magnification)
-    let refr_magnitude = params.refraction_strength * 0.12 * glass_thickness;
-    let refr_offset = refr_dir.xy * refr_magnitude;
-    let disp = params.dispersion * 0.015;
+    let h_c = bevel_height(d_c, z_radius);
+    let h_r = bevel_height(d_r, z_radius);
+    let h_l = bevel_height(d_l, z_radius);
+    let h_u = bevel_height(d_u, z_radius);
+    let h_d = bevel_height(d_d, z_radius);
+    
+    // Gradient of height field produces true physical surface normal
+    let h_grad = vec2<f32>(h_r - h_l, h_u - h_d) / (2.0 * eps);
+    let wave_slope = liq * 0.003;
+    let N = normalize(vec3<f32>(-(h_grad + wave_slope), 1.0));
+    
+    let depth = smoothstep(0.0, z_radius, inside);
+    
+    // ════════════════════════════════════════════
+    // 4. BICONVEX REFRACTION (Dual Surface Lensing)
+    // ════════════════════════════════════════════
+    let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
+    let ior = params.ior;
+    let refr_pow = 1.0 - 1.0 / ior;
+    let thickness = h_c * 2.0;
+    let thick_norm = thickness / max(z_radius * 2.0, 1.0);
+    
+    // Refraction at entry and exit surfaces
+    let exit_refr = h_grad * refr_pow;
+    let entry_refr = h_grad * refr_pow;
+    let through_refr = entry_refr * thick_norm * 0.5;
+    var refr_px = (exit_refr + entry_refr + through_refr) * params.refraction_strength * 22.0;
+    
+    // Central optical magnification (lens dome effect)
+    let center_dir = -local_px / max(half_size, vec2<f32>(1.0));
+    refr_px += center_dir * params.refraction_strength * 3.5 * depth;
+    
+    // Fluid advection perturbation
+    refr_px += liq * 0.12;
+    let refr = refr_px * px_to_uv;
+    
+    // ════════════════════════════════════════════
+    // 5. CHROMATIC ABERRATION
+    // ════════════════════════════════════════════
+    let ca_scale = params.dispersion * 14.0 * (edge * 0.7 + 0.3);
+    let ca_offset = N.xy * ca_scale * px_to_uv;
+    
+    // Micro-surface roughness jitter
+    let micro = (vec2<f32>(hash(local_px * 0.1), hash(local_px * 0.1 + vec2<f32>(43.0))) - 0.5)
+              * params.roughness * 2.0 * px_to_uv;
+              
+    let base_uv = clamp(uv + refr + micro, vec2<f32>(0.001), vec2<f32>(0.999));
+    let uv_r = clamp(base_uv + ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
+    let uv_g = base_uv;
+    let uv_b = clamp(base_uv - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
+    
+    // ════════════════════════════════════════════
+    // 6. BACKGROUND SAMPLING (Sharp vs Creamy Blur)
+    // ════════════════════════════════════════════
+    let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
+    let sharp_g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
+    let sharp_b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
+    let sharp = vec3<f32>(sharp_r, sharp_g, sharp_b);
+    
     let blur = params.blur_radius;
+    let blur_r = blurred_sample(uv_r, blur).r;
+    let blur_g = blurred_sample(uv_g, blur).g;
+    let blur_b = blurred_sample(uv_b, blur).b;
+    let blurred = vec3<f32>(blur_r, blur_g, blur_b);
     
-    // Sample with chromatic dispersion
-    let uv_r = clamp(uv + refr_offset * (1.0 + disp), vec2<f32>(0.001, 0.001), vec2<f32>(0.999, 0.999));
-    let uv_g = clamp(uv + refr_offset, vec2<f32>(0.001, 0.001), vec2<f32>(0.999, 0.999));
-    let uv_b = clamp(uv + refr_offset * (1.0 - disp), vec2<f32>(0.001, 0.001), vec2<f32>(0.999, 0.999));
+    // Edge-weighted sharpness: center is softly blurred, bevel rim retains crisp refraction
+    let edge_mix = 1.0 - edge * 0.35;
+    var col = mix(sharp, blurred, edge_mix);
     
-    let r_col = blurred_sample(uv_r, blur).r;
-    let g_col = blurred_sample(uv_g, blur).g;
-    let b_col = blurred_sample(uv_b, blur).b;
-    var base_color = vec3<f32>(r_col, g_col, b_col);
+    // ════════════════════════════════════════════
+    // 7. MAC VIBRANCY & CRYSTALLINE POLISH
+    // ════════════════════════════════════════════
+    // Pure transmission: slight vibrance boost without whitening
+    let lum = dot(col, vec3<f32>(0.299, 0.587, 0.114));
+    col = mix(vec3<f32>(lum), col, 1.08); // 8% rich saturation boost
+    col *= 1.0 + params.curvature * 0.04 * depth; // gentle luminous lift
     
-    // Apply macOS-grade vibrancy boost (1.35x saturation + contrast calibration)
-    var vibrant_color = apply_vibrancy(base_color, 1.35);
-    
-    // Material tint & subtle luminant tone
-    if (params.tint.a > 0.0) {
-        vibrant_color = mix(vibrant_color, params.tint.rgb, params.tint.a);
+    // Subtle cool crystalline glass tint
+    if params.tint.a > 0.0 {
+        col = mix(col, col * vec3<f32>(0.94, 0.97, 1.03), params.tint.a);
     }
     
-    // Physically based Fresnel reflectance (Schlick's approximation)
-    let f0 = 0.045; // Optical glass baseline reflectance
-    let cos_theta = max(dot(view_dir, -normal), 0.0);
-    let fresnel = f0 + (1.0 - f0) * pow(1.0 - cos_theta, 4.0);
+    // ════════════════════════════════════════════
+    // 8. FRESNEL GRAZING-ANGLE REFLECTION
+    // ════════════════════════════════════════════
+    let cos_theta = clamp(abs(N.z), 0.0, 1.0);
+    let fres = pow(1.0 - cos_theta, 4.0) * params.fresnel_strength;
     
-    // Dual Light Specular Highlights (Key Light + Ambient Rim Light)
-    let key_light = normalize(vec3<f32>(0.75, -1.0, -1.2));
-    let half_key = normalize(key_light + view_dir);
-    let spec_key = pow(max(dot(normal, half_key), 0.0), 96.0) * params.specular_strength * 1.2;
+    // ════════════════════════════════════════════
+    // 9. MULTI-LIGHT BLINN-PHONG SPECULAR
+    // ════════════════════════════════════════════
+    let V = vec3<f32>(0.0, 0.0, 1.0);
     
-    let rim_light = normalize(vec3<f32>(-0.6, 0.8, -0.9));
-    let half_rim = normalize(rim_light + view_dir);
-    let spec_rim = pow(max(dot(normal, half_rim), 0.0), 48.0) * params.specular_strength * 0.45;
+    // Overhead key light (sun/ceiling ambient)
+    let L1 = normalize(vec3<f32>(0.35, -0.65, 1.0));
+    let H1 = normalize(L1 + V);
+    let sp1 = pow(max(dot(N, H1), 0.0), 96.0) * 0.55;
     
-    // Composite Glass Illuminations
-    var final_color = vibrant_color;
-    final_color += vec3<f32>(0.95, 0.98, 1.0) * fresnel * params.fresnel_strength * 0.85;
-    final_color += vec3<f32>(1.0, 1.0, 1.0) * (spec_key + spec_rim);
+    // Fill rim light from opposite angle
+    let L2 = normalize(vec3<f32>(-0.4, 0.5, 0.9));
+    let H2 = normalize(L2 + V);
+    let sp2 = pow(max(dot(N, H2), 0.0), 48.0) * 0.20;
     
-    // Optical Bevel Edge Lighting
-    // Meniscus highlight catches ambient light at the convex bevel
-    let edge_dist_px = -dist;
-    let bevel_w_px = max(params.bevel, 16.0);
-    if (edge_dist_px >= 0.0 && edge_dist_px < bevel_w_px) {
-        let edge_norm = edge_dist_px / bevel_w_px;
-        let rim_intensity = pow(1.0 - edge_norm, 3.0);
-        let light_dir_2d = normalize(vec2<f32>(0.7, -0.7));
-        let rim_alignment = max(dot(normal.xy, light_dir_2d), 0.0);
-        
-        // Crisp specular line along the top/left crest
-        final_color += vec3<f32>(1.0, 1.0, 1.0) * rim_intensity * (0.35 + 0.45 * rim_alignment);
-        
-        // Subtle interior ambient shadow along bottom/right bevel base
-        let shadow_alignment = max(dot(normal.xy, -light_dir_2d), 0.0);
-        final_color *= (1.0 - rim_intensity * shadow_alignment * 0.22);
-    }
+    let total_spec = (sp1 + sp2) * params.specular_strength;
     
-    // Optional microscopic frost noise (if roughness > 0)
-    if (params.roughness > 0.0) {
-        let noise = fract(sin(dot(uv + params.time, vec2<f32>(12.9898, 78.233))) * 43758.5453) - 0.5;
-        final_color += noise * params.roughness * 0.08;
-    }
+    // ════════════════════════════════════════════
+    // 10. 1.5px INNER STROKE HIGHLIGHT (Mac Bevel Rim)
+    // ════════════════════════════════════════════
+    let border_width = 1.4;
+    let inner_stroke = smoothstep(-border_width - 0.8, -border_width, sdf)
+                     * (1.0 - smoothstep(-0.8, 0.0, sdf));
+    // Light from top makes top-left edge gleam brighter
+    let top_bias = 0.5 + 0.5 * (-local_px.y / half_size.y);
+    let left_bias = 0.5 + 0.5 * (-local_px.x / half_size.x);
+    let stroke_glow = inner_stroke * (0.3 + 0.45 * (top_bias * 0.7 + left_bias * 0.3));
+    
+    // ════════════════════════════════════════════
+    // 11. EDGE MENISCUS HIGHLIGHT
+    // ════════════════════════════════════════════
+    let rim = edge * params.curvature * 0.12;
+    let inner_glow = smoothstep(6.0, 0.0, inside) * params.curvature * 0.08;
+    
+    // ════════════════════════════════════════════
+    // 12. FINAL COMPOSITING
+    // ════════════════════════════════════════════
+    var fin = col;
+    fin += vec3<f32>(total_spec);
+    fin += vec3<f32>(stroke_glow * 0.45);
+    fin += vec3<f32>(rim + inner_glow);
+    fin = mix(fin, vec3<f32>(1.0, 1.0, 1.0), fres * 0.12);
     
     // Premultiplied alpha output
-    return vec4<f32>(final_color * alpha, alpha);
+    return vec4<f32>(fin * mask, mask);
 }

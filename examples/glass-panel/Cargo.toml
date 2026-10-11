@@ -16,3 +16,4 @@ log = { workspace = true }
 raw-window-handle.workspace = true
 wayland-backend = { version = "0.3", features = ["client_system"] }
 glass-ui = { version = "0.1.0", path = "../../glass-ui" }
+image = { version = "0.25.10", default-features = false, features = ["png"] }

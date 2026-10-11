@@ -87,24 +87,30 @@ impl Dispatch<ZwlrScreencopyFrameV1, ()> for super::AppData {
                 state.screencopy.stride = stride;
                 state.screencopy.format = actual_format as u32;
                 
-                if let Ok((buffer, _canvas)) = state.screencopy.pool.create_buffer(
-                    width as i32,
-                    height as i32,
-                    stride as i32,
-                    actual_format
-                ) {
+                if state.screencopy.buffer.is_none() {
+                    if let Ok((buffer, _canvas)) = state.screencopy.pool.create_buffer(
+                        width as i32,
+                        height as i32,
+                        stride as i32,
+                        actual_format
+                    ) {
+                        state.screencopy.buffer = Some(buffer);
+                    }
+                }
+                
+                if let Some(buffer) = &state.screencopy.buffer {
                     frame.copy(buffer.wl_buffer());
-                    state.screencopy.buffer = Some(buffer);
                 }
             }
-            FrameEvent::Flags { flags } => {}
+            FrameEvent::Flags { .. } => {}
             FrameEvent::Ready { .. } => {
                 state.screencopy.done = true;
                 state.screencopy.is_capturing = false;
-                if let Some(buffer) = state.screencopy.buffer.take() {
-                    if let Some(canvas) = state.screencopy.pool.canvas(&buffer) {
-                        // Assuming XRGB8888 or ARGB8888 format from Wayland
-                        // Convert to RGBA8 for wgpu
+                if let Some(frame) = state.screencopy.frame.take() {
+                    frame.destroy();
+                }
+                if let Some(buffer) = &state.screencopy.buffer {
+                    if let Some(canvas) = state.screencopy.pool.canvas(buffer) {
                         let width = state.screencopy.width as usize;
                         let height = state.screencopy.height as usize;
                         let stride = state.screencopy.stride as usize;
@@ -127,6 +133,9 @@ impl Dispatch<ZwlrScreencopyFrameV1, ()> for super::AppData {
             FrameEvent::Failed => {
                 state.screencopy.done = true;
                 state.screencopy.is_capturing = false;
+                if let Some(frame) = state.screencopy.frame.take() {
+                    frame.destroy();
+                }
             }
             FrameEvent::Damage { .. } => {}
             _ => {}
