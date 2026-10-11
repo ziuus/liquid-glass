@@ -47,11 +47,12 @@ struct AppData {
     pointer: Option<wl_pointer::WlPointer>,
     cursor_pos: [f32; 2],
     cursor_velocity: [f32; 2],
-    hover_pos: [f32; 8],
-    hover_vel: [f32; 8],
+    hover_pos: [f32; 3],
+    hover_vel: [f32; 3],
     is_pressed: bool,
-    brightness_progress: f32,
-    volume_progress: f32,
+    selected_mode: usize,
+    pill_offset_x: f32,
+    pill_vel_x: f32,
     
     width: u32,
     height: u32,
@@ -259,48 +260,65 @@ impl AppData {
             }
         }
 
-        // Render clean, minimal Apple liquid glass with nested subcomponents
+        // Render authentic Liquid Glass Camera Toolbar (liquidglassdesign.com reference)
         if let Some(renderer) = &mut self.renderer {
             let px = self.cursor_pos[0];
             let py = self.cursor_pos[1];
             let vx = self.cursor_velocity[0];
             let vy = self.cursor_velocity[1];
 
-            // Authentic macOS Control Center Layout Specifications: [cx, cy, base_w, base_h]
-            let specs: [[f32; 4]; 8] = [
-                [0.50, 0.08, 0.86, 0.07],   // 0: Dynamic Island Header
-                [0.28, 0.21, 0.40, 0.15],   // 1: Wi-Fi Capsule
-                [0.72, 0.21, 0.40, 0.15],   // 2: Bluetooth Capsule
-                [0.50, 0.38, 0.86, 0.13],   // 3: Display Brightness Liquid Slider
-                [0.50, 0.54, 0.86, 0.13],   // 4: Sound Volume Liquid Slider
-                [0.24, 0.73, 0.18, 0.135],  // 5: Focus / Moon Clean Circular Button (65px)
-                [0.50, 0.73, 0.18, 0.135],  // 6: Screen Mirroring Clean Circular Button (65px)
-                [0.76, 0.73, 0.18, 0.135],  // 7: Theme / Night Shift Clean Circular Button (65px)
+            // Camera Toolbar Specifications: [cx, cy, base_w, base_h]
+            // 0: Left Circular Camera Lens / Gallery Disc (diameter 56px)
+            // 1: Center Glass Track Capsule (290px x 56px)
+            // 2: Right Circular Switch Camera Button (diameter 56px)
+            let specs: [[f32; 4]; 3] = [
+                [68.0 / 540.0, 0.50, 56.0 / 540.0, 56.0 / 84.0],
+                [0.50, 0.50, 290.0 / 540.0, 56.0 / 84.0],
+                [(540.0 - 68.0) / 540.0, 0.50, 56.0 / 540.0, 56.0 / 84.0],
             ];
 
-            // Continuous Gaussian proximity wave & smooth second-order spring dynamics
-            let sigma = 0.15f32;
-            let two_sigma_sq = 2.0 * sigma * sigma;
             let dt = 1.0f32 / 60.0f32;
             let spring_k = 260.0f32;
             let damping = 18.0f32;
             let mut active = false;
 
-            for i in 0..8 {
+            // Interactive mode selection on click / drag
+            if self.is_pressed {
+                active = true;
+                let track_min_x = 0.50 - (290.0 / 540.0) * 0.5;
+                let track_max_x = 0.50 + (290.0 / 540.0) * 0.5;
+                if px >= track_min_x && px <= track_max_x && py >= 0.15 && py <= 0.85 {
+                    if px < 0.40 {
+                        self.selected_mode = 0; // PHOTO
+                    } else if px <= 0.60 {
+                        self.selected_mode = 2; // VIDEO
+                    } else {
+                        self.selected_mode = 1; // CINEMATIC
+                    }
+                }
+            }
+
+            // Target offset in pixels: -72.5 for PHOTO (left), 72.5 for CINEMATIC (right), 0.0 for VIDEO (center)
+            let target_pill_x = match self.selected_mode {
+                0 => -72.5f32,
+                1 => 72.5f32,
+                _ => 0.0f32,
+            };
+
+            // Fluid second-order harmonic oscillator for sliding liquid pill
+            let pill_force = -spring_k * (self.pill_offset_x - target_pill_x) - damping * self.pill_vel_x;
+            self.pill_vel_x += pill_force * dt;
+            self.pill_offset_x += self.pill_vel_x * dt;
+
+            if (self.pill_offset_x - target_pill_x).abs() > 0.05 || self.pill_vel_x.abs() > 0.05 {
+                active = true;
+            }
+
+            // Hover springs for the 3 main elements
+            for i in 0..3 {
                 let [cx, cy, bw, bh] = specs[i];
                 let in_box = px >= cx - bw * 0.5 && px <= cx + bw * 0.5 && py >= cy - bh * 0.5 && py <= cy + bh * 0.5;
-                
-                let dist_sq = (px - cx) * (px - cx) + (py - cy) * (py - cy);
-                let proximity = (-dist_sq / two_sigma_sq).exp();
-                
-                let target = if in_box {
-                    1.0f32
-                } else if px >= 0.0 {
-                    proximity * 0.35f32
-                } else {
-                    0.0f32
-                };
-
+                let target = if in_box { 1.0f32 } else { 0.0f32 };
                 let force = -spring_k * (self.hover_pos[i] - target) - damping * self.hover_vel[i];
                 self.hover_vel[i] += force * dt;
                 self.hover_pos[i] += self.hover_vel[i] * dt;
@@ -310,26 +328,15 @@ impl AppData {
                 }
             }
 
-            // Interactive continuous liquid slider dragging
-            if self.is_pressed {
-                active = true;
-                if py >= 0.31 && py <= 0.45 {
-                    self.brightness_progress = ((px - 0.10) / 0.80).clamp(0.06, 0.96);
-                } else if py >= 0.47 && py <= 0.61 {
-                    self.volume_progress = ((px - 0.10) / 0.80).clamp(0.06, 0.96);
-                }
-            }
-
             if self.cursor_velocity[0].abs() > 0.0001 || self.cursor_velocity[1].abs() > 0.0001 {
                 active = true;
             }
 
-            // Authentic liquid glass elastic pull towards cursor pointer
-            let calc_stretch_bounds = |idx: usize, press: f32| -> [f32; 4] {
+            // Reactive liquid surface tension stretch
+            let calc_stretch_bounds = |idx: usize| -> [f32; 4] {
                 let [cx, cy, bw, bh] = specs[idx];
                 let t = self.hover_pos[idx].clamp(0.0, 1.0);
-                let scale = 1.0 + t * 0.025 + press;
-                // Reactive liquid surface tension: element stretches towards pointer
+                let scale = 1.0 + t * 0.025;
                 let pull_x = (px - cx) * t * 0.035;
                 let pull_y = (py - cy) * t * 0.035;
                 let w = bw * scale;
@@ -337,177 +344,83 @@ impl AppData {
                 [cx + pull_x - w * 0.5, cy + pull_y - h * 0.5, w, h]
             };
 
-            // ── Surface 0: Base macOS Dark Acrylic Glass Panel ──
-            let panel = GlassSurface::new()
-                .material(Material::LiquidGlass)
-                .shape(Shape::RoundedRectangle { radius: 26.0 })
-                .bounds(0.0, 0.0, 1.0, 1.0)
-                .curvature(0.04)
-                .bevel(3.5)
-                .refraction(0.20)
-                .dispersion(0.008)
-                .blur(5.5)
-                .tint(1.0, 1.0, 1.0, 0.0)
-                .roughness(0.0)
-                .specular(0.35)
-                .fresnel(0.35)
-                .pointer_pos(px, py)
-                .pointer_velocity(vx, vy);
-
-            // ── Subcomponent 1: Top Status Pill (Dynamic Island) ──
+            // 1. Left Circular Camera Gallery Disc Button
+            let b0 = calc_stretch_bounds(0);
             let t0 = self.hover_pos[0].clamp(0.0, 1.0);
-            let b0 = calc_stretch_bounds(0, 0.0);
-            let header_pill = GlassSurface::new()
+            let left_lens = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::Capsule)
+                .shape(Shape::Circle)
                 .bounds(b0[0], b0[1], b0[2], b0[3])
-                .curvature(0.04)
-                .bevel(3.5)
-                .refraction(0.25)
-                .dispersion(0.008)
+                .curvature(0.06)
+                .bevel(5.5)
+                .refraction(0.22)
+                .dispersion(0.010)
                 .blur(0.0)
-                .tint(1.0, 1.0, 1.0, 0.06 + t0 * 0.08)
-                .specular(0.30 + t0 * 0.10)
-                .fresnel(0.30)
-                .element_type(1.0)
+                .tint(1.0, 1.0, 1.0, 0.0)
+                .specular(0.55 + t0 * 0.15)
+                .fresnel(0.35)
+                .element_type(10.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
-            // ── Subcomponent 2: Wi-Fi Capsule (Active Apple Blue) ──
+            // 2. Center Outer Glass Track Capsule (Serene clear glass)
+            let b1 = calc_stretch_bounds(1);
             let t1 = self.hover_pos[1].clamp(0.0, 1.0);
-            let p1 = if self.is_pressed && t1 > 0.4 { -0.010 } else { 0.0 };
-            let b1 = calc_stretch_bounds(1, p1);
-            let wifi_capsule = GlassSurface::new()
+            let center_track = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::RoundedRectangle { radius: 16.0 })
+                .shape(Shape::Capsule)
                 .bounds(b1[0], b1[1], b1[2], b1[3])
-                .curvature(0.05)
-                .bevel(4.0)
-                .refraction(0.28)
+                .curvature(0.04)
+                .bevel(4.5)
+                .refraction(0.18)
                 .dispersion(0.008)
                 .blur(0.0)
-                .tint(1.0, 1.0, 1.0, 0.08 + t1 * 0.10)
-                .specular(0.35 + t1 * 0.10)
+                .tint(1.0, 1.0, 1.0, 0.0)
+                .specular(0.48 + t1 * 0.12)
                 .fresnel(0.30)
-                .element_type(2.0)
+                .element_type(11.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
-            // ── Subcomponent 3: Bluetooth Glass Capsule ──
+            // 3. Right Circular Switch Camera Button
+            let b2 = calc_stretch_bounds(2);
             let t2 = self.hover_pos[2].clamp(0.0, 1.0);
-            let p2 = if self.is_pressed && t2 > 0.4 { -0.010 } else { 0.0 };
-            let b2 = calc_stretch_bounds(2, p2);
-            let bluetooth_capsule = GlassSurface::new()
+            let right_button = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::RoundedRectangle { radius: 16.0 })
+                .shape(Shape::Circle)
                 .bounds(b2[0], b2[1], b2[2], b2[3])
+                .curvature(0.06)
+                .bevel(5.5)
+                .refraction(0.22)
+                .dispersion(0.010)
+                .blur(0.0)
+                .tint(1.0, 1.0, 1.0, 0.0)
+                .specular(0.55 + t2 * 0.15)
+                .fresnel(0.35)
+                .element_type(13.0)
+                .pointer_pos(px, py)
+                .pointer_velocity(vx, vy);
+
+            // 4. Center Active Sliding Liquid Glass Pill (Flush nested layer)
+            let pill_cx = (270.0 + self.pill_offset_x) / 540.0;
+            let pill_w = 145.0 / 540.0;
+            let pill_h = 56.0 / 84.0;
+            let pull_pill_x = (px - pill_cx) * t1 * 0.025;
+            let pull_pill_y = (py - 0.50) * t1 * 0.025;
+            let active_pill = GlassSurface::new()
+                .material(Material::LiquidGlass)
+                .shape(Shape::Capsule)
+                .bounds(pill_cx + pull_pill_x - pill_w * 0.5, 0.50 + pull_pill_y - pill_h * 0.5, pill_w, pill_h)
                 .curvature(0.05)
-                .bevel(4.0)
-                .refraction(0.28)
-                .dispersion(0.008)
-                .blur(0.0)
-                .tint(1.0, 1.0, 1.0, 0.08 + t2 * 0.10)
-                .specular(0.30 + t2 * 0.10)
-                .fresnel(0.30)
-                .element_type(3.0)
-                .pointer_pos(px, py)
-                .pointer_velocity(vx, vy);
-
-            // ── Subcomponent 4: Display Brightness Liquid Slider ──
-            let t3 = self.hover_pos[3].clamp(0.0, 1.0);
-            let b3 = calc_stretch_bounds(3, 0.0);
-            let brightness_slider = GlassSurface::new()
-                .material(Material::LiquidGlass)
-                .shape(Shape::Capsule)
-                .bounds(b3[0], b3[1], b3[2], b3[3])
-                .curvature(0.04)
-                .bevel(3.5)
-                .refraction(0.25)
-                .dispersion(0.008)
-                .blur(0.0)
-                .tint(1.0, 1.0, 1.0, 0.06 + t3 * 0.08)
-                .specular(0.30 + t3 * 0.08)
-                .fresnel(0.30)
-                .element_type(4.0)
-                .progress(self.brightness_progress)
-                .pointer_pos(px, py)
-                .pointer_velocity(vx, vy);
-
-            // ── Subcomponent 5: Sound Volume Liquid Slider ──
-            let t4 = self.hover_pos[4].clamp(0.0, 1.0);
-            let b4 = calc_stretch_bounds(4, 0.0);
-            let volume_slider = GlassSurface::new()
-                .material(Material::LiquidGlass)
-                .shape(Shape::Capsule)
-                .bounds(b4[0], b4[1], b4[2], b4[3])
-                .curvature(0.04)
-                .bevel(3.5)
-                .refraction(0.25)
-                .dispersion(0.008)
-                .blur(0.0)
-                .tint(1.0, 1.0, 1.0, 0.06 + t4 * 0.08)
-                .specular(0.30 + t4 * 0.08)
-                .fresnel(0.30)
-                .element_type(5.0)
-                .progress(self.volume_progress)
-                .pointer_pos(px, py)
-                .pointer_velocity(vx, vy);
-
-            // ── Subcomponents 6, 7, 8: Clean Circular Action Buttons (macOS Style) ──
-            let t5 = self.hover_pos[5].clamp(0.0, 1.0);
-            let p5 = if self.is_pressed && t5 > 0.4 { -0.010 } else { 0.0 };
-            let b5 = calc_stretch_bounds(5, p5);
-            let focus_lens = GlassSurface::new()
-                .material(Material::LiquidGlass)
-                .shape(Shape::Circle)
-                .bounds(b5[0], b5[1], b5[2], b5[3])
-                .curvature(0.06)
                 .bevel(5.0)
-                .refraction(0.32)
-                .dispersion(0.010)
+                .refraction(0.24)
+                .dispersion(0.012)
                 .blur(0.0)
-                .tint(1.0, 1.0, 1.0, 0.08 + t5 * 0.10)
-                .specular(0.35 + t5 * 0.10)
-                .fresnel(0.30)
-                .element_type(6.0)
-                .pointer_pos(px, py)
-                .pointer_velocity(vx, vy);
-
-            let t6 = self.hover_pos[6].clamp(0.0, 1.0);
-            let p6 = if self.is_pressed && t6 > 0.4 { -0.010 } else { 0.0 };
-            let b6 = calc_stretch_bounds(6, p6);
-            let mirror_lens = GlassSurface::new()
-                .material(Material::LiquidGlass)
-                .shape(Shape::Circle)
-                .bounds(b6[0], b6[1], b6[2], b6[3])
-                .curvature(0.06)
-                .bevel(5.0)
-                .refraction(0.32)
-                .dispersion(0.010)
-                .blur(0.0)
-                .tint(1.0, 1.0, 1.0, 0.08 + t6 * 0.10)
-                .specular(0.35 + t6 * 0.10)
-                .fresnel(0.30)
-                .element_type(7.0)
-                .pointer_pos(px, py)
-                .pointer_velocity(vx, vy);
-
-            let t7 = self.hover_pos[7].clamp(0.0, 1.0);
-            let p7 = if self.is_pressed && t7 > 0.4 { -0.010 } else { 0.0 };
-            let b7 = calc_stretch_bounds(7, p7);
-            let theme_lens = GlassSurface::new()
-                .material(Material::LiquidGlass)
-                .shape(Shape::Circle)
-                .bounds(b7[0], b7[1], b7[2], b7[3])
-                .curvature(0.06)
-                .bevel(5.0)
-                .refraction(0.32)
-                .dispersion(0.010)
-                .blur(0.0)
-                .tint(1.0, 1.0, 1.0, 0.08 + t7 * 0.10)
-                .specular(0.35 + t7 * 0.10)
-                .fresnel(0.30)
-                .element_type(8.0)
+                .tint(1.0, 1.0, 1.0, 0.03)
+                .specular(0.58)
+                .fresnel(0.35)
+                .element_type(12.0)
+                .progress(self.selected_mode as f32)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
@@ -516,15 +429,10 @@ impl AppData {
             self.cursor_velocity[1] *= 0.85;
 
             let surfaces = vec![
-                panel,
-                header_pill,
-                wifi_capsule,
-                bluetooth_capsule,
-                brightness_slider,
-                volume_slider,
-                focus_lens,
-                mirror_lens,
-                theme_lens,
+                left_lens,
+                center_track,
+                right_button,
+                active_pill,
             ];
             let _ = renderer.render(&surfaces);
             active
@@ -566,22 +474,55 @@ fn load_wallpaper_region(x: u32, y: u32, w: u32, h: u32) -> Option<(u32, u32, Ve
         })
         .unwrap_or_else(|| "/home/zius/Pictures/wallpaper/Fantasy-Landscape3.png".to_string());
 
-    let img = image::open(&path).ok()?.to_rgba8();
-    let (img_w, img_h) = img.dimensions();
-    
-    let screen_w = 1920.0f32;
-    let screen_h = 1080.0f32;
-    let sx = (x as f32 / screen_w * img_w as f32).round() as u32;
-    let sy = (y as f32 / screen_h * img_h as f32).round() as u32;
-    let sw = ((w as f32 / screen_w * img_w as f32).round() as u32).min(img_w.saturating_sub(sx));
-    let sh = ((h as f32 / screen_h * img_h as f32).round() as u32).min(img_h.saturating_sub(sy));
-    
+    let (img, sx, sy, sw, sh) = if std::env::var("GLASS_REF_BG").is_ok() {
+        if let Ok(ref_img) = image::open("assets/camera_toolbar_ref.png") {
+            let rgba = ref_img.to_rgba8();
+            let (iw, ih) = rgba.dimensions();
+            (rgba, 100, 580, (iw - 100).min(1720), (ih - 580).min(280))
+        } else {
+            let default_img = image::open(&path).ok()?.to_rgba8();
+            let (img_w, img_h) = default_img.dimensions();
+            let screen_w = 1920.0f32;
+            let screen_h = 1080.0f32;
+            let sx = (x as f32 / screen_w * img_w as f32).round() as u32;
+            let sy = (y as f32 / screen_h * img_h as f32).round() as u32;
+            let sw = ((w as f32 / screen_w * img_w as f32).round() as u32).min(img_w.saturating_sub(sx));
+            let sh = ((h as f32 / screen_h * img_h as f32).round() as u32).min(img_h.saturating_sub(sy));
+            (default_img, sx, sy, sw, sh)
+        }
+    } else {
+        let default_img = image::open(&path).ok()?.to_rgba8();
+        let (img_w, img_h) = default_img.dimensions();
+        let screen_w = 1920.0f32;
+        let screen_h = 1080.0f32;
+        let sx = (x as f32 / screen_w * img_w as f32).round() as u32;
+        let sy = (y as f32 / screen_h * img_h as f32).round() as u32;
+        let sw = ((w as f32 / screen_w * img_w as f32).round() as u32).min(img_w.saturating_sub(sx));
+        let sh = ((h as f32 / screen_h * img_h as f32).round() as u32).min(img_h.saturating_sub(sy));
+        (default_img, sx, sy, sw, sh)
+    };
+
     if sw == 0 || sh == 0 {
         return None;
     }
     
     let sub = image::imageops::crop_imm(&img, sx, sy, sw, sh).to_image();
-    let resized = image::imageops::resize(&sub, w, h, image::imageops::FilterType::Lanczos3);
+    let mut resized = image::imageops::resize(&sub, w, h, image::imageops::FilterType::Lanczos3);
+
+    // Composite circular avatar thumbnail behind left disc (center: 68, 42; top-left: 40, 14; 56x56)
+    let avatar_candidates = [
+        "assets/avatar.png",
+        "../../assets/avatar.png",
+        "/home/zius/Projects/liquid-glass/assets/avatar.png",
+    ];
+    for p in &avatar_candidates {
+        if let Ok(avatar_img) = image::open(p) {
+            let avatar_rgba = avatar_img.resize_exact(56, 56, image::imageops::FilterType::Lanczos3).to_rgba8();
+            image::imageops::overlay(&mut resized, &avatar_rgba, 40, 14);
+            break;
+        }
+    }
+
     Some((w, h, resized.into_raw()))
 }
 
@@ -621,14 +562,15 @@ fn main() {
             [-10.0, -10.0]
         },
         cursor_velocity: [0.0, 0.0],
-        hover_pos: [0.0; 8],
-        hover_vel: [0.0; 8],
+        hover_pos: [0.0; 3],
+        hover_vel: [0.0; 3],
         is_pressed: false,
-        brightness_progress: 0.78,
-        volume_progress: 0.62,
+        selected_mode: 1, // CINEMATIC
+        pill_offset_x: 72.5, // Aligns flush with right half of track (liquidglassdesign.com)
+        pill_vel_x: 0.0,
         
-        width: 360,
-        height: 480,
+        width: 540,
+        height: 84,
         first_configure: true,
         exit: false,
         frame_counter: 0,

@@ -13,10 +13,10 @@
 <br />
 
 <p align="center">
-  <img src="assets/preview.png" alt="Liquid Glass Control Center Widget" width="380" />
+  <img src="assets/preview.png" alt="Liquid Glass Camera Toolbar" width="540" />
 </p>
 
-*Physical plano-convex refraction, chromatic dispersion, directional meniscus lighting, and second-order spring kinetics running natively at 60 FPS on Linux with 0% idle CPU footprint.*
+*Physical plano-convex Snell refraction, chromatic dispersion, directional meniscus edge lighting, and fluid harmonic spring kinetics matching [liquidglassdesign.com](https://liquidglassdesign.com/gallery/liquid-glass-camera-toolbar) running natively on Wayland.*
 
 </div>
 
@@ -24,13 +24,16 @@
 
 ## ✨ Features
 
-- **💎 Genuine Optical Refraction**: Implements Snell's Law and planar refractive displacement using continuous WGSL Signed Distance Fields (SDF) and normal gradients.
-- **🌈 Chromatic Dispersion**: Physically accurate spectral splitting ($RGB$ index-of-refraction variance) along curved edges and chamfered menisci.
-- **☀️ Directional Illumination**: Eliminates artificial 360° white borders; uses genuine top-left solar lighting with delicate crest catches and edge ambient occlusion.
-- **⚡ Reactive Spring Kinetics**: Second-order underdamped harmonic oscillators (`k=260`, `c=18`) with Gaussian proximity waves and anchor scaling.
-- **🍃 Zero-Power Idle Loop**: Decouples from vblank frame callbacks once springs settle. Idle state consumes **0.0% CPU / GPU**, waking up instantly on cursor input.
-- **🖥️ Native Wayland Integration**: Built directly atop `smithay-client-toolkit` and `wlr-layer-shell`, seamlessly rendering onto desktop wallpapers behind client windows or as floating widgets.
-- **🎨 Refined Apple SF Glyphs**: Ultra-clean, delicate vector icons and straight frosted slider tracks rendered procedurally in shader space.
+- **💎 Authentic Liquid Glass Optics**: Snell's Law refraction ($IOR = 1.33 - 1.52$) and true background magnification through continuous WGSL Signed Distance Fields (SDF).
+- **🌈 Spectral Chromatic Dispersion**: Prismatic wavelength splitting ($RGB$ offsets) across curved meniscus edges and chamfered rims.
+- **📷 Liquid Glass Camera Toolbar**: Serene, floating 3-element toolbar inspired by [liquidglassdesign.com](https://liquidglassdesign.com/gallery/liquid-glass-camera-toolbar):
+  - **Left Disc**: Circular gallery preview with crystalline lens bevel.
+  - **Center Track**: Clear liquid glass capsule with a nested sliding pill exhibiting radiant lemon-gold typography (`CINEMATIC`, `PHOTO`, `VIDEO`).
+  - **Right Disc**: Circular camera-flip button with precision vector bent-arrow iconography.
+- **☀️ Directional Rim Lighting**: 1.5px luminous specular meniscus catch aligned to directional solar light.
+- **⚡ Reactive Spring Kinetics**: Second-order underdamped harmonic oscillator (`k=260`, `c=18`) for seamless mode switching and fluid cursor stretch.
+- **🍃 Zero-Power Idle Loop**: Auto-sleeps once springs settle. Idle state consumes **0.0% CPU / GPU**, waking up instantly on cursor interaction.
+- **🖥️ Native Wayland Integration**: Built on `smithay-client-toolkit` and `wlr-layer-shell`, floating transparently above desktop wallpapers.
 
 ---
 
@@ -70,7 +73,7 @@
 | **`glass-core`** | WGPU rendering backend, WGSL optical shaders, pipeline caching, uniform bindings. |
 | **`glass-platform`** | Wayland Layer Shell, X11/wlroots abstractions, native window handles. |
 | **`glass-ui`** | Component abstractions, geometry descriptors, and material parameter definitions. |
-| **`glass-panel`** | Example desktop Control Center widget with interactive sliders and capsules. |
+| **`glass-panel`** | Floating Camera Toolbar widget with gallery preview, sliding mode pill, and flip button. |
 
 ---
 

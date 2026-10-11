@@ -114,6 +114,7 @@ fn blurred_sample(uv: vec2<f32>, radius: f32) -> vec3<f32> {
 // ── Struct for Clean Minimalist Element Appearance ──
 struct ElementAppearance {
     glyph_mask: f32,
+    glyph_color: vec3<f32>,
     fluid_color: vec3<f32>,
     fluid_glow: f32,
 };
@@ -126,10 +127,151 @@ fn dist_segment(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
     return length(pa - ba * h);
 }
 
-// ── Clean Minimal Apple Liquid Glass Controls & Glyphs ──
+// ── Precision Vector Letter SDFs for Authentic Camera Toolbar Typography ──
+fn draw_letter(p: vec2<f32>, ch: u32, scale: f32) -> f32 {
+    let q = p / scale;
+    var d = 999.0;
+    switch ch {
+        // 'C'
+        case 67u: {
+            let ang = atan2(q.y, q.x);
+            if abs(ang) < 0.85 {
+                let end_top = vec2<f32>(3.4 * cos(0.85), -3.4 * sin(0.85));
+                let end_bot = vec2<f32>(3.4 * cos(0.85),  3.4 * sin(0.85));
+                d = min(length(q - end_top), length(q - end_bot));
+            } else {
+                d = abs(length(q) - 3.4);
+            }
+        }
+        // 'I'
+        case 73u: {
+            d = dist_segment(q, vec2<f32>(0.0, -4.2), vec2<f32>(0.0, 4.2));
+        }
+        // 'N'
+        case 78u: {
+            d = min(dist_segment(q, vec2<f32>(-2.6, -4.2), vec2<f32>(-2.6, 4.2)),
+                min(dist_segment(q, vec2<f32>(-2.6, -4.2), vec2<f32>(2.6, 4.2)),
+                    dist_segment(q, vec2<f32>(2.6, -4.2), vec2<f32>(2.6, 4.2))));
+        }
+        // 'E'
+        case 69u: {
+            d = min(dist_segment(q, vec2<f32>(-2.4, -4.2), vec2<f32>(-2.4, 4.2)),
+                min(dist_segment(q, vec2<f32>(-2.4, -4.2), vec2<f32>(2.2, -4.2)),
+                min(dist_segment(q, vec2<f32>(-2.4, 0.0),  vec2<f32>(1.6, 0.0)),
+                    dist_segment(q, vec2<f32>(-2.4, 4.2),  vec2<f32>(2.2, 4.2)))));
+        }
+        // 'M'
+        case 77u: {
+            d = min(dist_segment(q, vec2<f32>(-3.2, 4.2), vec2<f32>(-3.2, -4.2)),
+                min(dist_segment(q, vec2<f32>(-3.2, -4.2), vec2<f32>(0.0, 0.5)),
+                min(dist_segment(q, vec2<f32>(0.0, 0.5), vec2<f32>(3.2, -4.2)),
+                    dist_segment(q, vec2<f32>(3.2, -4.2), vec2<f32>(3.2, 4.2)))));
+        }
+        // 'A'
+        case 65u: {
+            d = min(dist_segment(q, vec2<f32>(-2.6, 4.2), vec2<f32>(0.0, -4.2)),
+                min(dist_segment(q, vec2<f32>(0.0, -4.2), vec2<f32>(2.6, 4.2)),
+                    dist_segment(q, vec2<f32>(-1.4, 1.0), vec2<f32>(1.4, 1.0))));
+        }
+        // 'T'
+        case 84u: {
+            d = min(dist_segment(q, vec2<f32>(-2.8, -4.2), vec2<f32>(2.8, -4.2)),
+                    dist_segment(q, vec2<f32>(0.0, -4.2), vec2<f32>(0.0, 4.2)));
+        }
+        // 'P'
+        case 80u: {
+            let stem = dist_segment(q, vec2<f32>(-2.4, 4.2), vec2<f32>(-2.4, -4.2));
+            let loop_top = dist_segment(q, vec2<f32>(-2.4, -4.2), vec2<f32>(0.8, -4.2));
+            let loop_bot = dist_segment(q, vec2<f32>(-2.4, -0.2), vec2<f32>(0.8, -0.2));
+            let loop_side = dist_segment(q, vec2<f32>(0.8, -4.2), vec2<f32>(0.8, -0.2));
+            d = min(stem, min(loop_top, min(loop_bot, loop_side)));
+        }
+        // 'H'
+        case 72u: {
+            d = min(dist_segment(q, vec2<f32>(-2.4, -4.2), vec2<f32>(-2.4, 4.2)),
+                min(dist_segment(q, vec2<f32>(2.4, -4.2), vec2<f32>(2.4, 4.2)),
+                    dist_segment(q, vec2<f32>(-2.4, 0.0), vec2<f32>(2.4, 0.0))));
+        }
+        // 'O'
+        case 79u: {
+            d = abs(length(q) - 3.4);
+        }
+        // 'V'
+        case 86u: {
+            d = min(dist_segment(q, vec2<f32>(-2.6, -4.2), vec2<f32>(0.0, 4.2)),
+                    dist_segment(q, vec2<f32>(0.0, 4.2), vec2<f32>(2.6, -4.2)));
+        }
+        // 'D'
+        case 68u: {
+            let stem = dist_segment(q, vec2<f32>(-2.4, -4.2), vec2<f32>(-2.4, 4.2));
+            let top_b = dist_segment(q, vec2<f32>(-2.4, -4.2), vec2<f32>(0.4, -4.2));
+            let bot_b = dist_segment(q, vec2<f32>(-2.4, 4.2), vec2<f32>(0.4, 4.2));
+            let arc_b = abs(length(q - vec2<f32>(0.4, 0.0)) - 4.2);
+            let curve = select(999.0, arc_b, q.x >= 0.4);
+            d = min(stem, min(top_b, min(bot_b, curve)));
+        }
+        default: {}
+    }
+    return d * scale;
+}
+
+fn draw_word_cinematic(p: vec2<f32>, scale: f32) -> f32 {
+    let sp = 8.4 * scale;
+    let d0 = draw_letter(p - vec2<f32>(-4.0 * sp, 0.0), 67u, scale);
+    let d1 = draw_letter(p - vec2<f32>(-3.0 * sp, 0.0), 73u, scale);
+    let d2 = draw_letter(p - vec2<f32>(-2.0 * sp, 0.0), 78u, scale);
+    let d3 = draw_letter(p - vec2<f32>(-1.0 * sp, 0.0), 69u, scale);
+    let d4 = draw_letter(p - vec2<f32>( 0.0 * sp, 0.0), 77u, scale);
+    let d5 = draw_letter(p - vec2<f32>( 1.0 * sp, 0.0), 65u, scale);
+    let d6 = draw_letter(p - vec2<f32>( 2.0 * sp, 0.0), 84u, scale);
+    let d7 = draw_letter(p - vec2<f32>( 3.0 * sp, 0.0), 73u, scale);
+    let d8 = draw_letter(p - vec2<f32>( 4.0 * sp, 0.0), 67u, scale);
+    return min(d0, min(d1, min(d2, min(d3, min(d4, min(d5, min(d6, min(d7, d8))))))));
+}
+
+fn draw_word_photo(p: vec2<f32>, scale: f32) -> f32 {
+    let sp = 8.2 * scale;
+    let d0 = draw_letter(p - vec2<f32>(-2.0 * sp, 0.0), 80u, scale);
+    let d1 = draw_letter(p - vec2<f32>(-1.0 * sp, 0.0), 72u, scale);
+    let d2 = draw_letter(p - vec2<f32>( 0.0 * sp, 0.0), 79u, scale);
+    let d3 = draw_letter(p - vec2<f32>( 1.0 * sp, 0.0), 84u, scale);
+    let d4 = draw_letter(p - vec2<f32>( 2.0 * sp, 0.0), 79u, scale);
+    return min(d0, min(d1, min(d2, min(d3, d4))));
+}
+
+fn draw_word_video(p: vec2<f32>, scale: f32) -> f32 {
+    let sp = 8.2 * scale;
+    let d0 = draw_letter(p - vec2<f32>(-2.0 * sp, 0.0), 86u, scale);
+    let d1 = draw_letter(p - vec2<f32>(-1.0 * sp, 0.0), 73u, scale);
+    let d2 = draw_letter(p - vec2<f32>( 0.0 * sp, 0.0), 68u, scale);
+    let d3 = draw_letter(p - vec2<f32>( 1.0 * sp, 0.0), 69u, scale);
+    let d4 = draw_letter(p - vec2<f32>( 2.0 * sp, 0.0), 79u, scale);
+    return min(d0, min(d1, min(d2, min(d3, d4))));
+}
+
+fn dist_bent_arrow(p: vec2<f32>) -> f32 {
+    let s = 1.45;
+    let q = p / s;
+    // Arrow top: horizontal shaft to the left from x = 1.8 to x = -6.0 at y = -4.5
+    let h_shaft = dist_segment(q, vec2<f32>(-6.0, -4.5), vec2<f32>(1.8, -4.5));
+    // Vertical shaft on the right from (4.8, -1.5) to (4.8, 1.8)
+    let v_shaft = dist_segment(q, vec2<f32>(4.8, -1.5), vec2<f32>(4.8, 1.8));
+    // 90 deg corner arc between (1.8, -4.5) and (4.8, -1.5) centered at (1.8, -1.5) with radius 3.0
+    var corner = 999.0;
+    if q.x >= 1.8 && q.y <= -1.5 {
+        corner = abs(length(q - vec2<f32>(1.8, -1.5)) - 3.0);
+    }
+    // Arrowhead at (-6.0, -4.5) pointing left
+    let barb_top = dist_segment(q, vec2<f32>(-6.0, -4.5), vec2<f32>(-2.8, -7.8));
+    let barb_bot = dist_segment(q, vec2<f32>(-6.0, -4.5), vec2<f32>(-2.8, -1.2));
+    return min(min(h_shaft, v_shaft), min(corner, min(barb_top, barb_bot))) * s;
+}
+
+// ── Clean Minimal Liquid Glass Camera Toolbar Elements ──
 fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, progress: f32, time: f32) -> ElementAppearance {
     var app: ElementAppearance;
     app.glyph_mask = 0.0;
+    app.glyph_color = vec3<f32>(1.0, 1.0, 1.0);
     app.fluid_color = vec3<f32>(1.0, 1.0, 1.0);
     app.fluid_glow = 0.0;
     
@@ -137,146 +279,54 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         return app;
     }
     
-    // 1. Dynamic Island Header Pill: Clean Minimal Status Capsule
-    if el_type >= 0.9 && el_type <= 1.1 {
-        let beacon_pos = local_p - vec2<f32>(-half.x + 14.0, 0.0);
-        let beacon = 1.0 - smoothstep(-0.4, 0.4, length(beacon_pos) - 2.0);
-        
-        // Delicate minimal cellular signal bars
-        let b1 = rr_sdf(local_p - vec2<f32>(half.x - 22.0, 1.8), vec2<f32>(0.9, 1.8), 0.4);
-        let b2 = rr_sdf(local_p - vec2<f32>(half.x - 17.0, 0.8), vec2<f32>(0.9, 2.8), 0.4);
-        let b3 = rr_sdf(local_p - vec2<f32>(half.x - 12.0, -0.4), vec2<f32>(0.9, 4.0), 0.4);
-        let bars = 1.0 - smoothstep(-0.4, 0.4, min(b1, min(b2, b3)));
-        
-        app.glyph_mask = max(beacon * 0.80, bars * 0.65);
-        app.fluid_color = mix(vec3<f32>(0.35, 0.90, 0.60), vec3<f32>(1.0), bars);
-        app.fluid_glow = beacon * 0.25;
+    // 10. Left Element: Circular Camera Gallery Preview Disc
+    if el_type >= 9.9 && el_type <= 10.1 {
+        let r_p = length(local_p);
+        let ring = abs(r_p - 26.5) - 0.55;
+        let ring_mask = (1.0 - smoothstep(-0.35, 0.35, ring)) * 0.45;
+        app.glyph_mask = ring_mask;
+        app.glyph_color = vec3<f32>(0.98, 0.99, 1.0);
         return app;
     }
     
-    // 2. Wi-Fi Glass Capsule: Small, Professional Apple Wi-Fi Arcs (14px) - Active Apple Blue
-    if el_type >= 1.9 && el_type <= 2.1 {
-        let p_rel = local_p - vec2<f32>(0.0, 4.5);
-        let r = length(p_rel);
-        
-        let dot_mask = 1.0 - smoothstep(-0.4, 0.4, r - 1.5);
-        
-        let arc1 = abs(r - 5.0) - 0.75;
-        let arc2 = abs(r - 8.5) - 0.75;
-        let arc3 = abs(r - 12.0) - 0.75;
-        let min_arc = min(arc1, min(arc2, arc3));
-        
-        let angle = atan2(p_rel.y, abs(p_rel.x));
-        let in_wedge = select(0.0, 1.0, angle < -0.85);
-        let arcs_mask = (1.0 - smoothstep(-0.4, 0.4, min_arc)) * in_wedge;
-        
-        app.glyph_mask = max(dot_mask, arcs_mask) * 0.95;
-        app.fluid_color = vec3<f32>(0.0, 0.48, 1.0); // Vibrant Apple Blue #007AFF
-        app.fluid_glow = 0.88;
+    // 11. Center Element: Outer Glass Track Capsule (Serene, clear liquid glass)
+    if el_type >= 10.9 && el_type <= 11.1 {
+        // Track has no text - pristine clear glass
         return app;
     }
     
-    // 3. Bluetooth Glass Capsule: Small, Professional Apple Bluetooth (14px)
-    if el_type >= 2.9 && el_type <= 3.1 {
-        let d_spine = dist_segment(local_p, vec2<f32>(0.0, -7.5), vec2<f32>(0.0, 7.5)) - 0.8;
-        let d_up1 = dist_segment(local_p, vec2<f32>(0.0, -7.5), vec2<f32>(4.5, -3.8)) - 0.8;
-        let d_up2 = dist_segment(local_p, vec2<f32>(4.5, -3.8), vec2<f32>(-4.0, 3.8)) - 0.8;
-        let d_dn1 = dist_segment(local_p, vec2<f32>(0.0, 7.5), vec2<f32>(4.5, 3.8)) - 0.8;
-        let d_dn2 = dist_segment(local_p, vec2<f32>(4.5, 3.8), vec2<f32>(-4.0, -3.8)) - 0.8;
-        
-        let rune = min(d_spine, min(min(d_up1, d_up2), min(d_dn1, d_dn2)));
-        app.glyph_mask = (1.0 - smoothstep(-0.4, 0.4, rune)) * 0.90;
-        return app;
-    }
-    
-    // 4. Display Brightness Liquid Slider: Delicate Sun Icon (12px) + Solid Luminous Fill
-    if el_type >= 3.9 && el_type <= 4.1 {
-        let sun_center = vec2<f32>(-half.x + 16.0, 0.0);
-        let sun_p = local_p - sun_center;
-        let sun_r = length(sun_p);
-        let sun_core = 1.0 - smoothstep(-0.4, 0.4, sun_r - 2.5);
-        
-        var rays = 0.0;
-        for (var i = 0.0; i < 8.0; i += 1.0) {
-            let theta = i * 0.785398;
-            let ray_start = vec2<f32>(cos(theta), sin(theta)) * 4.0;
-            let ray_end = vec2<f32>(cos(theta), sin(theta)) * 5.8;
-            let d_ray = dist_segment(sun_p, ray_start, ray_end) - 0.65;
-            rays = max(rays, 1.0 - smoothstep(-0.4, 0.4, d_ray));
+    // 12. Active Sliding Liquid Glass Mode Pill: Radiant Mode Name in neon gold #DCF842
+    if el_type >= 11.9 && el_type <= 12.1 {
+        let text_scale = 0.84;
+        var d_text = 999.0;
+        if progress < 0.5 {
+            d_text = draw_word_photo(local_p, text_scale);
+        } else if progress < 1.5 {
+            d_text = draw_word_cinematic(local_p, text_scale);
+        } else {
+            d_text = draw_word_video(local_p, text_scale);
         }
-        let sun_icon = max(sun_core, rays) * 0.90;
         
-        let track_start = -half.x + 2.0;
-        let track_width = half.x * 2.0 - 4.0;
-        let fill_x = track_start + track_width * clamp(progress, 0.04, 0.98);
+        let stroke_mask = 1.0 - smoothstep(-0.35, 0.35, d_text - 0.58);
+        app.glyph_mask = stroke_mask * 0.98;
+        // Signature luminous liquid gold #DCF842 from liquidglassdesign.com
+        let gold = vec3<f32>(0.86, 0.97, 0.26);
+        app.glyph_color = gold;
         
-        let in_fill = select(0.0, 1.0, local_p.x <= fill_x);
-        let divider = 1.0 - smoothstep(0.0, 1.0, abs(local_p.x - fill_x) - 0.5);
-        
-        app.glyph_mask = max(sun_icon, divider * 0.70);
-        app.fluid_color = vec3<f32>(0.92, 0.94, 0.98);
-        app.fluid_glow = in_fill * 0.85;
+        // Soft radiant gold bloom around the active text (additive emission)
+        let text_glow = exp(-max(d_text, 0.0) * 0.65) * 0.45;
+        app.fluid_color = gold;
+        app.fluid_glow = text_glow;
         return app;
     }
     
-    // 5. Sound Volume Liquid Slider: Delicate Speaker Icon (12px) + Solid Luminous Fill
-    if el_type >= 4.9 && el_type <= 5.1 {
-        let spk_center = vec2<f32>(-half.x + 16.0, 0.0);
-        let spk_p = local_p - spk_center;
+    // 13. Right Element: Circular Switch Camera Button (Exact bent loop arrows)
+    if el_type >= 12.9 && el_type <= 13.1 {
+        let d_arrow = min(dist_bent_arrow(local_p), dist_bent_arrow(-local_p)) - 0.72;
+        let icon = 1.0 - smoothstep(-0.35, 0.35, d_arrow);
         
-        let d_body = max(abs(spk_p.y) - 2.8, abs(spk_p.x + 2.0) - 1.8);
-        let d_cone = max(abs(spk_p.y) - (spk_p.x * 0.7 + 2.8), max(-spk_p.x - 2.0, spk_p.x - 2.5));
-        let speaker = 1.0 - smoothstep(-0.4, 0.4, min(d_body, d_cone));
-        
-        let arc1 = abs(length(spk_p) - 5.0) - 0.75;
-        let arc2 = abs(length(spk_p) - 8.0) - 0.75;
-        let angle = atan2(abs(spk_p.y), spk_p.x);
-        let in_sound_fan = select(0.0, 1.0, angle < 0.70);
-        let sound_arcs = (1.0 - smoothstep(-0.4, 0.4, min(arc1, arc2))) * in_sound_fan;
-        let spk_icon = max(speaker, sound_arcs) * 0.90;
-        
-        let track_start = -half.x + 2.0;
-        let track_width = half.x * 2.0 - 4.0;
-        let fill_x = track_start + track_width * clamp(progress, 0.04, 0.98);
-        
-        let in_fill = select(0.0, 1.0, local_p.x <= fill_x);
-        let divider = 1.0 - smoothstep(0.0, 1.0, abs(local_p.x - fill_x) - 0.5);
-        
-        app.glyph_mask = max(spk_icon, divider * 0.70);
-        app.fluid_color = vec3<f32>(0.92, 0.94, 0.98);
-        app.fluid_glow = in_fill * 0.85;
-        return app;
-    }
-    
-    // 6. Focus / Moon Lens: Delicate Crescent Moon (13px)
-    if el_type >= 5.9 && el_type <= 6.1 {
-        let moon_outer = length(local_p) - 6.5;
-        let moon_inner = length(local_p - vec2<f32>(2.8, -2.2)) - 5.5;
-        let moon_d = max(moon_outer, -moon_inner);
-        
-        app.glyph_mask = (1.0 - smoothstep(-0.4, 0.4, moon_d)) * 0.72;
-        return app;
-    }
-    
-    // 7. Screen Mirroring Lens: Delicate Dual Screens (12px)
-    if el_type >= 6.9 && el_type <= 7.1 {
-        let scr1 = rr_sdf(local_p - vec2<f32>(-2.0, 1.5), vec2<f32>(5.5, 3.8), 1.0);
-        let frame1 = abs(scr1) - 0.8;
-        let scr2 = rr_sdf(local_p - vec2<f32>(2.0, -1.5), vec2<f32>(5.5, 3.8), 1.0);
-        let frame2 = abs(scr2) - 0.8;
-        
-        app.glyph_mask = (1.0 - smoothstep(-0.4, 0.4, min(frame1, frame2))) * 0.72;
-        return app;
-    }
-    
-    // 8. Theme / Night Shift Lens: Delicate Sun/Moon Disc (12px)
-    if el_type >= 7.9 && el_type <= 8.1 {
-        let circle_d = length(local_p) - 6.0;
-        let circle = 1.0 - smoothstep(-0.4, 0.4, circle_d);
-        let left_half = select(0.0, 1.0, local_p.x < 0.0);
-        let right_ring = 1.0 - smoothstep(-0.4, 0.4, abs(circle_d) - 0.8);
-        
-        app.glyph_mask = max(circle * left_half, right_ring) * 0.72;
+        app.glyph_mask = icon * 0.98;
+        app.glyph_color = vec3<f32>(0.98, 0.99, 1.0);
         return app;
     }
     
@@ -415,17 +465,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Edge-weighted sharpness: liquid rim has crystalline optical clarity
     var col = mix(blurred, sharp, pow(edge, 1.4) * 0.45);
     
-    if is_base_panel {
-        // Deep macOS Dark Acrylic Glass
-        let dark_acrylic = vec3<f32>(0.07, 0.08, 0.11);
-        let lum = dot(col, vec3<f32>(0.299, 0.587, 0.114));
-        let saturated = mix(vec3<f32>(lum), col, 1.30); // 30% saturation lift
-        col = mix(saturated * 0.65, dark_acrylic, 0.62);
+    // Pure, serene Liquid Glass transmission (liquidglassdesign.com aesthetic)
+    if params.tint.a > 0.0 {
+        col = mix(col, params.tint.rgb, params.tint.a);
     } else {
-        // Subcomponent on the base panel
-        let plate_tint = params.tint.rgb;
-        let plate_alpha = params.tint.a;
-        col = mix(col, plate_tint, plate_alpha);
+        // Pristine clear liquid glass: subtle luminous lift
+        col = col * 1.02 + vec3<f32>(0.02, 0.02, 0.03);
     }
     
     // ════════════════════════════════════════════
@@ -434,20 +479,20 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let L_dir = normalize(vec2<f32>(-0.45, -0.7));
     let N_2d = N.xy;
     
-    // Directional meniscus bevel catch
+    // Directional meniscus bevel catch (sunlight glint)
     let rim_alignment = max(dot(N_2d, L_dir), 0.0);
-    let rim_crest = pow(edge, 1.8) * rim_alignment * 0.38 * params.specular_strength;
+    let rim_crest = pow(edge, 1.8) * rim_alignment * 0.50 * params.specular_strength;
     
     // Ambient liquid specular sheen
     let V = vec3<f32>(0.0, 0.0, 1.0);
     let L1 = normalize(vec3<f32>(-0.4, -0.65, 0.75));
     let H1 = normalize(L1 + V);
-    let spec1 = pow(max(dot(N, H1), 0.0), 48.0) * 0.35 * params.specular_strength;
+    let spec1 = pow(max(dot(N, H1), 0.0), 64.0) * 0.40 * params.specular_strength;
     
-    // 1px hairline border
-    let border_1px = smoothstep(1.0, 0.0, inside);
-    let border_light = max(dot(N_2d, L_dir), 0.0) * 0.22 + select(0.06, 0.12, is_base_panel);
-    let border_crest = border_1px * border_light * params.specular_strength;
+    // Crisp Apple Liquid Glass rim stroke (1.5px width)
+    let rim_stroke = smoothstep(1.8, 0.2, inside);
+    let rim_dir = max(dot(N_2d, L_dir), 0.0) * 0.55 + 0.35;
+    let border_crest = rim_stroke * rim_dir * 0.75 * params.specular_strength;
     
     // ════════════════════════════════════════════
     // 7. INTERACTIVE CURSOR LIQUID SPOTLIGHT
@@ -464,7 +509,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         
         let cur_dir_2d = normalize(cur_vec + vec2<f32>(0.001));
         let rim_face_cur = max(dot(N_2d, cur_dir_2d), 0.0);
-        cur_rim_glow = pow(edge, 1.6) * rim_face_cur * cur_t * 0.32 * params.specular_strength;
+        cur_rim_glow = pow(edge, 1.6) * rim_face_cur * cur_t * 0.35 * params.specular_strength;
     }
     
     // ════════════════════════════════════════════
@@ -472,28 +517,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     let app = render_element_appearance(local_px, half_size, params.padding2.x, params.padding2.y, params.time);
     
-    if app.fluid_glow > 0.0 {
-        col = mix(col, app.fluid_color, app.fluid_glow);
-    }
-    
-    // Invert slider icon to dark charcoal over white fill for perfect contrast
-    var glyph_color = vec3<f32>(1.0, 1.0, 1.0);
-    if (params.padding2.x >= 3.9 && params.padding2.x <= 5.1) {
-        let track_start = -half_size.x + 2.0;
-        let track_width = half_size.x * 2.0 - 4.0;
-        let fill_x = track_start + track_width * clamp(params.padding2.y, 0.04, 0.98);
-        if local_px.x <= fill_x {
-            glyph_color = vec3<f32>(0.12, 0.14, 0.18);
-        }
-    }
-    
     // ════════════════════════════════════════════
     // 9. MASTER COMPOSITE
     // ════════════════════════════════════════════
     var fin = col;
+    fin += app.fluid_color * app.fluid_glow;
     fin += vec3<f32>(border_crest + rim_crest);
     fin += vec3<f32>(spec1 + cur_spec + cur_rim_glow);
-    fin = mix(fin, glyph_color, app.glyph_mask);
+    fin = mix(fin, app.glyph_color, app.glyph_mask);
     
     return vec4<f32>(fin * mask, mask);
 }
