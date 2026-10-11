@@ -142,31 +142,49 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv;
     
     // Padding around the window so the drop shadow is not clipped
-    let shadow_pad = 16.0;
-    let panel_size = params.surface_size - vec2<f32>(shadow_pad * 2.0);
-    let half_size = panel_size * 0.5;
-    let center = params.surface_size * 0.5;
+    let is_fullscreen_panel = (params.bounds.z >= 0.95 && params.bounds.w >= 0.95);
+    let shadow_pad = select(8.0, 16.0, is_fullscreen_panel);
+    
+    var bounds_px: vec4<f32>;
+    if is_fullscreen_panel {
+        bounds_px = vec4<f32>(shadow_pad, shadow_pad, params.surface_size.x - shadow_pad * 2.0, params.surface_size.y - shadow_pad * 2.0);
+    } else {
+        bounds_px = vec4<f32>(
+            params.bounds.x * params.surface_size.x,
+            params.bounds.y * params.surface_size.y,
+            params.bounds.z * params.surface_size.x,
+            params.bounds.w * params.surface_size.y
+        );
+    }
+    
+    let half_size = vec2<f32>(bounds_px.z * 0.5, bounds_px.w * 0.5);
+    let center = vec2<f32>(bounds_px.x + half_size.x, bounds_px.y + half_size.y);
     let local_px = uv * params.surface_size - center;
     let r = min(params.corner_radius, min(half_size.x, half_size.y));
     
-    // Liquid displacement
+    // Liquid displacement (stronger on large panels, subtle on subcomponents)
+    let liq_scale = select(0.006, 0.015, is_fullscreen_panel);
     let liq = liquid_offset(uv * params.surface_size);
-    let deformed_px = local_px + liq * 0.015;
+    let deformed_px = local_px + liq * liq_scale;
     
     let sdf = rr_sdf(deformed_px, half_size, r);
     
     // ════════════════════════════════════════════
-    // 1. SOFT DROP SHADOW (Outside the glass panel)
+    // 1. SOFT DROP SHADOW (Outside the glass surface)
     // ════════════════════════════════════════════
+    let max_shadow_dist = select(10.0, shadow_pad, is_fullscreen_panel);
     if sdf > 0.0 {
-        let shadow_offset = vec2<f32>(0.0, 3.0);
+        if sdf > max_shadow_dist {
+            return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+        }
+        let shadow_offset = vec2<f32>(0.0, select(2.0, 3.5, is_fullscreen_panel));
         let shadow_sdf = rr_sdf(local_px - shadow_offset, half_size, r);
         let d = max(shadow_sdf, 0.0);
-        let spread = 14.0;
-        let outer_shadow = exp(-d * d / (spread * spread)) * 0.35;
-        let contact_shadow = exp(-d * 0.2) * 0.25;
+        let spread = select(7.0, 14.0, is_fullscreen_panel);
+        let outer_shadow = exp(-d * d / (spread * spread)) * select(0.30, 0.35, is_fullscreen_panel);
+        let contact_shadow = exp(-d * 0.25) * select(0.22, 0.25, is_fullscreen_panel);
         let shadow = (outer_shadow + contact_shadow) * 0.45;
-        let edge_fade = 1.0 - smoothstep(shadow_pad - 1.0, shadow_pad, d);
+        let edge_fade = 1.0 - smoothstep(max_shadow_dist - 1.0, max_shadow_dist, d);
         return vec4<f32>(0.0, 0.0, 0.0, shadow * edge_fade);
     }
     
@@ -181,7 +199,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     // 3. PILL BEVEL HEIGHT FIELD & SURFACE NORMAL
     // ════════════════════════════════════════════
-    let z_radius = max(params.bevel, 8.0);
+    let z_radius = min(max(params.bevel, 3.0), min(half_size.x, half_size.y) * 0.85);
     let eps = 1.5;
     
     let d_c = inside;

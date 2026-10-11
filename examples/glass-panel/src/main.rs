@@ -218,29 +218,170 @@ impl AppData {
             }
         }
 
-        // 3. Render true stretched liquid glass
+        // 3. Render true stretched liquid glass with nested subcomponents
         if let Some(renderer) = &mut self.renderer {
+            let px = self.cursor_pos[0];
+            let py = self.cursor_pos[1];
+            let vx = self.cursor_velocity[0];
+            let vy = self.cursor_velocity[1];
+
+            // ── Surface 0: Base Liquid Glass Widget ──
             let panel = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::RoundedRectangle { radius: 32.0 })
                 .bounds(0.0, 0.0, 1.0, 1.0)
-                .curvature(0.15)   // Edge highlight intensity (maps to edgeHL)
-                .bevel(40.0)       // Z-radius: bevel depth (pill cross-section depth)
-                .refraction(0.69)  // Reference default: how much glass bends the image
-                .dispersion(0.05)  // Chromatic aberration at edges
-                .blur(6.0)         // Light background blur  
-                .tint(1.0, 1.0, 1.0, 0.0) // No tint
-                .roughness(0.0)    // No micro-distortion
-                .specular(0.15)    // Subtle specular highlights
-                .fresnel(1.0)      // Full Fresnel (reference default)
-                .pointer_pos(self.cursor_pos[0], self.cursor_pos[1])
-                .pointer_velocity(self.cursor_velocity[0], self.cursor_velocity[1]);
-            
+                .curvature(0.18)   // Edge highlight rim
+                .bevel(36.0)       // Pill-bevel z-radius
+                .refraction(0.72)  // Liquid refraction lensing
+                .dispersion(0.04)  // Chromatic dispersion at perimeter
+                .blur(5.0)         // Soft background vibrancy blur
+                .tint(1.0, 1.0, 1.0, 0.0) // Transparent crystal
+                .roughness(0.0)
+                .specular(0.35)
+                .fresnel(1.0)
+                .pointer_pos(px, py)
+                .pointer_velocity(vx, vy);
+
+            // ── Subcomponent 1: Top Status Pill (Dynamic Island) ──
+            let header_pill = GlassSurface::new()
+                .material(Material::Acrylic)
+                .shape(Shape::Capsule)
+                .bounds(0.08, 0.06, 0.84, 0.08)
+                .curvature(0.35)
+                .bevel(10.0)
+                .refraction(0.42)
+                .dispersion(0.03)
+                .blur(8.0)
+                .tint(1.0, 1.0, 1.0, 0.09)
+                .specular(0.75)
+                .fresnel(0.85)
+                .pointer_pos(px, py)
+                .pointer_velocity(vx, vy);
+
+            // ── Subcomponent 2 & 3: Dual Metric Quick-Tiles ──
+            let tile_left = GlassSurface::new()
+                .material(Material::Acrylic)
+                .shape(Shape::RoundedRectangle { radius: 18.0 })
+                .bounds(0.08, 0.17, 0.40, 0.16)
+                .curvature(0.25)
+                .bevel(12.0)
+                .refraction(0.48)
+                .dispersion(0.03)
+                .blur(8.0)
+                .tint(0.92, 0.96, 1.0, 0.07)
+                .specular(0.6)
+                .fresnel(0.75)
+                .pointer_pos(px, py)
+                .pointer_velocity(vx, vy);
+
+            let tile_right = GlassSurface::new()
+                .material(Material::Acrylic)
+                .shape(Shape::RoundedRectangle { radius: 18.0 })
+                .bounds(0.52, 0.17, 0.40, 0.16)
+                .curvature(0.25)
+                .bevel(12.0)
+                .refraction(0.48)
+                .dispersion(0.03)
+                .blur(8.0)
+                .tint(0.98, 0.94, 1.0, 0.07)
+                .specular(0.6)
+                .fresnel(0.75)
+                .pointer_pos(px, py)
+                .pointer_velocity(vx, vy);
+
+            // ── Subcomponent 4: Center Hero Feature Card ──
+            let center_card = GlassSurface::new()
+                .material(Material::FrostedGlass)
+                .shape(Shape::RoundedRectangle { radius: 22.0 })
+                .bounds(0.08, 0.36, 0.84, 0.28)
+                .curvature(0.28)
+                .bevel(16.0)
+                .refraction(0.58)
+                .dispersion(0.03)
+                .blur(10.0)
+                .tint(1.0, 1.0, 1.0, 0.06)
+                .specular(0.55)
+                .fresnel(0.8)
+                .pointer_pos(px, py)
+                .pointer_velocity(vx, vy);
+
+            // ── Subcomponents 5, 6, 7: Bottom Action Glass Buttons ──
+            let btn_left = GlassSurface::new()
+                .material(Material::Acrylic)
+                .shape(Shape::Capsule)
+                .bounds(0.12, 0.68, 0.20, 0.12)
+                .curvature(0.4)
+                .bevel(10.0)
+                .refraction(0.4)
+                .dispersion(0.02)
+                .blur(6.0)
+                .tint(1.0, 1.0, 1.0, 0.10)
+                .specular(0.85)
+                .fresnel(0.75)
+                .pointer_pos(px, py)
+                .pointer_velocity(vx, vy);
+
+            let btn_center = GlassSurface::new()
+                .material(Material::LiquidGlass)
+                .shape(Shape::Capsule)
+                .bounds(0.38, 0.66, 0.24, 0.15)
+                .curvature(0.5)
+                .bevel(14.0)
+                .refraction(0.65)
+                .dispersion(0.04)
+                .blur(8.0)
+                .tint(1.0, 1.0, 1.0, 0.14)
+                .specular(1.1)
+                .fresnel(0.9)
+                .pointer_pos(px, py)
+                .pointer_velocity(vx, vy);
+
+            let btn_right = GlassSurface::new()
+                .material(Material::Acrylic)
+                .shape(Shape::Capsule)
+                .bounds(0.68, 0.68, 0.20, 0.12)
+                .curvature(0.4)
+                .bevel(10.0)
+                .refraction(0.4)
+                .dispersion(0.02)
+                .blur(6.0)
+                .tint(1.0, 1.0, 1.0, 0.10)
+                .specular(0.85)
+                .fresnel(0.75)
+                .pointer_pos(px, py)
+                .pointer_velocity(vx, vy);
+
+            // ── Subcomponent 8: Bottom Slider Groove Track ──
+            let slider_track = GlassSurface::new()
+                .material(Material::Acrylic)
+                .shape(Shape::Capsule)
+                .bounds(0.12, 0.85, 0.76, 0.045)
+                .curvature(0.2)
+                .bevel(6.0)
+                .refraction(0.32)
+                .dispersion(0.02)
+                .blur(4.0)
+                .tint(1.0, 1.0, 1.0, 0.07)
+                .specular(0.6)
+                .fresnel(0.6)
+                .pointer_pos(px, py)
+                .pointer_velocity(vx, vy);
+
             // Fluid damping for pointer velocity
             self.cursor_velocity[0] *= 0.88;
             self.cursor_velocity[1] *= 0.88;
-            
-            let surfaces = vec![panel];
+
+            let surfaces = vec![
+                panel,
+                header_pill,
+                tile_left,
+                tile_right,
+                center_card,
+                btn_left,
+                btn_center,
+                btn_right,
+                slider_track,
+            ];
             let _ = renderer.render(&surfaces);
         }
     }
