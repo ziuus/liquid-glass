@@ -144,8 +144,8 @@ impl LayerShellHandler for AppData {
         _serial: u32,
     ) {
         if configure.new_size.0 == 0 || configure.new_size.1 == 0 {
-            self.width = 360;
-            self.height = 480;
+            self.width = 420;
+            self.height = 110;
         } else {
             self.width = configure.new_size.0;
             self.height = configure.new_size.1;
@@ -292,99 +292,42 @@ impl AppData {
             let (hr, min, sec, wday, mday) = get_local_time();
             let bat_capacity = get_battery_info();
 
-            // Refined Architectural Clock Widget Layout Specifications:
-            // Total Window: 540 x 140
-            // 0: Left Swiss Analog Dial: Circle diameter 120px (center x=78, y=70)
-            // 1: Right Digital Clock + Battery Capsule: 380px x 120px (center x=334, y=70)
-            let specs: [[f32; 4]; 2] = [
-                [78.0 / 540.0, 0.50, 120.0 / 540.0, 120.0 / 140.0],
-                [334.0 / 540.0, 0.50, 380.0 / 540.0, 120.0 / 140.0],
-            ];
+            // Unified Luxury Liquid Glass Island (390px x 94px)
+            let spec: [f32; 4] = [0.50, 0.50, 390.0 / 420.0, 94.0 / 110.0];
 
             let dt = 1.0f32 / 60.0f32;
             let spring_k = 260.0f32;
             let damping = 18.0f32;
-            let mut active = true; // Continuous 60 FPS clock animation for sweeping second hand
+            let active = true; // Continuous 60 FPS clock animation for sweeping second hand
 
-            // Hover springs for the 2 main glass surfaces
-            for i in 0..2 {
-                let [cx, cy, bw, bh] = specs[i];
-                let in_box = px >= cx - bw * 0.5 && px <= cx + bw * 0.5 && py >= cy - bh * 0.5 && py <= cy + bh * 0.5;
-                let target = if in_box { 1.0f32 } else { 0.0f32 };
-                let force = -spring_k * (self.hover_pos[i] - target) - damping * self.hover_vel[i];
-                self.hover_vel[i] += force * dt;
-                self.hover_pos[i] += self.hover_vel[i] * dt;
-            }
+            // Hover spring
+            let in_box = px >= spec[0] - spec[2] * 0.5 && px <= spec[0] + spec[2] * 0.5 && py >= spec[1] - spec[3] * 0.5 && py <= spec[1] + spec[3] * 0.5;
+            let target = if in_box { 1.0f32 } else { 0.0f32 };
+            let force = -spring_k * (self.hover_pos[0] - target) - damping * self.hover_vel[0];
+            self.hover_vel[0] += force * dt;
+            self.hover_pos[0] += self.hover_vel[0] * dt;
 
-            // Target seconds pill offset: anchored elegantly at the right end of the digital capsule
-            let target_pill_x = 135.0f32;
-            let pill_force = -spring_k * (self.pill_offset_x - target_pill_x) - damping * self.pill_vel_x;
-            self.pill_vel_x += pill_force * dt;
-            self.pill_offset_x += self.pill_vel_x * dt;
-
-            // Rock-solid static widget positions (Zero displacement on hover)
-            let b0 = [specs[0][0] - specs[0][2] * 0.5, specs[0][1] - specs[0][3] * 0.5, specs[0][2], specs[0][3]];
-            let b1 = [specs[1][0] - specs[1][2] * 0.5, specs[1][1] - specs[1][3] * 0.5, specs[1][2], specs[1][3]];
+            // Static widget position (Zero displacement on hover)
+            let b0 = [spec[0] - spec[2] * 0.5, spec[1] - spec[3] * 0.5, spec[2], spec[3]];
 
             // Packed format: wday * 10000 + mday * 100 + bat_capacity
             let date_bat_code = (wday as f32 * 10000.0) + (mday as f32 * 100.0) + bat_capacity;
             let format_flag = if self.is_12h { 1.0f32 } else { 0.0f32 };
 
-            // 1. Left Swiss Minimalist Precision Analog Dial (120px diameter)
-            let analog_dial = GlassSurface::new()
+            // Single Unified Liquid Glass Island Surface
+            let island = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::Circle)
+                .shape(Shape::Capsule)
                 .bounds(b0[0], b0[1], b0[2], b0[3])
                 .curvature(0.045)
-                .bevel(5.0)
+                .bevel(4.0)
                 .refraction(0.12)
-                .dispersion(0.006)
+                .dispersion(0.005)
                 .blur(0.0)
                 .tint(hr, min, sec, format_flag)
                 .specular(0.55)
                 .fresnel(0.32)
-                .element_type(20.0)
-                .progress(date_bat_code)
-                .pointer_pos(px, py)
-                .pointer_velocity(vx, vy);
-
-            // 2. Right Digital Liquid Glass Clock + Battery Capsule
-            let digital_capsule = GlassSurface::new()
-                .material(Material::LiquidGlass)
-                .shape(Shape::Capsule)
-                .bounds(b1[0], b1[1], b1[2], b1[3])
-                .curvature(0.04)
-                .bevel(4.5)
-                .refraction(0.12)
-                .dispersion(0.006)
-                .blur(0.0)
-                .tint(hr, min, sec, format_flag)
-                .specular(0.50)
-                .fresnel(0.30)
-                .element_type(21.0)
-                .progress(date_bat_code)
-                .pointer_pos(px, py)
-                .pointer_velocity(vx, vy);
-
-            // 3. Nested Seconds Liquid Glass Accent Pill (Radiant Gold #DCF842)
-            // Positioned gracefully between the digital clock and the battery gauge
-            let pill_cx = (334.0 + 38.0) / 540.0;
-            let pill_cy = (70.0 - 24.0) / 140.0;
-            let pill_w = 44.0 / 540.0;
-            let pill_h = 24.0 / 140.0;
-            let seconds_pill = GlassSurface::new()
-                .material(Material::LiquidGlass)
-                .shape(Shape::Capsule)
-                .bounds(pill_cx - pill_w * 0.5, pill_cy - pill_h * 0.5, pill_w, pill_h)
-                .curvature(0.05)
-                .bevel(3.5)
-                .refraction(0.24)
-                .dispersion(0.012)
-                .blur(0.0)
-                .tint(hr, min, sec, format_flag)
-                .specular(0.60)
-                .fresnel(0.35)
-                .element_type(22.0)
+                .element_type(25.0)
                 .progress(date_bat_code)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
@@ -393,11 +336,7 @@ impl AppData {
             self.cursor_velocity[0] *= 0.85;
             self.cursor_velocity[1] *= 0.85;
 
-            let surfaces = vec![
-                analog_dial,
-                digital_capsule,
-                seconds_pill,
-            ];
+            let surfaces = vec![island];
             let _ = renderer.render(&surfaces);
             active
         } else {
@@ -516,11 +455,11 @@ fn main() {
         hover_vel: [0.0; 2],
         is_pressed: false,
         is_12h: false,
-        pill_offset_x: 108.0,
+        pill_offset_x: 0.0,
         pill_vel_x: 0.0,
         
-        width: 540,
-        height: 140,
+        width: 420,
+        height: 110,
         first_configure: true,
         exit: false,
         frame_counter: 0,
@@ -533,7 +472,7 @@ fn main() {
     let layer_surface = app_data.layer_shell.create_layer_surface(
         &qh,
         surface.clone(),
-        Layer::Top,
+        Layer::Bottom,
         Some("glass_panel"),
         None,
     );

@@ -651,30 +651,172 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
     }
 
     // ─────────────────────────────────────────────────────────────
-    // 22. Nested Seconds Liquid Glass Pill
+    // 25. Unified Luxury Minimalist Liquid Glass Widget (390px x 94px capsule)
+    // Cohesive layout:
+    // Left: Compact Swiss Analog Dial (center_x = -120.0, r = 32.0)
+    // Middle: Thin crystalline vertical divider (x = -70.0)
+    // Center: Digital Time + Date (center_x = 10.0)
+    // Right: Luxury Battery Pill (center_x = 125.0)
     // ─────────────────────────────────────────────────────────────
-    if el_type >= 21.9 && el_type <= 22.1 {
+    if el_type >= 24.9 && el_type <= 25.1 {
+        let is_12h = (tint.w > 0.5);
+        var hr = tint.x;
+        if is_12h {
+            if hr == 0.0 { hr = 12.0; }
+            else if hr > 12.0 { hr = hr - 12.0; }
+        }
+        let mn = tint.y;
         let sec = tint.z;
-        let sec_u = u32(sec);
-        let s_tens = sec_u / 10u;
-        let s_ones = sec_u % 10u;
         
-        let scale = 1.25;
-        let sp = 8.0;
-        let d0 = draw_digit(local_p - vec2<f32>(-0.6 * sp, 0.0), s_tens, scale);
-        let d1 = draw_digit(local_p - vec2<f32>( 0.6 * sp, 0.0), s_ones, scale);
+        // ── 1. Left Swiss Minimalist Dial ──
+        let dial_cx = -120.0;
+        let p_dial = local_p - vec2<f32>(dial_cx, 0.0);
+        let r_dial = length(p_dial);
+        let ang_dial = atan2(p_dial.y, p_dial.x);
         
-        let d_sec = min(d0, d1) - 0.50;
-        let mask = 1.0 - smoothstep(-0.35, 0.35, d_sec);
+        // 12 Minimalist Hour Ticks
+        let mod_ang = (ang_dial + 3.14159265 / 12.0) % (3.14159265 / 6.0) - (3.14159265 / 12.0);
+        let tick_dist = abs(mod_ang) * r_dial;
+        let mod_card = (ang_dial + 3.14159265 / 4.0) % (3.14159265 / 2.0) - (3.14159265 / 4.0);
+        let is_cardinal = (abs(mod_card) * r_dial < 2.5);
+        let tick_inner = select(25.0, 21.0, is_cardinal);
+        let tick_rad = (r_dial >= tick_inner && r_dial <= 28.0);
+        var dial_ticks = 0.0;
+        if tick_rad {
+            let tick_w = select(0.75, 1.25, is_cardinal);
+            dial_ticks = 1.0 - smoothstep(tick_w, tick_w + 0.40, tick_dist);
+        }
         
-        // Signature radiant liquid gold #DCF842
+        // Dial Hands
+        let hour_angle = (tint.x % 12.0 + mn / 60.0 + sec / 3600.0) * (3.14159265 / 6.0) - 1.5707963;
+        let min_angle = (mn + sec / 60.0) * (3.14159265 / 30.0) - 1.5707963;
+        let sec_angle = sec * (3.14159265 / 30.0) - 1.5707963;
+        
+        let p_h_dir = vec2<f32>(cos(hour_angle), sin(hour_angle));
+        let p_m_dir = vec2<f32>(cos(min_angle), sin(min_angle));
+        let p_s_dir = vec2<f32>(cos(sec_angle), sin(sec_angle));
+        
+        let d_h = dist_segment(p_dial, -p_h_dir * 3.5, p_h_dir * 16.5) - 1.6;
+        let mask_h = 1.0 - smoothstep(-0.35, 0.35, d_h);
+        let d_m = dist_segment(p_dial, -p_m_dir * 4.0, p_m_dir * 23.5) - 1.1;
+        let mask_m = 1.0 - smoothstep(-0.35, 0.35, d_m);
+        let d_s = dist_segment(p_dial, -p_s_dir * 6.5, p_s_dir * 26.5) - 0.65;
+        let mask_s = 1.0 - smoothstep(-0.35, 0.35, d_s);
+        let d_pin = length(p_dial) - 2.4;
+        let mask_pin = 1.0 - smoothstep(-0.35, 0.35, d_pin);
+        
+        // Aesthetic Perimeter Rim on dial
+        let dial_ring = abs(r_dial - 29.5) - 0.60;
+        let mask_ring = (1.0 - smoothstep(-0.35, 0.35, dial_ring)) * 0.45;
+        
+        // ── 2. Subtle Crystalline Vertical Separator ──
+        let sep_x = -70.0;
+        let d_sep = rr_sdf(local_p - vec2<f32>(sep_x, 0.0), vec2<f32>(0.5, 26.0), 0.5);
+        let mask_sep = (1.0 - smoothstep(-0.35, 0.35, d_sep)) * 0.28;
+        
+        // ── 3. Center Digital Time & Date ──
+        let time_cx = 8.0;
+        let time_y = -10.0;
+        let t_scale = 2.45;
+        let sp = 17.5;
+        
+        let h_tens = u32(hr / 10.0);
+        let h_ones = u32(hr % 10.0);
+        let m_tens = u32(mn / 10.0);
+        let m_ones = u32(mn % 10.0);
+        
+        let d_th0 = draw_digit(local_p - vec2<f32>(time_cx - 2.15 * sp, time_y), h_tens, t_scale);
+        let d_th1 = draw_digit(local_p - vec2<f32>(time_cx - 1.05 * sp, time_y), h_ones, t_scale);
+        let d_tcol = draw_colon(local_p - vec2<f32>(time_cx, time_y), t_scale);
+        let d_tm0 = draw_digit(local_p - vec2<f32>(time_cx + 1.05 * sp, time_y), m_tens, t_scale);
+        let d_tm1 = draw_digit(local_p - vec2<f32>(time_cx + 2.15 * sp, time_y), m_ones, t_scale);
+        
+        let d_time_digits = min(min(d_th0, d_th1), min(d_tm0, d_tm1)) - 0.70;
+        let mask_time_digits = 1.0 - smoothstep(-0.35, 0.35, d_time_digits);
+        let colon_pulse = 0.55 + 0.45 * sin(sec * 3.14159265);
+        let mask_time_colon = (1.0 - smoothstep(-0.35, 0.35, d_tcol)) * colon_pulse;
+        
+        // Sub-row: Day / Date (y = 17.0)
+        let wday_code = u32(progress / 10000.0);
+        let rem_date = progress % 10000.0;
+        let mday_code = u32(rem_date / 100.0);
+        let bat_val = (rem_date % 100.0);
+        
+        let d_tens = mday_code / 10u;
+        let d_ones = mday_code % 10u;
+        let date_y = 17.0;
+        let date_scale = 1.05;
+        let dsp = 8.5;
+        let date_cx = time_cx;
+        
+        var w0 = 83u; var w1 = 85u; var w2 = 78u; // SUN
+        if wday_code == 1u { w0 = 77u; w1 = 79u; w2 = 78u; } // MON
+        else if wday_code == 2u { w0 = 84u; w1 = 85u; w2 = 69u; } // TUE
+        else if wday_code == 3u { w0 = 87u; w1 = 69u; w2 = 68u; } // WED
+        else if wday_code == 4u { w0 = 84u; w1 = 72u; w2 = 85u; } // THU
+        else if wday_code == 5u { w0 = 70u; w1 = 82u; w2 = 73u; } // FRI
+        else if wday_code == 6u { w0 = 83u; w1 = 65u; w2 = 84u; } // SAT
+        
+        let dw0 = draw_clock_letter(local_p - vec2<f32>(date_cx - 2.8 * dsp, date_y), w0, date_scale);
+        let dw1 = draw_clock_letter(local_p - vec2<f32>(date_cx - 1.8 * dsp, date_y), w1, date_scale);
+        let dw2 = draw_clock_letter(local_p - vec2<f32>(date_cx - 0.8 * dsp, date_y), w2, date_scale);
+        let dd0 = draw_digit(local_p - vec2<f32>(date_cx + 1.2 * dsp, date_y), d_tens, date_scale);
+        let dd1 = draw_digit(local_p - vec2<f32>(date_cx + 2.3 * dsp, date_y), d_ones, date_scale);
+        
+        let d_date = min(min(dw0, min(dw1, dw2)), min(dd0, dd1)) - 0.45;
+        let mask_date = (1.0 - smoothstep(-0.35, 0.35, d_date)) * 0.75;
+        
+        // ── 4. Right Minimalist Luxury Battery ──
+        let bat_cx = 120.0;
+        let bat_cy = -6.0;
+        let p_bat = local_p - vec2<f32>(bat_cx, bat_cy);
+        let bat_half = vec2<f32>(18.0, 9.0);
+        let d_shell = rr_sdf(p_bat, bat_half, 4.0);
+        let mask_shell = smoothstep(0.35, -0.35, abs(d_shell) - 0.7);
+        let d_bump = rr_sdf(p_bat - vec2<f32>(19.8, 0.0), vec2<f32>(1.8, 3.5), 1.5);
+        let mask_bump = smoothstep(0.35, -0.35, d_bump);
+        let mask_housing = max(mask_shell, mask_bump) * 0.70;
+        
+        let fill_max_w = 30.0;
+        let fill_w = (bat_val / 100.0) * fill_max_w;
+        let fill_x = -15.0 + fill_w * 0.5;
+        let d_fill = rr_sdf(p_bat - vec2<f32>(fill_x, 0.0), vec2<f32>(max(fill_w * 0.5, 0.8), 6.5), 2.5);
+        let mask_fill = smoothstep(0.35, -0.35, d_fill) * 0.90;
+        
+        // Battery Percentage below
+        let bat_u = u32(clamp(bat_val, 0.0, 100.0));
+        let b_tens = bat_u / 10u;
+        let b_ones = bat_u % 10u;
+        let b_scale = 1.0;
+        let bsp = 7.0;
+        let db0 = draw_digit(local_p - vec2<f32>(bat_cx - 0.65 * bsp, 17.0), b_tens, b_scale);
+        let db1 = draw_digit(local_p - vec2<f32>(bat_cx + 0.65 * bsp, 17.0), b_ones, b_scale);
+        let d_bnum = min(db0, db1) - 0.40;
+        let mask_bnum = (1.0 - smoothstep(-0.35, 0.35, d_bnum)) * 0.75;
+        
+        // Colors & Composite
         let gold = vec3<f32>(0.86, 0.97, 0.26);
-        app.glyph_mask = mask * 0.98;
-        app.glyph_color = gold;
+        let white = vec3<f32>(0.98, 0.99, 1.0);
         
-        let bloom = exp(-max(d_sec, 0.0) * 0.70) * 0.35;
-        app.fluid_color = gold;
-        app.fluid_glow = bloom;
+        let white_components = max(
+            max(max(dial_ticks, mask_h), max(mask_m, mask_pin)),
+            max(max(mask_ring, mask_sep), max(max(mask_time_digits, mask_time_colon), max(mask_date, max(mask_housing, mask_bnum))))
+        );
+        
+        if mask_s > 0.05 {
+            app.glyph_mask = mask_s;
+            app.glyph_color = gold;
+            app.fluid_color = gold;
+            app.fluid_glow = exp(-max(d_s, 0.0) * 0.8) * 0.40;
+        } else if mask_fill > 0.05 {
+            app.glyph_mask = max(mask_fill, white_components);
+            app.glyph_color = mix(gold, white, clamp((white_components - mask_fill) * 2.0, 0.0, 1.0));
+            app.fluid_color = gold;
+            app.fluid_glow = exp(-max(d_fill, 0.0) * 0.6) * 0.25;
+        } else {
+            app.glyph_mask = white_components;
+            app.glyph_color = white;
+        }
         return app;
     }
     
