@@ -452,7 +452,7 @@ impl GlassRenderer {
                 pointer_pos: glass.pointer_pos,
                 pointer_velocity: glass.pointer_velocity,
                 surface_size: [self.surface_config.width as f32, self.surface_config.height as f32],
-                padding2: [0.0, 0.0],
+                padding2: [glass.element_type, glass.progress],
             };
             
             let offset = i as u32 * padded_size as u32;
@@ -563,7 +563,7 @@ impl GlassRenderer {
             }
         }
 
-                if let Some(query_set) = &self.query_set {
+        if let Some(query_set) = &self.query_set {
             if let Some(resolve_buffer) = &self.query_resolve_buffer {
                 encoder.resolve_query_set(query_set, 0..2, resolve_buffer, 0);
                 if let Some(destination_buffer) = &self.query_destination_buffer {
@@ -571,9 +571,77 @@ impl GlassRenderer {
                 }
             }
         }
+
+        let capture_info = if let Ok(path) = std::env::var("GLASS_SNAPSHOT") {
+            let _ = std::env::remove_var("GLASS_SNAPSHOT");
+            let unpadded = self.surface_config.width * 4;
+            let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+            let padded = ((unpadded + align - 1) / align) * align;
+            let size = (padded * self.surface_config.height) as u64;
+            let cap_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Frame Capture Buffer"),
+                size,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            encoder.copy_texture_to_buffer(
+                wgpu::ImageCopyTexture {
+                    texture: &output.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::ImageCopyBuffer {
+                    buffer: &cap_buf,
+                    layout: wgpu::ImageDataLayout {
+                        offset: 0,
+                        bytes_per_row: Some(padded),
+                        rows_per_image: Some(self.surface_config.height),
+                    },
+                },
+                wgpu::Extent3d {
+                    width: self.surface_config.width,
+                    height: self.surface_config.height,
+                    depth_or_array_layers: 1,
+                },
+            );
+            Some((path, cap_buf, padded, unpadded))
+        } else {
+            None
+        };
         
         self.queue.submit(std::iter::once(encoder.finish()));
         self.frame_count += 1;
+
+        if let Some((path, cap_buf, padded, unpadded)) = capture_info {
+            let slice = cap_buf.slice(..);
+            let (tx, rx) = std::sync::mpsc::channel();
+            slice.map_async(wgpu::MapMode::Read, move |v| tx.send(v).unwrap());
+            self.device.poll(wgpu::Maintain::Wait);
+            if rx.recv().unwrap().is_ok() {
+                let mapped = slice.get_mapped_range();
+                let mut rgba = Vec::with_capacity((self.surface_config.width * self.surface_config.height * 4) as usize);
+                for chunk in mapped.chunks(padded as usize) {
+                    rgba.extend_from_slice(&chunk[..unpadded as usize]);
+                }
+                drop(mapped);
+                cap_buf.unmap();
+
+                if matches!(self.surface_config.format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb) {
+                    for pixel in rgba.chunks_exact_mut(4) {
+                        pixel.swap(0, 2);
+                    }
+                }
+                let _ = image::save_buffer(
+                    &path,
+                    &rgba,
+                    self.surface_config.width,
+                    self.surface_config.height,
+                    image::ExtendedColorType::Rgba8,
+                );
+                println!("Saved liquid glass snapshot to {}", path);
+            }
+        }
         
         if self.frame_count % 60 == 0 {
             if let Some(destination_buffer) = &self.query_destination_buffer {

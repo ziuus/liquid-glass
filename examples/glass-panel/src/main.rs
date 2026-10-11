@@ -255,6 +255,7 @@ impl AppData {
                 .tint(1.0, 1.0, 1.0, 0.09)
                 .specular(0.75)
                 .fresnel(0.85)
+                .element_type(1.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
@@ -271,6 +272,7 @@ impl AppData {
                 .tint(0.92, 0.96, 1.0, 0.07)
                 .specular(0.6)
                 .fresnel(0.75)
+                .element_type(2.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
@@ -286,6 +288,7 @@ impl AppData {
                 .tint(0.98, 0.94, 1.0, 0.07)
                 .specular(0.6)
                 .fresnel(0.75)
+                .element_type(3.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
@@ -302,6 +305,7 @@ impl AppData {
                 .tint(1.0, 1.0, 1.0, 0.06)
                 .specular(0.55)
                 .fresnel(0.8)
+                .element_type(4.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
@@ -318,6 +322,7 @@ impl AppData {
                 .tint(1.0, 1.0, 1.0, 0.10)
                 .specular(0.85)
                 .fresnel(0.75)
+                .element_type(5.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
@@ -333,6 +338,7 @@ impl AppData {
                 .tint(1.0, 1.0, 1.0, 0.14)
                 .specular(1.1)
                 .fresnel(0.9)
+                .element_type(6.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
@@ -348,6 +354,7 @@ impl AppData {
                 .tint(1.0, 1.0, 1.0, 0.10)
                 .specular(0.85)
                 .fresnel(0.75)
+                .element_type(7.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
@@ -364,6 +371,8 @@ impl AppData {
                 .tint(1.0, 1.0, 1.0, 0.07)
                 .specular(0.6)
                 .fresnel(0.6)
+                .element_type(8.0)
+                .progress(0.65)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
