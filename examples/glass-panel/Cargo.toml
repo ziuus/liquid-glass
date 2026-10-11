@@ -1,0 +1,18 @@
+[package]
+name = "glass-panel"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+glass-core = { path = "../../glass-core" }
+glass-platform = { path = "../../glass-platform" }
+wayland-client = { workspace = true }
+wayland-protocols = { workspace = true }
+wayland-protocols-wlr = { workspace = true }
+smithay-client-toolkit = { workspace = true }
+pollster = "0.3"
+env_logger = { workspace = true }
+log = { workspace = true }
+raw-window-handle.workspace = true
+wayland-backend = { version = "0.3", features = ["client_system"] }
+glass-ui = { version = "0.1.0", path = "../../glass-ui" }

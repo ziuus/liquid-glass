@@ -1,0 +1,12 @@
+[package]
+name = "bench-surfaces"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+glass-core = { path = "../../glass-core" }
+winit = "0.29"
+pollster = "0.3"
+env_logger = { workspace = true }
+log = { workspace = true }
+wgpu = { workspace = true }

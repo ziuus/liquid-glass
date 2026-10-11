@@ -1,0 +1,12 @@
+[package]
+name = "glass-platform"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+glass-core = { path = "../glass-core" }
+wayland-client = { workspace = true }
+wayland-protocols = { workspace = true }
+wayland-protocols-wlr = { workspace = true }
+smithay-client-toolkit = { workspace = true }
+log = { workspace = true }
