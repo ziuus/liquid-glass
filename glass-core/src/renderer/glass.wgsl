@@ -501,7 +501,6 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         
         let gold = vec3<f32>(0.86, 0.97, 0.26);
         let white = vec3<f32>(0.98, 0.99, 1.0);
-        let dark_backing = vec3<f32>(0.02, 0.03, 0.05);
         
         // Outer aesthetic perimeter glint ring at r = 52.5
         let outer_ring = abs(r_p - 52.5) - 0.75;
@@ -520,9 +519,6 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         } else if white_mask > 0.05 || mask_ring > 0.05 {
             app.glyph_mask = max(white_mask, mask_ring);
             app.glyph_color = white;
-        } else if dial_backing_mask > 0.05 {
-            app.glyph_mask = dial_backing_mask;
-            app.glyph_color = dark_backing;
         }
         return app;
     }
@@ -805,18 +801,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         col = mix(blurred, sharp, pow(edge, 1.4) * 0.45);
     }
     
-    // Pure, serene Liquid Glass transmission (luxury Apple frosted crystalline glass)
-    if params.padding2.x >= 19.5 {
-        // Clock elements: luxury translucent crystalline plate (15% soft white frost + 6% dark contrast ground)
-        // This guarantees pristine visibility and tactile depth on any wallpaper, whether bright or dark.
-        let lum = dot(col, vec3<f32>(0.299, 0.587, 0.114));
-        let frost = vec3<f32>(0.12, 0.14, 0.18);
-        col = mix(col, frost, 0.32);
-        col = col + vec3<f32>(0.04, 0.05, 0.07);
-    } else if params.tint.a > 0.0 {
+    // Pure, pristine Liquid Glass transmission (100% crystal clear water lens, zero dark tint)
+    if params.tint.a > 0.0 && params.padding2.x < 19.5 {
         col = mix(col, params.tint.rgb, params.tint.a);
     } else {
-        // Pristine clear liquid glass: subtle luminous lift
+        // Pristine clear liquid glass: subtle luminous lift, no dark coloring
         col = col * 1.02 + vec3<f32>(0.02, 0.02, 0.03);
     }
     
