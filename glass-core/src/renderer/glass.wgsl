@@ -454,18 +454,22 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let mn = tint.y;
         let sec = tint.z;
         
+        // 1. Subtle crystalline dark tint dial backing (r <= 54px) for 100% contrast against bright backgrounds
+        let dial_disk = smoothstep(54.0, 52.0, r_p);
+        let dial_backing_mask = dial_disk * 0.32;
+        
         // 12 Minimalist Precision Hour Ticks (Scale tuned for 120px diameter, r_outer = 58px)
         let mod_ang = (ang + 3.14159265 / 12.0) % (3.14159265 / 6.0) - (3.14159265 / 12.0);
         let tick_dist = abs(mod_ang) * r_p;
         // Cardinal ticks (12, 3, 6, 9) are longer and more prominent
         let mod_card = (ang + 3.14159265 / 4.0) % (3.14159265 / 2.0) - (3.14159265 / 4.0);
-        let is_cardinal = (abs(mod_card) * r_p < 2.0);
-        let tick_inner = select(44.0, 39.0, is_cardinal);
-        let tick_rad = (r_p >= tick_inner && r_p <= 50.0);
+        let is_cardinal = (abs(mod_card) * r_p < 2.5);
+        let tick_inner = select(44.0, 38.0, is_cardinal);
+        let tick_rad = (r_p >= tick_inner && r_p <= 51.0);
         var tick_mask = 0.0;
         if tick_rad {
-            let tick_w = select(0.55, 0.85, is_cardinal);
-            tick_mask = 1.0 - smoothstep(tick_w, tick_w + 0.65, tick_dist);
+            let tick_w = select(0.75, 1.15, is_cardinal);
+            tick_mask = 1.0 - smoothstep(tick_w, tick_w + 0.60, tick_dist);
         }
         
         // Analog Hands angles (clockwise from 12 o'clock = -pi/2)
@@ -477,44 +481,48 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let p_min = vec2<f32>(cos(min_angle), sin(min_angle));
         let p_sec = vec2<f32>(cos(sec_angle), sin(sec_angle));
         
-        // Hour hand: thick (3.4px), length 29px, counter-weight 5px
-        let d_hour = dist_segment(local_p, -p_hour * 5.0, p_hour * 29.0) - 1.7;
-        let mask_hour = 1.0 - smoothstep(-0.35, 0.35, d_hour);
+        // Hour hand: thick (4.2px width), length 30px, counter-weight 6px
+        let d_hour = dist_segment(local_p, -p_hour * 6.0, p_hour * 30.0) - 2.1;
+        let mask_hour = 1.0 - smoothstep(-0.4, 0.4, d_hour);
         
-        // Minute hand: sleek (2.2px), length 43px, counter-weight 6px
-        let d_min = dist_segment(local_p, -p_min * 6.0, p_min * 43.0) - 1.1;
-        let mask_min = 1.0 - smoothstep(-0.35, 0.35, d_min);
+        // Minute hand: sleek (3.0px width), length 44px, counter-weight 7px
+        let d_min = dist_segment(local_p, -p_min * 7.0, p_min * 44.0) - 1.5;
+        let mask_min = 1.0 - smoothstep(-0.4, 0.4, d_min);
         
         // Center Pin: double-ring jeweled pivot
-        let d_pin = length(local_p) - 3.8;
+        let d_pin = length(local_p) - 4.5;
         let mask_pin = 1.0 - smoothstep(-0.35, 0.35, d_pin);
-        let d_pin_core = length(local_p) - 1.6;
+        let d_pin_core = length(local_p) - 2.0;
         let mask_pin_core = 1.0 - smoothstep(-0.35, 0.35, d_pin_core);
         
-        // Second hand: signature radiant lemon-gold #DCF842, length 50px with counter-weight
-        let d_sec = dist_segment(local_p, -p_sec * 10.0, p_sec * 50.0) - 0.65;
-        let mask_sec = 1.0 - smoothstep(-0.3, 0.3, d_sec);
+        // Second hand: signature radiant lemon-gold #DCF842, length 51px with counter-weight
+        let d_sec = dist_segment(local_p, -p_sec * 12.0, p_sec * 51.0) - 0.85;
+        let mask_sec = 1.0 - smoothstep(-0.35, 0.35, d_sec);
         
         let gold = vec3<f32>(0.86, 0.97, 0.26);
-        let white = vec3<f32>(0.98, 0.99, 1.0);
+        let white = vec3<f32>(1.0, 1.0, 1.0);
+        let dark_backing = vec3<f32>(0.03, 0.04, 0.06);
         
-        // Outer aesthetic perimeter glint ring at r = 53.0
-        let outer_ring = abs(r_p - 53.0) - 0.50;
-        let mask_ring = (1.0 - smoothstep(-0.35, 0.35, outer_ring)) * 0.40;
+        // Outer aesthetic perimeter glint ring at r = 53.5
+        let outer_ring = abs(r_p - 53.5) - 0.65;
+        let mask_ring = (1.0 - smoothstep(-0.35, 0.35, outer_ring)) * 0.55;
         
-        let white_mask = max(max(tick_mask * 0.75, mask_hour), max(mask_min, mask_pin));
+        let white_mask = max(max(tick_mask * 0.95, mask_hour), max(mask_min, mask_pin));
         
         if mask_sec > 0.05 {
             app.glyph_mask = mask_sec;
             app.glyph_color = gold;
             app.fluid_color = gold;
-            app.fluid_glow = exp(-max(d_sec, 0.0) * 0.8) * 0.38;
+            app.fluid_glow = exp(-max(d_sec, 0.0) * 0.8) * 0.45;
         } else if mask_pin_core > 0.05 {
             app.glyph_mask = mask_pin_core;
             app.glyph_color = gold;
-        } else {
+        } else if white_mask > 0.05 || mask_ring > 0.05 {
             app.glyph_mask = max(white_mask, mask_ring);
             app.glyph_color = white;
+        } else if dial_backing_mask > 0.05 {
+            app.glyph_mask = dial_backing_mask;
+            app.glyph_color = dark_backing;
         }
         return app;
     }
@@ -594,47 +602,49 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let d_date = min(min(dw0, min(dw1, dw2)), min(dd0, dd1)) - 0.52;
         let mask_date = (1.0 - smoothstep(-0.35, 0.35, d_date)) * 0.82;
 
-        // ── Architectural Liquid Glass Battery Gauge Section (x = 120.0) ──
-        let bat_cx = 120.0;
+        // ── Sleek Compact Liquid Glass Battery Pill (Apple-style horizontal battery icon) ──
+        let bat_cx = 124.0;
         let bat_cy = 0.0;
         let p_bat = local_p - vec2<f32>(bat_cx, bat_cy);
         
-        // Circular Battery Gauge Ring (r = 30.0)
-        let r_bat = length(p_bat);
-        let bat_track = abs(r_bat - 30.0) - 1.8;
-        let mask_bat_track = (1.0 - smoothstep(-0.35, 0.35, bat_track)) * 0.25;
+        // Compact Battery Housing: 40px width x 20px height, corner radius 5px
+        let bat_half = vec2<f32>(20.0, 10.0);
+        let d_shell = rr_sdf(p_bat, bat_half, 5.0);
+        // Outer housing stroke (1.4px)
+        let mask_shell = smoothstep(0.4, -0.4, abs(d_shell) - 0.7);
         
-        // Active Battery Arc: Sweep from top (-pi/2) clockwise according to bat_val
-        let ang_bat = (atan2(p_bat.y, p_bat.x) + 1.5707963 + 6.2831853) % 6.2831853;
-        let bat_sweep = (bat_val / 100.0) * 6.2831853;
-        var mask_bat_arc = 0.0;
-        if ang_bat <= bat_sweep {
-            mask_bat_arc = 1.0 - smoothstep(-0.35, 0.35, bat_track);
-        }
+        // Battery positive terminal bump on the right side (+x = 22.5px, h = 8px)
+        let d_bump = rr_sdf(p_bat - vec2<f32>(22.2, 0.0), vec2<f32>(2.2, 4.0), 2.0);
+        let mask_bump = smoothstep(0.4, -0.4, d_bump);
+        let mask_housing = max(mask_shell, mask_bump) * 0.75;
         
-        // Crisp Battery Percentage Number perfectly centered in Ring
+        // Dynamic interior battery fill level according to bat_val (0 - 100%)
+        let fill_max_w = 34.0;
+        let fill_w = (bat_val / 100.0) * fill_max_w;
+        let fill_x = -17.0 + fill_w * 0.5;
+        let d_fill = rr_sdf(p_bat - vec2<f32>(fill_x, 0.0), vec2<f32>(max(fill_w * 0.5, 1.0), 7.0), 3.0);
+        let mask_fill = smoothstep(0.4, -0.4, d_fill) * 0.85;
+        
+        // Battery Percentage Number below the icon (y = 22.0) matching the date row baseline
         let bat_u = u32(clamp(bat_val, 0.0, 100.0));
         let b_tens = bat_u / 10u;
         let b_ones = bat_u % 10u;
-        let b_scale = 1.60;
-        let bsp = 9.0;
-        let db0 = draw_digit(p_bat - vec2<f32>(-0.6 * bsp, 0.0), b_tens, b_scale);
-        let db1 = draw_digit(p_bat - vec2<f32>( 0.6 * bsp, 0.0), b_ones, b_scale);
-        let d_bnum = min(db0, db1) - 0.52;
-        let mask_bnum = 1.0 - smoothstep(-0.35, 0.35, d_bnum);
+        let b_scale = 1.05;
+        let bsp = 7.2;
+        let db0 = draw_digit(local_p - vec2<f32>(bat_cx - 0.8 * bsp, 22.0), b_tens, b_scale);
+        let db1 = draw_digit(local_p - vec2<f32>(bat_cx + 0.4 * bsp, 22.0), b_ones, b_scale);
+        let d_bnum = min(db0, db1) - 0.45;
+        let mask_bnum = (1.0 - smoothstep(-0.35, 0.35, d_bnum)) * 0.85;
         
-        let white_elems = max(max(mask_digits, mask_colon), max(mask_date, mask_bat_track));
+        let white_elems = max(max(mask_digits, mask_colon), max(mask_date, max(mask_housing, mask_bnum)));
         let gold = vec3<f32>(0.86, 0.97, 0.26);
         let white = vec3<f32>(0.98, 0.99, 1.0);
         
-        if mask_bat_arc > 0.05 {
-            app.glyph_mask = mask_bat_arc;
+        if mask_fill > 0.05 {
+            app.glyph_mask = mask_fill;
             app.glyph_color = gold;
             app.fluid_color = gold;
-            app.fluid_glow = exp(-max(bat_track, 0.0) * 0.7) * 0.35;
-        } else if mask_bnum > 0.05 {
-            app.glyph_mask = mask_bnum;
-            app.glyph_color = white;
+            app.fluid_glow = exp(-max(d_fill, 0.0) * 0.6) * 0.30;
         } else {
             app.glyph_mask = white_elems;
             app.glyph_color = white;

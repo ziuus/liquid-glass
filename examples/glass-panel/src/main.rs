@@ -322,57 +322,45 @@ impl AppData {
             self.pill_vel_x += pill_force * dt;
             self.pill_offset_x += self.pill_vel_x * dt;
 
-            // Reactive liquid surface tension stretch
-            let calc_stretch_bounds = |idx: usize| -> [f32; 4] {
-                let [cx, cy, bw, bh] = specs[idx];
-                let t = self.hover_pos[idx].clamp(0.0, 1.0);
-                let scale = 1.0 + t * 0.025;
-                let pull_x = (px - cx) * t * 0.035;
-                let pull_y = (py - cy) * t * 0.035;
-                let w = bw * scale;
-                let h = bh * scale;
-                [cx + pull_x - w * 0.5, cy + pull_y - h * 0.5, w, h]
-            };
+            // Rock-solid static widget positions (Zero displacement on hover)
+            let b0 = [specs[0][0] - specs[0][2] * 0.5, specs[0][1] - specs[0][3] * 0.5, specs[0][2], specs[0][3]];
+            let b1 = [specs[1][0] - specs[1][2] * 0.5, specs[1][1] - specs[1][3] * 0.5, specs[1][2], specs[1][3]];
 
             // Packed format: wday * 10000 + mday * 100 + bat_capacity
             let date_bat_code = (wday as f32 * 10000.0) + (mday as f32 * 100.0) + bat_capacity;
             let format_flag = if self.is_12h { 1.0f32 } else { 0.0f32 };
 
             // 1. Left Swiss Minimalist Precision Analog Dial (120px diameter)
-            let b0 = calc_stretch_bounds(0);
-            let t0 = self.hover_pos[0].clamp(0.0, 1.0);
             let analog_dial = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::Circle)
                 .bounds(b0[0], b0[1], b0[2], b0[3])
-                .curvature(0.065)
-                .bevel(6.5)
-                .refraction(0.25)
-                .dispersion(0.012)
+                .curvature(0.045)
+                .bevel(5.0)
+                .refraction(0.12)
+                .dispersion(0.006)
                 .blur(0.0)
                 .tint(hr, min, sec, format_flag)
-                .specular(0.60 + t0 * 0.15)
-                .fresnel(0.36)
+                .specular(0.55)
+                .fresnel(0.32)
                 .element_type(20.0)
                 .progress(date_bat_code)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
             // 2. Right Digital Liquid Glass Clock + Battery Capsule
-            let b1 = calc_stretch_bounds(1);
-            let t1 = self.hover_pos[1].clamp(0.0, 1.0);
             let digital_capsule = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b1[0], b1[1], b1[2], b1[3])
-                .curvature(0.05)
-                .bevel(5.5)
-                .refraction(0.22)
-                .dispersion(0.010)
+                .curvature(0.04)
+                .bevel(4.5)
+                .refraction(0.12)
+                .dispersion(0.006)
                 .blur(0.0)
                 .tint(hr, min, sec, format_flag)
-                .specular(0.52 + t1 * 0.12)
-                .fresnel(0.33)
+                .specular(0.50)
+                .fresnel(0.30)
                 .element_type(21.0)
                 .progress(date_bat_code)
                 .pointer_pos(px, py)
@@ -384,12 +372,10 @@ impl AppData {
             let pill_cy = (70.0 - 24.0) / 140.0;
             let pill_w = 44.0 / 540.0;
             let pill_h = 24.0 / 140.0;
-            let pull_pill_x = (px - pill_cx) * t1 * 0.025;
-            let pull_pill_y = (py - pill_cy) * t1 * 0.025;
             let seconds_pill = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
-                .bounds(pill_cx + pull_pill_x - pill_w * 0.5, pill_cy + pull_pill_y - pill_h * 0.5, pill_w, pill_h)
+                .bounds(pill_cx - pill_w * 0.5, pill_cy - pill_h * 0.5, pill_w, pill_h)
                 .curvature(0.05)
                 .bevel(3.5)
                 .refraction(0.24)
