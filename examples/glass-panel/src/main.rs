@@ -233,12 +233,14 @@ impl PointerHandler for AppData {
             }
         }
 
-        if had_event && !self.animating {
-            self.animating = true;
-            if let Some(wrapper) = &self.window_wrapper {
-                wrapper.surface.frame(qh, wrapper.surface.clone());
-                wrapper.surface.commit();
+        if had_event {
+            if !self.animating {
+                self.animating = true;
+                if let Some(wrapper) = &self.window_wrapper {
+                    wrapper.surface.frame(qh, wrapper.surface.clone());
+                }
             }
+            self.draw();
         }
     }
 }

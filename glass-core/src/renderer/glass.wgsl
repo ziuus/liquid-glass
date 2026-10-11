@@ -132,157 +132,140 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
     
     // 1. Dynamic Island Header Pill: Clean Minimal Status Capsule
     if el_type >= 0.9 && el_type <= 1.1 {
-        // Subtle emerald live indicator
-        let beacon_pos = local_p - vec2<f32>(-half.x + 18.0, 0.0);
-        let d_beacon = length(beacon_pos) - 2.8;
-        let beacon = 1.0 - smoothstep(-0.5, 0.5, d_beacon);
+        let beacon_pos = local_p - vec2<f32>(-half.x + 14.0, 0.0);
+        let beacon = 1.0 - smoothstep(-0.4, 0.4, length(beacon_pos) - 2.0);
         
-        // Crisp minimal cellular signal bars
-        let b1 = rr_sdf(local_p - vec2<f32>(half.x - 26.0, 2.5), vec2<f32>(1.2, 2.5), 0.6);
-        let b2 = rr_sdf(local_p - vec2<f32>(half.x - 20.0, 1.0), vec2<f32>(1.2, 4.0), 0.6);
-        let b3 = rr_sdf(local_p - vec2<f32>(half.x - 14.0, -0.5), vec2<f32>(1.2, 5.5), 0.6);
-        let bars = 1.0 - smoothstep(-0.5, 0.5, min(b1, min(b2, b3)));
+        // Delicate minimal cellular signal bars
+        let b1 = rr_sdf(local_p - vec2<f32>(half.x - 22.0, 1.8), vec2<f32>(0.9, 1.8), 0.4);
+        let b2 = rr_sdf(local_p - vec2<f32>(half.x - 17.0, 0.8), vec2<f32>(0.9, 2.8), 0.4);
+        let b3 = rr_sdf(local_p - vec2<f32>(half.x - 12.0, -0.4), vec2<f32>(0.9, 4.0), 0.4);
+        let bars = 1.0 - smoothstep(-0.4, 0.4, min(b1, min(b2, b3)));
         
-        app.glyph_mask = max(beacon, bars * 0.85);
-        app.fluid_color = mix(vec3<f32>(0.3, 0.95, 0.65), vec3<f32>(1.0), bars);
-        app.fluid_glow = beacon * 0.5;
+        app.glyph_mask = max(beacon * 0.80, bars * 0.65);
+        app.fluid_color = mix(vec3<f32>(0.35, 0.90, 0.60), vec3<f32>(1.0), bars);
+        app.fluid_glow = beacon * 0.25;
         return app;
     }
     
-    // 2. Wi-Fi Glass Capsule: Crisp Apple Wi-Fi Arcs
+    // 2. Wi-Fi Glass Capsule: Small, Professional Apple Wi-Fi Arcs (14px)
     if el_type >= 1.9 && el_type <= 2.1 {
-        let center_offset = vec2<f32>(0.0, 8.0);
-        let p_rel = local_p - center_offset;
+        let p_rel = local_p - vec2<f32>(0.0, 4.5);
         let r = length(p_rel);
         
-        let dot_dist = r - 2.2;
-        let dot_mask = 1.0 - smoothstep(-0.5, 0.5, dot_dist);
+        let dot_mask = 1.0 - smoothstep(-0.4, 0.4, r - 1.5);
         
-        let arc1 = abs(r - 8.5) - 1.4;
-        let arc2 = abs(r - 15.0) - 1.4;
-        let arc3 = abs(r - 21.5) - 1.4;
+        let arc1 = abs(r - 5.0) - 0.75;
+        let arc2 = abs(r - 8.5) - 0.75;
+        let arc3 = abs(r - 12.0) - 0.75;
         let min_arc = min(arc1, min(arc2, arc3));
         
         let angle = atan2(p_rel.y, abs(p_rel.x));
         let in_wedge = select(0.0, 1.0, angle < -0.85);
-        let arcs_mask = (1.0 - smoothstep(-0.5, 0.5, min_arc)) * in_wedge;
+        let arcs_mask = (1.0 - smoothstep(-0.4, 0.4, min_arc)) * in_wedge;
         
-        app.glyph_mask = max(dot_mask, arcs_mask);
-        app.fluid_color = vec3<f32>(0.92, 0.96, 1.0); // Subtle neutral crystal tint
-        app.fluid_glow = 0.15;
+        app.glyph_mask = max(dot_mask, arcs_mask) * 0.72;
         return app;
     }
     
-    // 3. Bluetooth Glass Capsule: Crisp Apple Bluetooth Rune
+    // 3. Bluetooth Glass Capsule: Small, Professional Apple Bluetooth (14px)
     if el_type >= 2.9 && el_type <= 3.1 {
-        let d_spine = dist_segment(local_p, vec2<f32>(0.0, -14.0), vec2<f32>(0.0, 14.0)) - 1.3;
-        let d_up1 = dist_segment(local_p, vec2<f32>(0.0, -14.0), vec2<f32>(8.0, -7.0)) - 1.3;
-        let d_up2 = dist_segment(local_p, vec2<f32>(8.0, -7.0), vec2<f32>(-7.0, 7.0)) - 1.3;
-        let d_dn1 = dist_segment(local_p, vec2<f32>(0.0, 14.0), vec2<f32>(8.0, 7.0)) - 1.3;
-        let d_dn2 = dist_segment(local_p, vec2<f32>(8.0, 7.0), vec2<f32>(-7.0, -7.0)) - 1.3;
+        let d_spine = dist_segment(local_p, vec2<f32>(0.0, -7.5), vec2<f32>(0.0, 7.5)) - 0.8;
+        let d_up1 = dist_segment(local_p, vec2<f32>(0.0, -7.5), vec2<f32>(4.5, -3.8)) - 0.8;
+        let d_up2 = dist_segment(local_p, vec2<f32>(4.5, -3.8), vec2<f32>(-4.0, 3.8)) - 0.8;
+        let d_dn1 = dist_segment(local_p, vec2<f32>(0.0, 7.5), vec2<f32>(4.5, 3.8)) - 0.8;
+        let d_dn2 = dist_segment(local_p, vec2<f32>(4.5, 3.8), vec2<f32>(-4.0, -3.8)) - 0.8;
         
         let rune = min(d_spine, min(min(d_up1, d_up2), min(d_dn1, d_dn2)));
-        app.glyph_mask = 1.0 - smoothstep(-0.5, 0.5, rune);
-        app.fluid_color = vec3<f32>(0.94, 0.96, 1.0);
-        app.fluid_glow = 0.15;
+        app.glyph_mask = (1.0 - smoothstep(-0.4, 0.4, rune)) * 0.72;
         return app;
     }
     
-    // 4. Display Brightness Liquid Slider: Crisp Sun Icon + Straight Razor-Sharp Glass Fill
+    // 4. Display Brightness Liquid Slider: Delicate Sun Icon (12px) + Clean Hairline
     if el_type >= 3.9 && el_type <= 4.1 {
-        let sun_center = vec2<f32>(-half.x + 22.0, 0.0);
+        let sun_center = vec2<f32>(-half.x + 16.0, 0.0);
         let sun_p = local_p - sun_center;
         let sun_r = length(sun_p);
-        let sun_core = 1.0 - smoothstep(-0.5, 0.5, sun_r - 4.8);
+        let sun_core = 1.0 - smoothstep(-0.4, 0.4, sun_r - 2.5);
         
         var rays = 0.0;
         for (var i = 0.0; i < 8.0; i += 1.0) {
             let theta = i * 0.785398;
-            let ray_start = vec2<f32>(cos(theta), sin(theta)) * 7.5;
-            let ray_end = vec2<f32>(cos(theta), sin(theta)) * 10.5;
-            let d_ray = dist_segment(sun_p, ray_start, ray_end) - 1.0;
-            rays = max(rays, 1.0 - smoothstep(-0.5, 0.5, d_ray));
+            let ray_start = vec2<f32>(cos(theta), sin(theta)) * 4.0;
+            let ray_end = vec2<f32>(cos(theta), sin(theta)) * 5.8;
+            let d_ray = dist_segment(sun_p, ray_start, ray_end) - 0.65;
+            rays = max(rays, 1.0 - smoothstep(-0.4, 0.4, d_ray));
         }
-        let sun_icon = max(sun_core, rays);
+        let sun_icon = max(sun_core, rays) * 0.72;
         
-        // Clean, straight, elegant slider fill (no squiggly worms!)
-        let track_start = -half.x + 3.0;
-        let track_width = half.x * 2.0 - 6.0;
+        let track_start = -half.x + 2.0;
+        let track_width = half.x * 2.0 - 4.0;
         let fill_x = track_start + track_width * clamp(progress, 0.04, 0.98);
         
-        let in_liquid = select(0.0, 1.0, local_p.x <= fill_x);
-        let meniscus_rim = 1.0 - smoothstep(0.0, 1.5, abs(local_p.x - fill_x));
+        let in_fill = select(0.0, 1.0, local_p.x <= fill_x);
+        let divider = 1.0 - smoothstep(0.0, 1.0, abs(local_p.x - fill_x) - 0.4);
         
-        app.glyph_mask = max(sun_icon * 0.92, meniscus_rim * 0.75);
-        app.fluid_color = vec3<f32>(1.0, 0.92, 0.75); // Subtle warm golden crystal
-        app.fluid_glow = in_liquid * 0.20;
+        app.glyph_mask = max(sun_icon, divider * 0.55);
+        app.fluid_glow = in_fill * 0.08;
         return app;
     }
     
-    // 5. Sound Volume Liquid Slider: Crisp Speaker Icon + Straight Razor-Sharp Glass Fill
+    // 5. Sound Volume Liquid Slider: Delicate Speaker Icon (12px) + Clean Hairline
     if el_type >= 4.9 && el_type <= 5.1 {
-        let spk_center = vec2<f32>(-half.x + 22.0, 0.0);
+        let spk_center = vec2<f32>(-half.x + 16.0, 0.0);
         let spk_p = local_p - spk_center;
         
-        let d_body = max(abs(spk_p.y) - 5.0, abs(spk_p.x + 3.0) - 3.0);
-        let d_cone = max(abs(spk_p.y) - (spk_p.x * 0.7 + 5.0), max(-spk_p.x - 3.0, spk_p.x - 3.8));
-        let speaker = 1.0 - smoothstep(-0.5, 0.5, min(d_body, d_cone));
+        let d_body = max(abs(spk_p.y) - 2.8, abs(spk_p.x + 2.0) - 1.8);
+        let d_cone = max(abs(spk_p.y) - (spk_p.x * 0.7 + 2.8), max(-spk_p.x - 2.0, spk_p.x - 2.5));
+        let speaker = 1.0 - smoothstep(-0.4, 0.4, min(d_body, d_cone));
         
-        let arc1 = abs(length(spk_p - vec2<f32>(0.0, 0.0)) - 8.0) - 1.2;
-        let arc2 = abs(length(spk_p - vec2<f32>(0.0, 0.0)) - 13.0) - 1.2;
+        let arc1 = abs(length(spk_p) - 5.0) - 0.75;
+        let arc2 = abs(length(spk_p) - 8.0) - 0.75;
         let angle = atan2(abs(spk_p.y), spk_p.x);
-        let in_sound_fan = select(0.0, 1.0, angle < 0.75);
-        let sound_arcs = (1.0 - smoothstep(-0.5, 0.5, min(arc1, arc2))) * in_sound_fan;
-        let spk_icon = max(speaker, sound_arcs);
+        let in_sound_fan = select(0.0, 1.0, angle < 0.70);
+        let sound_arcs = (1.0 - smoothstep(-0.4, 0.4, min(arc1, arc2))) * in_sound_fan;
+        let spk_icon = max(speaker, sound_arcs) * 0.72;
         
-        let track_start = -half.x + 3.0;
-        let track_width = half.x * 2.0 - 6.0;
+        let track_start = -half.x + 2.0;
+        let track_width = half.x * 2.0 - 4.0;
         let fill_x = track_start + track_width * clamp(progress, 0.04, 0.98);
         
-        let in_liquid = select(0.0, 1.0, local_p.x <= fill_x);
-        let meniscus_rim = 1.0 - smoothstep(0.0, 1.5, abs(local_p.x - fill_x));
+        let in_fill = select(0.0, 1.0, local_p.x <= fill_x);
+        let divider = 1.0 - smoothstep(0.0, 1.0, abs(local_p.x - fill_x) - 0.4);
         
-        app.glyph_mask = max(spk_icon * 0.92, meniscus_rim * 0.75);
-        app.fluid_color = vec3<f32>(0.85, 0.94, 1.0); // Subtle azure crystal
-        app.fluid_glow = in_liquid * 0.20;
+        app.glyph_mask = max(spk_icon, divider * 0.55);
+        app.fluid_glow = in_fill * 0.08;
         return app;
     }
     
-    // 6. Focus / Moon Liquid Lens: Elegant Crescent Moon
+    // 6. Focus / Moon Lens: Delicate Crescent Moon (13px)
     if el_type >= 5.9 && el_type <= 6.1 {
-        let moon_outer = length(local_p) - 12.0;
-        let moon_inner = length(local_p - vec2<f32>(5.0, -3.8)) - 10.2;
+        let moon_outer = length(local_p) - 6.5;
+        let moon_inner = length(local_p - vec2<f32>(2.8, -2.2)) - 5.5;
         let moon_d = max(moon_outer, -moon_inner);
         
-        app.glyph_mask = 1.0 - smoothstep(-0.5, 0.5, moon_d);
-        app.fluid_color = vec3<f32>(0.96, 0.94, 1.0);
-        app.fluid_glow = 0.15;
+        app.glyph_mask = (1.0 - smoothstep(-0.4, 0.4, moon_d)) * 0.72;
         return app;
     }
     
-    // 7. Screen Mirroring Liquid Lens: Dual Crisp Display Frames
+    // 7. Screen Mirroring Lens: Delicate Dual Screens (12px)
     if el_type >= 6.9 && el_type <= 7.1 {
-        let scr1 = rr_sdf(local_p - vec2<f32>(-3.0, 2.0), vec2<f32>(9.5, 6.5), 2.0);
-        let frame1 = abs(scr1) - 1.3;
-        let scr2 = rr_sdf(local_p - vec2<f32>(3.0, -2.0), vec2<f32>(9.5, 6.5), 2.0);
-        let frame2 = abs(scr2) - 1.3;
+        let scr1 = rr_sdf(local_p - vec2<f32>(-2.0, 1.5), vec2<f32>(5.5, 3.8), 1.0);
+        let frame1 = abs(scr1) - 0.8;
+        let scr2 = rr_sdf(local_p - vec2<f32>(2.0, -1.5), vec2<f32>(5.5, 3.8), 1.0);
+        let frame2 = abs(scr2) - 0.8;
         
-        app.glyph_mask = 1.0 - smoothstep(-0.5, 0.5, min(frame1, frame2));
-        app.fluid_color = vec3<f32>(0.92, 0.96, 1.0);
-        app.fluid_glow = 0.15;
+        app.glyph_mask = (1.0 - smoothstep(-0.4, 0.4, min(frame1, frame2))) * 0.72;
         return app;
     }
     
-    // 8. Theme / Night Shift Liquid Lens: Dual Harmonized Sun/Moon
+    // 8. Theme / Night Shift Lens: Delicate Sun/Moon Disc (12px)
     if el_type >= 7.9 && el_type <= 8.1 {
-        let circle_d = length(local_p) - 10.0;
-        let circle = 1.0 - smoothstep(-0.5, 0.5, circle_d);
+        let circle_d = length(local_p) - 6.0;
+        let circle = 1.0 - smoothstep(-0.4, 0.4, circle_d);
         let left_half = select(0.0, 1.0, local_p.x < 0.0);
-        let right_ring = 1.0 - smoothstep(-0.5, 0.5, abs(circle_d) - 1.4);
+        let right_ring = 1.0 - smoothstep(-0.4, 0.4, abs(circle_d) - 0.8);
         
-        app.glyph_mask = max(circle * left_half, right_ring);
-        app.fluid_color = vec3<f32>(1.0, 0.95, 0.88);
-        app.fluid_glow = 0.15;
+        app.glyph_mask = max(circle * left_half, right_ring) * 0.72;
         return app;
     }
     
