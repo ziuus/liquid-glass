@@ -235,13 +235,7 @@ impl PointerHandler for AppData {
         }
 
         if had_event {
-            if !self.animating {
-                self.animating = true;
-                if let Some(wrapper) = &self.window_wrapper {
-                    wrapper.surface.frame(qh, wrapper.surface.clone());
-                    wrapper.surface.commit();
-                }
-            }
+            self.animating = true;
         }
     }
 }
@@ -635,17 +629,26 @@ fn main() {
     
     app_data.renderer = Some(renderer);
     
-    // Start drawing frame callback
-    surface.frame(&qh, surface.clone());
-    if std::env::var("GLASS_CURSOR").is_ok() {
-        for _ in 0..12 {
-            app_data.draw();
-        }
-    } else {
-        app_data.draw();
-    }
+    app_data.draw();
     
+    let target_frame_time = std::time::Duration::from_millis(16);
+    let mut last_frame = std::time::Instant::now();
+
     while !app_data.exit {
-        event_queue.blocking_dispatch(&mut app_data).unwrap();
+        let _ = event_queue.dispatch_pending(&mut app_data);
+
+        if app_data.animating {
+            let still_animating = app_data.draw();
+            app_data.animating = still_animating;
+
+            let elapsed = last_frame.elapsed();
+            if elapsed < target_frame_time {
+                std::thread::sleep(target_frame_time - elapsed);
+            }
+            last_frame = std::time::Instant::now();
+        } else {
+            let _ = event_queue.blocking_dispatch(&mut app_data);
+            last_frame = std::time::Instant::now();
+        }
     }
 }
