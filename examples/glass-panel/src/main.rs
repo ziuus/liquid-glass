@@ -244,6 +244,20 @@ impl PointerHandler for AppData {
     }
 }
 
+fn get_battery_info() -> f32 {
+    if let Ok(s) = std::fs::read_to_string("/sys/class/power_supply/BAT0/capacity") {
+        if let Ok(val) = s.trim().parse::<f32>() {
+            return val;
+        }
+    }
+    if let Ok(s) = std::fs::read_to_string("/sys/class/power_supply/BAT1/capacity") {
+        if let Ok(val) = s.trim().parse::<f32>() {
+            return val;
+        }
+    }
+    100.0
+}
+
 fn get_local_time() -> (f32, f32, f32, u32, u32) {
     let mut now_time: libc::time_t = 0;
     unsafe {
@@ -251,7 +265,7 @@ fn get_local_time() -> (f32, f32, f32, u32, u32) {
         let mut tm: libc::tm = std::mem::zeroed();
         libc::localtime_r(&now_time, &mut tm);
         
-        // Also get subsecond microsecond precision for buttery 60 FPS sweeping second hand
+        // Subsecond microsecond precision for buttery 60 FPS sweeping second hand
         let mut tv: libc::timeval = std::mem::zeroed();
         libc::gettimeofday(&mut tv, std::ptr::null_mut());
         let subsecond = (tv.tv_usec as f32) / 1_000_000.0;
@@ -276,14 +290,15 @@ impl AppData {
             let vy = self.cursor_velocity[1];
 
             let (hr, min, sec, wday, mday) = get_local_time();
+            let bat_capacity = get_battery_info();
 
-            // Clock Widget Layout Specifications: [cx, cy, base_w, base_h]
-            // Window is 460 x 104
-            // 0: Left Analog Clock Dial (Circle diameter 80px)
-            // 1: Right Digital Clock Capsule (310px x 80px)
+            // Refined Architectural Clock Widget Layout Specifications:
+            // Total Window: 540 x 140
+            // 0: Left Swiss Analog Dial: Circle diameter 120px (center x=78, y=70)
+            // 1: Right Digital Clock + Battery Capsule: 380px x 120px (center x=334, y=70)
             let specs: [[f32; 4]; 2] = [
-                [58.0 / 460.0, 0.50, 80.0 / 460.0, 80.0 / 104.0],
-                [275.0 / 460.0, 0.50, 310.0 / 460.0, 80.0 / 104.0],
+                [78.0 / 540.0, 0.50, 120.0 / 540.0, 120.0 / 140.0],
+                [334.0 / 540.0, 0.50, 380.0 / 540.0, 120.0 / 140.0],
             ];
 
             let dt = 1.0f32 / 60.0f32;
@@ -301,8 +316,8 @@ impl AppData {
                 self.hover_pos[i] += self.hover_vel[i] * dt;
             }
 
-            // Target pill offset inside the right capsule: toggles position smoothly
-            let target_pill_x = if self.is_12h { 98.0f32 } else { 108.0f32 };
+            // Target seconds pill offset: anchored elegantly at the right end of the digital capsule
+            let target_pill_x = 135.0f32;
             let pill_force = -spring_k * (self.pill_offset_x - target_pill_x) - damping * self.pill_vel_x;
             self.pill_vel_x += pill_force * dt;
             self.pill_offset_x += self.pill_vel_x * dt;
@@ -319,62 +334,64 @@ impl AppData {
                 [cx + pull_x - w * 0.5, cy + pull_y - h * 0.5, w, h]
             };
 
-            let date_code = (wday as f32 * 100.0) + (mday as f32);
+            // Packed format: wday * 10000 + mday * 100 + bat_capacity
+            let date_bat_code = (wday as f32 * 10000.0) + (mday as f32 * 100.0) + bat_capacity;
             let format_flag = if self.is_12h { 1.0f32 } else { 0.0f32 };
 
-            // 1. Left Swiss Minimalist Analog Liquid Glass Dial
+            // 1. Left Swiss Minimalist Precision Analog Dial (120px diameter)
             let b0 = calc_stretch_bounds(0);
             let t0 = self.hover_pos[0].clamp(0.0, 1.0);
             let analog_dial = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::Circle)
                 .bounds(b0[0], b0[1], b0[2], b0[3])
-                .curvature(0.06)
-                .bevel(6.0)
-                .refraction(0.24)
-                .dispersion(0.010)
+                .curvature(0.065)
+                .bevel(6.5)
+                .refraction(0.25)
+                .dispersion(0.012)
                 .blur(0.0)
                 .tint(hr, min, sec, format_flag)
-                .specular(0.58 + t0 * 0.15)
-                .fresnel(0.35)
+                .specular(0.60 + t0 * 0.15)
+                .fresnel(0.36)
                 .element_type(20.0)
-                .progress(date_code)
+                .progress(date_bat_code)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
-            // 2. Right Digital Liquid Glass Clock Capsule
+            // 2. Right Digital Liquid Glass Clock + Battery Capsule
             let b1 = calc_stretch_bounds(1);
             let t1 = self.hover_pos[1].clamp(0.0, 1.0);
             let digital_capsule = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b1[0], b1[1], b1[2], b1[3])
-                .curvature(0.045)
-                .bevel(5.0)
-                .refraction(0.20)
-                .dispersion(0.008)
+                .curvature(0.05)
+                .bevel(5.5)
+                .refraction(0.22)
+                .dispersion(0.010)
                 .blur(0.0)
                 .tint(hr, min, sec, format_flag)
-                .specular(0.50 + t1 * 0.12)
-                .fresnel(0.32)
+                .specular(0.52 + t1 * 0.12)
+                .fresnel(0.33)
                 .element_type(21.0)
-                .progress(date_code)
+                .progress(date_bat_code)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
             // 3. Nested Seconds Liquid Glass Accent Pill (Radiant Gold #DCF842)
-            // Positioned gracefully at the right end of the digital capsule
-            let pill_cx = (275.0 + self.pill_offset_x) / 460.0;
-            let pill_w = 48.0 / 460.0;
-            let pill_h = 32.0 / 104.0;
+            // Positioned gracefully between the digital clock and the battery gauge
+            let pill_cx = (334.0 + 38.0) / 540.0;
+            let pill_cy = (70.0 - 24.0) / 140.0;
+            let pill_w = 44.0 / 540.0;
+            let pill_h = 24.0 / 140.0;
             let pull_pill_x = (px - pill_cx) * t1 * 0.025;
-            let pull_pill_y = (py - 0.50) * t1 * 0.025;
+            let pull_pill_y = (py - pill_cy) * t1 * 0.025;
             let seconds_pill = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
-                .bounds(pill_cx + pull_pill_x - pill_w * 0.5, 0.50 + pull_pill_y - pill_h * 0.5, pill_w, pill_h)
+                .bounds(pill_cx + pull_pill_x - pill_w * 0.5, pill_cy + pull_pill_y - pill_h * 0.5, pill_w, pill_h)
                 .curvature(0.05)
-                .bevel(4.0)
+                .bevel(3.5)
                 .refraction(0.24)
                 .dispersion(0.012)
                 .blur(0.0)
@@ -382,7 +399,7 @@ impl AppData {
                 .specular(0.60)
                 .fresnel(0.35)
                 .element_type(22.0)
-                .progress(date_code)
+                .progress(date_bat_code)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
@@ -516,8 +533,8 @@ fn main() {
         pill_offset_x: 108.0,
         pill_vel_x: 0.0,
         
-        width: 460,
-        height: 104,
+        width: 540,
+        height: 140,
         first_configure: true,
         exit: false,
         frame_counter: 0,

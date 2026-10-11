@@ -263,12 +263,14 @@ fn draw_digit(p: vec2<f32>, dig: u32, scale: f32) -> f32 {
             d = min(min(base, diag), min(arch_clipped, hook));
         }
         case 3u: {
-            let top_bar = dist_segment(q, vec2<f32>(-2.8, -5.0), vec2<f32>(2.8, -5.0));
-            let mid_diag = dist_segment(q, vec2<f32>(2.8, -5.0), vec2<f32>(0.0, -0.4));
-            let mid_bar = dist_segment(q, vec2<f32>(0.0, -0.4), vec2<f32>(2.6, 0.5));
-            let bot_arc = dist_segment(q, vec2<f32>(2.6, 0.5), vec2<f32>(2.6, 3.2));
-            let bot_bar = dist_segment(q, vec2<f32>(2.6, 3.2), vec2<f32>(-2.8, 5.0));
-            d = min(min(top_bar, mid_diag), min(mid_bar, min(bot_arc, bot_bar)));
+            let top_arch = abs(length(q - vec2<f32>(0.2, -2.6)) - 2.4);
+            let top_clipped = select(999.0, top_arch, q.x >= -0.2 && q.y <= -0.2);
+            let top_bar = dist_segment(q, vec2<f32>(-2.6, -5.0), vec2<f32>(0.2, -5.0));
+            let bot_arch = abs(length(q - vec2<f32>(0.2, 2.5)) - 2.5);
+            let bot_clipped = select(999.0, bot_arch, q.x >= -0.8 && q.y >= 0.0);
+            let bot_end = dist_segment(q, vec2<f32>(-2.6, 5.0), vec2<f32>(0.2, 5.0));
+            let mid_link = dist_segment(q, vec2<f32>(-0.4, 0.0), vec2<f32>(1.8, 0.0));
+            d = min(min(top_bar, top_clipped), min(min(bot_clipped, bot_end), mid_link));
         }
         case 4u: {
             let v_stem = dist_segment(q, vec2<f32>(1.6, -5.0), vec2<f32>(1.6, 5.0));
@@ -279,18 +281,16 @@ fn draw_digit(p: vec2<f32>, dig: u32, scale: f32) -> f32 {
         case 5u: {
             let top = dist_segment(q, vec2<f32>(2.8, -5.0), vec2<f32>(-2.6, -5.0));
             let v_upper = dist_segment(q, vec2<f32>(-2.6, -5.0), vec2<f32>(-2.6, -0.5));
-            let mid = dist_segment(q, vec2<f32>(-2.6, -0.5), vec2<f32>(2.6, 0.2));
-            let bot_arc = dist_segment(q, vec2<f32>(2.6, 0.2), vec2<f32>(2.6, 3.2));
-            let bot = dist_segment(q, vec2<f32>(2.6, 3.2), vec2<f32>(-2.8, 5.0));
-            d = min(min(top, v_upper), min(mid, min(bot_arc, bot)));
+            let mid = dist_segment(q, vec2<f32>(-2.6, -0.5), vec2<f32>(0.2, -0.5));
+            let bot_arch = abs(length(q - vec2<f32>(0.2, 2.4)) - 2.6);
+            let bot_clipped = select(999.0, bot_arch, q.x >= -0.8 && q.y >= -0.5);
+            let bot_end = dist_segment(q, vec2<f32>(-2.6, 5.0), vec2<f32>(0.2, 5.0));
+            d = min(min(top, v_upper), min(mid, min(bot_clipped, bot_end)));
         }
         case 6u: {
-            let spine = dist_segment(q, vec2<f32>(1.8, -4.8), vec2<f32>(-2.6, -0.5));
-            let v_lower = dist_segment(q, vec2<f32>(-2.6, -0.5), vec2<f32>(-2.6, 4.0));
-            let loop_bot = dist_segment(q, vec2<f32>(-2.6, 4.0), vec2<f32>(2.6, 4.0));
-            let loop_side = dist_segment(q, vec2<f32>(2.6, 4.0), vec2<f32>(2.6, 0.2));
-            let loop_top = dist_segment(q, vec2<f32>(2.6, 0.2), vec2<f32>(-2.6, 0.2));
-            d = min(min(spine, v_lower), min(loop_bot, min(loop_side, loop_top)));
+            let bot_loop = abs(length(q - vec2<f32>(0.0, 1.8)) - 2.8);
+            let spine = dist_segment(q, vec2<f32>(1.6, -5.0), vec2<f32>(-2.8, 1.8));
+            d = min(bot_loop, spine);
         }
         case 7u: {
             let top = dist_segment(q, vec2<f32>(-2.8, -5.0), vec2<f32>(2.8, -5.0));
@@ -444,7 +444,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
     }
 
     // ─────────────────────────────────────────────────────────────
-    // 20. Left Element: Swiss Minimalist Analog Liquid Glass Dial
+    // 20. Left Element: Swiss Minimalist Precision Analog Dial (120px)
     // ─────────────────────────────────────────────────────────────
     if el_type >= 19.9 && el_type <= 20.1 {
         let r_p = length(local_p);
@@ -454,13 +454,18 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let mn = tint.y;
         let sec = tint.z;
         
-        // 12 Minimalist Radial Hour Ticks
+        // 12 Minimalist Precision Hour Ticks (Scale tuned for 120px diameter, r_outer = 58px)
         let mod_ang = (ang + 3.14159265 / 12.0) % (3.14159265 / 6.0) - (3.14159265 / 12.0);
         let tick_dist = abs(mod_ang) * r_p;
-        let tick_rad = (r_p >= 27.5 && r_p <= 33.0);
+        // Cardinal ticks (12, 3, 6, 9) are longer and more prominent
+        let mod_card = (ang + 3.14159265 / 4.0) % (3.14159265 / 2.0) - (3.14159265 / 4.0);
+        let is_cardinal = (abs(mod_card) * r_p < 2.0);
+        let tick_inner = select(44.0, 39.0, is_cardinal);
+        let tick_rad = (r_p >= tick_inner && r_p <= 50.0);
         var tick_mask = 0.0;
         if tick_rad {
-            tick_mask = 1.0 - smoothstep(0.4, 1.1, tick_dist);
+            let tick_w = select(0.55, 0.85, is_cardinal);
+            tick_mask = 1.0 - smoothstep(tick_w, tick_w + 0.65, tick_dist);
         }
         
         // Analog Hands angles (clockwise from 12 o'clock = -pi/2)
@@ -472,36 +477,41 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let p_min = vec2<f32>(cos(min_angle), sin(min_angle));
         let p_sec = vec2<f32>(cos(sec_angle), sin(sec_angle));
         
-        // Hour hand: thick (2.6px), length 19px, tapered
-        let d_hour = dist_segment(local_p, -p_hour * 3.5, p_hour * 19.0) - 1.3;
+        // Hour hand: thick (3.4px), length 29px, counter-weight 5px
+        let d_hour = dist_segment(local_p, -p_hour * 5.0, p_hour * 29.0) - 1.7;
         let mask_hour = 1.0 - smoothstep(-0.35, 0.35, d_hour);
         
-        // Minute hand: sleek (1.8px), length 28px
-        let d_min = dist_segment(local_p, -p_min * 4.5, p_min * 28.0) - 0.9;
+        // Minute hand: sleek (2.2px), length 43px, counter-weight 6px
+        let d_min = dist_segment(local_p, -p_min * 6.0, p_min * 43.0) - 1.1;
         let mask_min = 1.0 - smoothstep(-0.35, 0.35, d_min);
         
-        // Center Pin
-        let d_pin = length(local_p) - 2.8;
+        // Center Pin: double-ring jeweled pivot
+        let d_pin = length(local_p) - 3.8;
         let mask_pin = 1.0 - smoothstep(-0.35, 0.35, d_pin);
+        let d_pin_core = length(local_p) - 1.6;
+        let mask_pin_core = 1.0 - smoothstep(-0.35, 0.35, d_pin_core);
         
-        // Second hand: signature radiant lemon-gold #DCF842, length 33px with tail
-        let d_sec = dist_segment(local_p, -p_sec * 7.0, p_sec * 33.0) - 0.55;
+        // Second hand: signature radiant lemon-gold #DCF842, length 50px with counter-weight
+        let d_sec = dist_segment(local_p, -p_sec * 10.0, p_sec * 50.0) - 0.65;
         let mask_sec = 1.0 - smoothstep(-0.3, 0.3, d_sec);
         
         let gold = vec3<f32>(0.86, 0.97, 0.26);
         let white = vec3<f32>(0.98, 0.99, 1.0);
         
-        // Outer aesthetic perimeter glint ring
-        let outer_ring = abs(r_p - 36.5) - 0.45;
-        let mask_ring = (1.0 - smoothstep(-0.35, 0.35, outer_ring)) * 0.35;
+        // Outer aesthetic perimeter glint ring at r = 53.0
+        let outer_ring = abs(r_p - 53.0) - 0.50;
+        let mask_ring = (1.0 - smoothstep(-0.35, 0.35, outer_ring)) * 0.40;
         
-        let white_mask = max(max(tick_mask * 0.65, mask_hour), max(mask_min, mask_pin));
+        let white_mask = max(max(tick_mask * 0.75, mask_hour), max(mask_min, mask_pin));
         
         if mask_sec > 0.05 {
             app.glyph_mask = mask_sec;
             app.glyph_color = gold;
             app.fluid_color = gold;
-            app.fluid_glow = exp(-max(d_sec, 0.0) * 0.8) * 0.35;
+            app.fluid_glow = exp(-max(d_sec, 0.0) * 0.8) * 0.38;
+        } else if mask_pin_core > 0.05 {
+            app.glyph_mask = mask_pin_core;
+            app.glyph_color = gold;
         } else {
             app.glyph_mask = max(white_mask, mask_ring);
             app.glyph_color = white;
@@ -510,16 +520,12 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
     }
 
     // ─────────────────────────────────────────────────────────────
-    // 21. Right Element: Digital Liquid Glass Clock Capsule
+    // 21. Center/Right Element: Digital Liquid Glass Clock + Battery Capsule
     // ─────────────────────────────────────────────────────────────
     if el_type >= 20.9 && el_type <= 21.1 {
         let is_12h = (tint.w > 0.5);
         var hr = tint.x;
-        var is_pm = false;
         if is_12h {
-            if hr >= 12.0 {
-                is_pm = true;
-            }
             if hr == 0.0 {
                 hr = 12.0;
             } else if hr > 12.0 {
@@ -534,11 +540,11 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let m_tens = u32(mn / 10.0);
         let m_ones = u32(mn % 10.0);
         
-        // Digital Clock Row: Left-biased (x_center = -26.0, y = -7.0) to balance gracefully with right seconds pill
-        let center_x = -26.0;
-        let clock_y = -7.0;
-        let num_scale = 2.35;
-        let sp = 16.0;
+        // Digital Clock Row: Centered at center_x = -36.0, y = -10.0
+        let center_x = -36.0;
+        let clock_y = -10.0;
+        let num_scale = 3.0;
+        let sp = 20.5;
         
         let d_h0 = draw_digit(local_p - vec2<f32>(center_x - 2.1 * sp, clock_y), h_tens, num_scale);
         let d_h1 = draw_digit(local_p - vec2<f32>(center_x - 1.1 * sp, clock_y), h_ones, num_scale);
@@ -549,20 +555,23 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         // Pulse colon gently with fractional seconds
         let colon_pulse = 0.55 + 0.45 * sin(sec * 3.14159265);
         
-        let d_digits = min(min(d_h0, d_h1), min(d_m0, d_m1)) - 0.72;
+        let d_digits = min(min(d_h0, d_h1), min(d_m0, d_m1)) - 0.85;
         let mask_digits = 1.0 - smoothstep(-0.4, 0.4, d_digits);
         let mask_colon = (1.0 - smoothstep(-0.35, 0.35, d_colon)) * colon_pulse;
         
-        // Date / Day Row: Elegant sub-row (y = 18.5)
-        // Decoded from progress: wday * 100 + mday
-        let wday_code = u32(progress / 100.0);
-        let mday_code = u32(progress % 100.0);
+        // Date / Day Row: Elegant sub-row (y = 22.0)
+        // Decoded from progress: wday * 10000 + mday * 100 + (bat / 10)
+        let wday_code = u32(progress / 10000.0);
+        let rem_date = progress % 10000.0;
+        let mday_code = u32(rem_date / 100.0);
+        let bat_val = (rem_date % 100.0); // 0.0 - 100.0
+        
         let d_tens = mday_code / 10u;
         let d_ones = mday_code % 10u;
         
-        let date_y = 18.5;
-        let date_scale = 0.90;
-        let dsp = 8.5;
+        let date_y = 22.0;
+        let date_scale = 1.15;
+        let dsp = 9.8;
         let date_cx = center_x;
         
         // Weekday 3 letters: e.g. SUN, MON, TUE, WED, THU, FRI, SAT
@@ -582,28 +591,68 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let dd0 = draw_digit(local_p - vec2<f32>(date_cx + 1.0 * dsp, date_y), d_tens, date_scale);
         let dd1 = draw_digit(local_p - vec2<f32>(date_cx + 2.0 * dsp, date_y), d_ones, date_scale);
         
-        let d_date = min(min(dw0, min(dw1, dw2)), min(dd0, dd1)) - 0.45;
-        let mask_date = (1.0 - smoothstep(-0.35, 0.35, d_date)) * 0.78;
+        let d_date = min(min(dw0, min(dw1, dw2)), min(dd0, dd1)) - 0.52;
+        let mask_date = (1.0 - smoothstep(-0.35, 0.35, d_date)) * 0.82;
+
+        // ── Architectural Liquid Glass Battery Gauge Section (x = 120.0) ──
+        let bat_cx = 120.0;
+        let bat_cy = 0.0;
+        let p_bat = local_p - vec2<f32>(bat_cx, bat_cy);
         
-        let total_mask = max(max(mask_digits, mask_colon), mask_date);
+        // Circular Battery Gauge Ring (r = 30.0)
+        let r_bat = length(p_bat);
+        let bat_track = abs(r_bat - 30.0) - 1.8;
+        let mask_bat_track = (1.0 - smoothstep(-0.35, 0.35, bat_track)) * 0.25;
         
-        app.glyph_mask = total_mask;
-        app.glyph_color = vec3<f32>(0.98, 0.99, 1.0);
+        // Active Battery Arc: Sweep from top (-pi/2) clockwise according to bat_val
+        let ang_bat = (atan2(p_bat.y, p_bat.x) + 1.5707963 + 6.2831853) % 6.2831853;
+        let bat_sweep = (bat_val / 100.0) * 6.2831853;
+        var mask_bat_arc = 0.0;
+        if ang_bat <= bat_sweep {
+            mask_bat_arc = 1.0 - smoothstep(-0.35, 0.35, bat_track);
+        }
+        
+        // Crisp Battery Percentage Number perfectly centered in Ring
+        let bat_u = u32(clamp(bat_val, 0.0, 100.0));
+        let b_tens = bat_u / 10u;
+        let b_ones = bat_u % 10u;
+        let b_scale = 1.60;
+        let bsp = 9.0;
+        let db0 = draw_digit(p_bat - vec2<f32>(-0.6 * bsp, 0.0), b_tens, b_scale);
+        let db1 = draw_digit(p_bat - vec2<f32>( 0.6 * bsp, 0.0), b_ones, b_scale);
+        let d_bnum = min(db0, db1) - 0.52;
+        let mask_bnum = 1.0 - smoothstep(-0.35, 0.35, d_bnum);
+        
+        let white_elems = max(max(mask_digits, mask_colon), max(mask_date, mask_bat_track));
+        let gold = vec3<f32>(0.86, 0.97, 0.26);
+        let white = vec3<f32>(0.98, 0.99, 1.0);
+        
+        if mask_bat_arc > 0.05 {
+            app.glyph_mask = mask_bat_arc;
+            app.glyph_color = gold;
+            app.fluid_color = gold;
+            app.fluid_glow = exp(-max(bat_track, 0.0) * 0.7) * 0.35;
+        } else if mask_bnum > 0.05 {
+            app.glyph_mask = mask_bnum;
+            app.glyph_color = white;
+        } else {
+            app.glyph_mask = white_elems;
+            app.glyph_color = white;
+        }
         return app;
     }
 
     // ─────────────────────────────────────────────────────────────
-    // 22. Nested Seconds / Format Glass Pill (Luminous Accent in Neon Gold)
+    // 22. Nested Seconds Liquid Glass Pill
     // ─────────────────────────────────────────────────────────────
     if el_type >= 21.9 && el_type <= 22.1 {
         let sec = tint.z;
-        let is_12h = (tint.w > 0.5);
         let sec_u = u32(sec);
         let s_tens = sec_u / 10u;
         let s_ones = sec_u % 10u;
         
-        let scale = 1.35;
-        let sp = 8.5;
+        let scale = 1.25;
+        let sp = 8.0;
         let d0 = draw_digit(local_p - vec2<f32>(-0.6 * sp, 0.0), s_tens, scale);
         let d1 = draw_digit(local_p - vec2<f32>( 0.6 * sp, 0.0), s_ones, scale);
         
@@ -615,7 +664,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         app.glyph_mask = mask * 0.98;
         app.glyph_color = gold;
         
-        let bloom = exp(-max(d_sec, 0.0) * 0.70) * 0.40;
+        let bloom = exp(-max(d_sec, 0.0) * 0.70) * 0.35;
         app.fluid_color = gold;
         app.fluid_glow = bloom;
         return app;
