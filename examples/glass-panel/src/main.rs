@@ -47,6 +47,9 @@ struct AppData {
     pointer: Option<wl_pointer::WlPointer>,
     cursor_pos: [f32; 2],
     cursor_velocity: [f32; 2],
+    hover_t: [f32; 8],
+    is_pressed: bool,
+    slider_progress: f32,
     
     width: u32,
     height: u32,
@@ -194,13 +197,27 @@ impl PointerHandler for AppData {
         events: &[PointerEvent],
     ) {
         for event in events {
-            if let PointerEventKind::Motion { .. } = event.kind {
-                if self.width > 0 && self.height > 0 {
-                    let nx = event.position.0 as f32 / self.width as f32;
-                    let ny = event.position.1 as f32 / self.height as f32;
-                    self.cursor_velocity = [nx - self.cursor_pos[0], ny - self.cursor_pos[1]];
-                    self.cursor_pos = [nx, ny];
+            match event.kind {
+                PointerEventKind::Enter { .. } | PointerEventKind::Motion { .. } => {
+                    if self.width > 0 && self.height > 0 {
+                        let nx = (event.position.0 as f32 / self.width as f32).clamp(0.0, 1.0);
+                        let ny = (event.position.1 as f32 / self.height as f32).clamp(0.0, 1.0);
+                        self.cursor_velocity = [nx - self.cursor_pos[0], ny - self.cursor_pos[1]];
+                        self.cursor_pos = [nx, ny];
+                    }
                 }
+                PointerEventKind::Leave { .. } => {
+                    self.cursor_pos = [-10.0, -10.0];
+                    self.cursor_velocity = [0.0, 0.0];
+                    self.is_pressed = false;
+                }
+                PointerEventKind::Press { .. } => {
+                    self.is_pressed = true;
+                }
+                PointerEventKind::Release { .. } => {
+                    self.is_pressed = false;
+                }
+                _ => {}
             }
         }
     }
@@ -225,6 +242,31 @@ impl AppData {
             let vx = self.cursor_velocity[0];
             let vy = self.cursor_velocity[1];
 
+            // Subcomponent bounding boxes [x, y, w, h]
+            let bounds_list: [[f32; 4]; 8] = [
+                [0.08, 0.06, 0.84, 0.08],  // 0: header_pill
+                [0.08, 0.17, 0.40, 0.16],  // 1: tile_left
+                [0.52, 0.17, 0.40, 0.16],  // 2: tile_right
+                [0.08, 0.36, 0.84, 0.28],  // 3: center_card
+                [0.12, 0.68, 0.20, 0.12],  // 4: btn_left
+                [0.38, 0.66, 0.24, 0.15],  // 5: btn_center
+                [0.68, 0.68, 0.20, 0.12],  // 6: btn_right
+                [0.12, 0.82, 0.76, 0.10],  // 7: slider_track hit area
+            ];
+
+            // Smooth spring lerp hover transition for each component
+            for i in 0..8 {
+                let [bx, by, bw, bh] = bounds_list[i];
+                let is_hovered = px >= bx && px <= bx + bw && py >= by && py <= by + bh;
+                let target = if is_hovered { 1.0 } else { 0.0 };
+                self.hover_t[i] += (target - self.hover_t[i]) * 0.22;
+            }
+
+            // Interactive slider dragging
+            if self.is_pressed && px >= 0.10 && px <= 0.90 && py >= 0.80 && py <= 0.94 {
+                self.slider_progress = ((px - 0.12) / 0.76).clamp(0.05, 0.95);
+            }
+
             // ── Surface 0: Base Liquid Glass Widget ──
             let panel = GlassSurface::new()
                 .material(Material::LiquidGlass)
@@ -243,136 +285,147 @@ impl AppData {
                 .pointer_velocity(vx, vy);
 
             // ── Subcomponent 1: Top Status Pill (Dynamic Island) ──
+            let t0 = self.hover_t[0];
             let header_pill = GlassSurface::new()
                 .material(Material::Acrylic)
                 .shape(Shape::Capsule)
                 .bounds(0.08, 0.06, 0.84, 0.08)
-                .curvature(0.35)
-                .bevel(10.0)
-                .refraction(0.42)
-                .dispersion(0.03)
-                .blur(8.0)
-                .tint(1.0, 1.0, 1.0, 0.09)
-                .specular(0.75)
-                .fresnel(0.85)
+                .curvature(0.35 + t0 * 0.15)
+                .bevel(10.0 + t0 * 4.0)
+                .refraction(0.42 + t0 * 0.18)
+                .dispersion(0.03 + t0 * 0.02)
+                .blur(8.0 - t0 * 3.0)
+                .tint(1.0, 1.0, 1.0, 0.09 + t0 * 0.08)
+                .specular(0.75 + t0 * 0.40)
+                .fresnel(0.85 + t0 * 0.15)
                 .element_type(1.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
             // ── Subcomponent 2 & 3: Dual Metric Quick-Tiles ──
+            let t1 = self.hover_t[1];
             let tile_left = GlassSurface::new()
                 .material(Material::Acrylic)
                 .shape(Shape::RoundedRectangle { radius: 18.0 })
                 .bounds(0.08, 0.17, 0.40, 0.16)
-                .curvature(0.25)
-                .bevel(12.0)
-                .refraction(0.48)
-                .dispersion(0.03)
-                .blur(8.0)
-                .tint(0.92, 0.96, 1.0, 0.07)
-                .specular(0.6)
-                .fresnel(0.75)
+                .curvature(0.25 + t1 * 0.20)
+                .bevel(12.0 + t1 * 5.0)
+                .refraction(0.48 + t1 * 0.22)
+                .dispersion(0.03 + t1 * 0.02)
+                .blur(8.0 - t1 * 3.0)
+                .tint(0.92, 0.96, 1.0, 0.07 + t1 * 0.10)
+                .specular(0.60 + t1 * 0.50)
+                .fresnel(0.75 + t1 * 0.20)
                 .element_type(2.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
+            let t2 = self.hover_t[2];
             let tile_right = GlassSurface::new()
                 .material(Material::Acrylic)
                 .shape(Shape::RoundedRectangle { radius: 18.0 })
                 .bounds(0.52, 0.17, 0.40, 0.16)
-                .curvature(0.25)
-                .bevel(12.0)
-                .refraction(0.48)
-                .dispersion(0.03)
-                .blur(8.0)
-                .tint(0.98, 0.94, 1.0, 0.07)
-                .specular(0.6)
-                .fresnel(0.75)
+                .curvature(0.25 + t2 * 0.20)
+                .bevel(12.0 + t2 * 5.0)
+                .refraction(0.48 + t2 * 0.22)
+                .dispersion(0.03 + t2 * 0.02)
+                .blur(8.0 - t2 * 3.0)
+                .tint(0.98, 0.94, 1.0, 0.07 + t2 * 0.10)
+                .specular(0.60 + t2 * 0.50)
+                .fresnel(0.75 + t2 * 0.20)
                 .element_type(3.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
             // ── Subcomponent 4: Center Hero Feature Card ──
+            let t3 = self.hover_t[3];
             let center_card = GlassSurface::new()
                 .material(Material::FrostedGlass)
                 .shape(Shape::RoundedRectangle { radius: 22.0 })
                 .bounds(0.08, 0.36, 0.84, 0.28)
-                .curvature(0.28)
-                .bevel(16.0)
-                .refraction(0.58)
-                .dispersion(0.03)
-                .blur(10.0)
-                .tint(1.0, 1.0, 1.0, 0.06)
-                .specular(0.55)
-                .fresnel(0.8)
+                .curvature(0.28 + t3 * 0.16)
+                .bevel(16.0 + t3 * 6.0)
+                .refraction(0.58 + t3 * 0.20)
+                .dispersion(0.03 + t3 * 0.02)
+                .blur(10.0 - t3 * 3.0)
+                .tint(1.0, 1.0, 1.0, 0.06 + t3 * 0.08)
+                .specular(0.55 + t3 * 0.45)
+                .fresnel(0.80 + t3 * 0.15)
                 .element_type(4.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
             // ── Subcomponents 5, 6, 7: Bottom Action Glass Buttons ──
+            let t4 = self.hover_t[4];
+            let press_scale4 = if self.is_pressed && t4 > 0.4 { -0.015 } else { 0.0 };
             let btn_left = GlassSurface::new()
                 .material(Material::Acrylic)
                 .shape(Shape::Capsule)
-                .bounds(0.12, 0.68, 0.20, 0.12)
-                .curvature(0.4)
-                .bevel(10.0)
-                .refraction(0.4)
-                .dispersion(0.02)
+                .bounds(0.12 - press_scale4 * 0.5, 0.68 - press_scale4 * 0.5, 0.20 + press_scale4, 0.12 + press_scale4)
+                .curvature(0.40 + t4 * 0.25)
+                .bevel(10.0 + t4 * 6.0)
+                .refraction(0.40 + t4 * 0.30)
+                .dispersion(0.02 + t4 * 0.03)
                 .blur(6.0)
-                .tint(1.0, 1.0, 1.0, 0.10)
-                .specular(0.85)
-                .fresnel(0.75)
+                .tint(1.0, 1.0, 1.0, 0.10 + t4 * 0.12)
+                .specular(0.85 + t4 * 0.60)
+                .fresnel(0.75 + t4 * 0.25)
                 .element_type(5.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
+            let t5 = self.hover_t[5];
+            let press_scale5 = if self.is_pressed && t5 > 0.4 { -0.02 } else { 0.0 };
             let btn_center = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
-                .bounds(0.38, 0.66, 0.24, 0.15)
-                .curvature(0.5)
-                .bevel(14.0)
-                .refraction(0.65)
-                .dispersion(0.04)
+                .bounds(0.38 - press_scale5 * 0.5, 0.66 - press_scale5 * 0.5, 0.24 + press_scale5, 0.15 + press_scale5)
+                .curvature(0.50 + t5 * 0.30)
+                .bevel(14.0 + t5 * 8.0)
+                .refraction(0.65 + t5 * 0.35)
+                .dispersion(0.04 + t5 * 0.03)
                 .blur(8.0)
-                .tint(1.0, 1.0, 1.0, 0.14)
-                .specular(1.1)
-                .fresnel(0.9)
+                .tint(1.0, 1.0, 1.0, 0.14 + t5 * 0.15)
+                .specular(1.10 + t5 * 0.70)
+                .fresnel(0.90 + t5 * 0.20)
                 .element_type(6.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
+            let t6 = self.hover_t[6];
+            let press_scale6 = if self.is_pressed && t6 > 0.4 { -0.015 } else { 0.0 };
             let btn_right = GlassSurface::new()
                 .material(Material::Acrylic)
                 .shape(Shape::Capsule)
-                .bounds(0.68, 0.68, 0.20, 0.12)
-                .curvature(0.4)
-                .bevel(10.0)
-                .refraction(0.4)
-                .dispersion(0.02)
+                .bounds(0.68 - press_scale6 * 0.5, 0.68 - press_scale6 * 0.5, 0.20 + press_scale6, 0.12 + press_scale6)
+                .curvature(0.40 + t6 * 0.25)
+                .bevel(10.0 + t6 * 6.0)
+                .refraction(0.40 + t6 * 0.30)
+                .dispersion(0.02 + t6 * 0.03)
                 .blur(6.0)
-                .tint(1.0, 1.0, 1.0, 0.10)
-                .specular(0.85)
-                .fresnel(0.75)
+                .tint(1.0, 1.0, 1.0, 0.10 + t6 * 0.12)
+                .specular(0.85 + t6 * 0.60)
+                .fresnel(0.75 + t6 * 0.25)
                 .element_type(7.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
             // ── Subcomponent 8: Bottom Slider Groove Track ──
+            let t7 = self.hover_t[7];
             let slider_track = GlassSurface::new()
                 .material(Material::Acrylic)
                 .shape(Shape::Capsule)
                 .bounds(0.12, 0.85, 0.76, 0.045)
-                .curvature(0.2)
-                .bevel(6.0)
-                .refraction(0.32)
+                .curvature(0.20 + t7 * 0.15)
+                .bevel(6.0 + t7 * 3.0)
+                .refraction(0.32 + t7 * 0.15)
                 .dispersion(0.02)
                 .blur(4.0)
-                .tint(1.0, 1.0, 1.0, 0.07)
-                .specular(0.6)
-                .fresnel(0.6)
+                .tint(1.0, 1.0, 1.0, 0.07 + t7 * 0.08)
+                .specular(0.60 + t7 * 0.40)
+                .fresnel(0.60 + t7 * 0.20)
                 .element_type(8.0)
-                .progress(0.65)
+                .progress(self.slider_progress)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
@@ -476,8 +529,11 @@ fn main() {
         window_wrapper: None,
         
         pointer: None,
-        cursor_pos: [0.5, 0.5],
+        cursor_pos: [-10.0, -10.0],
         cursor_velocity: [0.0, 0.0],
+        hover_t: [0.0; 8],
+        is_pressed: false,
+        slider_progress: 0.65,
         
         width: 360,
         height: 480,

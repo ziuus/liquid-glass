@@ -122,21 +122,28 @@ fn liquid_displacement(world_px: vec2<f32>) -> vec2<f32> {
         dp.y += cos(world_px.x * 0.015 + params.time * 1.3) * params.deformation * 5.0;
     }
     
-    // Interactive cursor wave & fluid advection
+    // Interactive cursor wave & standing meniscus tension
     let pointer_px = params.pointer_pos * params.surface_size;
     let dist = distance(world_px, pointer_px);
     let effect_radius = 160.0;
     
-    if dist < effect_radius && length(params.pointer_velocity) > 0.0001 {
+    if dist < effect_radius && params.pointer_pos.x >= 0.0 {
         let t = 1.0 - (dist / effect_radius);
         let t2 = t * t;
-        let ripple = sin(dist * 0.07 - params.time * 14.0) * exp(-dist * 0.03);
+        
+        // Moving ripple advection
         let vel = params.pointer_velocity * 24.0;
         let vel_mag = clamp(length(vel), 0.0, 1.0);
+        if vel_mag > 0.0001 {
+            let ripple = sin(dist * 0.07 - params.time * 14.0) * exp(-dist * 0.03);
+            let advection = vel * t2 * 12.0;
+            let dir = normalize(world_px - pointer_px + vec2<f32>(0.001));
+            dp += advection + dir * ripple * 8.0 * vel_mag * t;
+        }
         
-        let advection = vel * t2 * 12.0;
-        let dir = normalize(world_px - pointer_px + vec2<f32>(0.001));
-        dp += advection + dir * ripple * 8.0 * vel_mag * t;
+        // Viscous surface tension pull towards cursor (gentle organic attraction)
+        let pull_dir = normalize(pointer_px - world_px + vec2<f32>(0.001));
+        dp += pull_dir * sin(t * 3.14159) * 2.2;
     }
     
     return dp;
@@ -457,6 +464,31 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let spec2 = pow(max(dot(N, H2), 0.0), 36.0) * 0.22 * params.specular_strength;
     
     // ════════════════════════════════════════════
+    // 9b. DYNAMIC CURSOR SPOTLIGHT (Apple Liquid Sheen)
+    // ════════════════════════════════════════════
+    let cur_pos_px = params.pointer_pos * params.surface_size;
+    let delta_cur = cur_pos_px - (uv * params.surface_size);
+    let dist_cur = length(delta_cur);
+    let cur_radius = 150.0;
+    
+    var cur_spec = 0.0;
+    var cur_rim_glow = 0.0;
+    if dist_cur < cur_radius && params.pointer_pos.x >= 0.0 {
+        let cur_t = 1.0 - (dist_cur / cur_radius);
+        let cur_t2 = cur_t * cur_t;
+        
+        // Floating point light 35px above the surface
+        let L_cur = normalize(vec3<f32>(delta_cur, 35.0));
+        let H_cur = normalize(L_cur + V);
+        cur_spec = pow(max(dot(N, H_cur), 0.0), 38.0) * cur_t2 * 1.25 * params.specular_strength;
+        
+        // Rim caustics oriented toward the cursor
+        let cur_dir_2d = normalize(delta_cur + vec2<f32>(0.001));
+        let rim_face_cur = max(dot(N_2d, cur_dir_2d), 0.0);
+        cur_rim_glow = pow(edge, 1.8) * rim_face_cur * cur_t * 0.50;
+    }
+    
+    // ════════════════════════════════════════════
     // 10. FRESNEL GRAZING-ANGLE REFLECTION
     // ════════════════════════════════════════════
     let cos_theta = clamp(abs(N.z), 0.0, 1.0);
@@ -468,14 +500,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let glyph = render_element_glyph(local_px, half_size, params.padding2.x, params.padding2.y, params.time);
     let glyph_shadow = render_element_glyph(local_px - vec2<f32>(0.0, 1.2), half_size, params.padding2.x, params.padding2.y, params.time);
     let glyph_depth = max(glyph_shadow - glyph, 0.0) * 0.35;
-    let glyph_crest = glyph * vec3<f32>(0.98, 0.99, 1.0);
+    let glyph_crest = glyph * vec3<f32>(0.98, 0.99, 1.0) * (1.0 + cur_spec * 0.5);
     
     // ════════════════════════════════════════════
     // 12. MASTER COMPOSITE
     // ════════════════════════════════════════════
     var fin = col * (1.0 - glyph_depth);
     fin += vec3<f32>(rim_crest);
-    fin += vec3<f32>(spec1 + spec2);
+    fin += vec3<f32>(spec1 + spec2 + cur_spec + cur_rim_glow);
     fin += glyph_crest * 0.92;
     fin = mix(fin, vec3<f32>(1.0, 1.0, 1.0), fres * 0.10);
     
