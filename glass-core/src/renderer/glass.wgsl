@@ -942,11 +942,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if blur <= 0.5 {
         col = sharp;
     } else {
-        let blur_r = blurred_sample(uv_r, blur).r;
-        let blur_g = blurred_sample(uv_g, blur).g;
-        let blur_b = blurred_sample(uv_b, blur).b;
-        let blurred = vec3<f32>(blur_r, blur_g, blur_b);
-        col = mix(blurred, sharp, pow(edge, 1.4) * 0.45);
+        // Fast 16-tap golden spiral blur on center ray
+        let blurred = blurred_sample(uv_g, blur);
+        col = mix(blurred, sharp, pow(edge, 1.4) * 0.40);
     }
     
     // Pure frosted crystalline transmission (tactile frosted glass - optical diffusion without paint)

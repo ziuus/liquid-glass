@@ -61,6 +61,9 @@ struct AppData {
     frame_counter: u32,
     animating: bool,
     qh: Option<QueueHandle<Self>>,
+    last_battery: f32,
+    last_battery_time: std::time::Instant,
+    last_render_time: std::time::Instant,
 }
 
 struct WaylandWindow {
@@ -101,16 +104,10 @@ impl CompositorHandler for AppData {
     fn frame(
         &mut self,
         _conn: &Connection,
-        qh: &QueueHandle<Self>,
-        surface: &wl_surface::WlSurface,
+        _qh: &QueueHandle<Self>,
+        _surface: &wl_surface::WlSurface,
         _time: u32,
     ) {
-        let still_animating = self.draw();
-        if still_animating {
-            surface.frame(qh, surface.clone());
-        } else {
-            self.animating = false;
-        }
     }
     fn transform_changed(
         &mut self,
@@ -290,7 +287,11 @@ impl AppData {
             let vy = self.cursor_velocity[1];
 
             let (hr, min, sec, wday, mday) = get_local_time();
-            let bat_capacity = get_battery_info();
+            if self.last_battery_time.elapsed().as_secs() >= 10 {
+                self.last_battery = get_battery_info();
+                self.last_battery_time = std::time::Instant::now();
+            }
+            let bat_capacity = self.last_battery;
 
             // Unified Luxury Liquid Glass Island (390px x 94px)
             let spec: [f32; 4] = [0.50, 0.50, 390.0 / 420.0, 94.0 / 110.0];
@@ -465,6 +466,9 @@ fn main() {
         frame_counter: 0,
         animating: true,
         qh: Some(qh.clone()),
+        last_battery: get_battery_info(),
+        last_battery_time: std::time::Instant::now(),
+        last_render_time: std::time::Instant::now(),
     };
 
     let surface = app_data.compositor_state.create_surface(&qh);
