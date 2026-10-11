@@ -339,9 +339,9 @@ fn draw_clock_letter(p: vec2<f32>, ch: u32, scale: f32) -> f32 {
         }
         // 'U'
         case 85u: {
-            let left = dist_segment(q, vec2<f32>(-2.2, -4.2), vec2<f32>(-2.2, 2.0));
-            let right = dist_segment(q, vec2<f32>(2.2, -4.2), vec2<f32>(2.2, 2.0));
-            let bot = dist_segment(q, vec2<f32>(-2.2, 2.0), vec2<f32>(2.2, 2.0));
+            let left = dist_segment(q, vec2<f32>(-2.2, -4.2), vec2<f32>(-2.2, 1.5));
+            let right = dist_segment(q, vec2<f32>(2.2, -4.2), vec2<f32>(2.2, 1.5));
+            let bot = dist_segment(q, vec2<f32>(-2.2, 4.2), vec2<f32>(2.2, 4.2));
             d = min(min(left, right), bot);
         }
         // 'N'
@@ -454,22 +454,22 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let mn = tint.y;
         let sec = tint.z;
         
-        // 1. Subtle crystalline dark tint dial backing (r <= 54px) for 100% contrast against bright backgrounds
+        // 1. Subtle crystalline dark obsidian tint dial backing (r <= 54px) for 100% contrast against bright backgrounds
         let dial_disk = smoothstep(54.0, 52.0, r_p);
-        let dial_backing_mask = dial_disk * 0.32;
+        let dial_backing_mask = dial_disk * 0.40;
         
-        // 12 Minimalist Precision Hour Ticks (Scale tuned for 120px diameter, r_outer = 58px)
+        // 12 Minimalist Precision Hour Ticks (Scale tuned for 120px diameter, r_outer = 50px)
         let mod_ang = (ang + 3.14159265 / 12.0) % (3.14159265 / 6.0) - (3.14159265 / 12.0);
         let tick_dist = abs(mod_ang) * r_p;
-        // Cardinal ticks (12, 3, 6, 9) are longer and more prominent
+        // Cardinal ticks (12, 3, 6, 9) are solid Swiss batons
         let mod_card = (ang + 3.14159265 / 4.0) % (3.14159265 / 2.0) - (3.14159265 / 4.0);
-        let is_cardinal = (abs(mod_card) * r_p < 2.5);
-        let tick_inner = select(44.0, 38.0, is_cardinal);
-        let tick_rad = (r_p >= tick_inner && r_p <= 51.0);
+        let is_cardinal = (abs(mod_card) * r_p < 3.2);
+        let tick_inner = select(44.0, 36.0, is_cardinal);
+        let tick_rad = (r_p >= tick_inner && r_p <= 49.5);
         var tick_mask = 0.0;
         if tick_rad {
-            let tick_w = select(0.75, 1.15, is_cardinal);
-            tick_mask = 1.0 - smoothstep(tick_w, tick_w + 0.60, tick_dist);
+            let tick_w = select(0.9, 1.6, is_cardinal);
+            tick_mask = 1.0 - smoothstep(tick_w, tick_w + 0.50, tick_dist);
         }
         
         // Analog Hands angles (clockwise from 12 o'clock = -pi/2)
@@ -481,33 +481,33 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let p_min = vec2<f32>(cos(min_angle), sin(min_angle));
         let p_sec = vec2<f32>(cos(sec_angle), sin(sec_angle));
         
-        // Hour hand: thick (4.2px width), length 30px, counter-weight 6px
-        let d_hour = dist_segment(local_p, -p_hour * 6.0, p_hour * 30.0) - 2.1;
+        // Hour hand: sculpted baton (4.2px width), length 29px, counter-weight 6px
+        let d_hour = dist_segment(local_p, -p_hour * 6.0, p_hour * 29.0) - 2.1;
         let mask_hour = 1.0 - smoothstep(-0.4, 0.4, d_hour);
         
-        // Minute hand: sleek (3.0px width), length 44px, counter-weight 7px
-        let d_min = dist_segment(local_p, -p_min * 7.0, p_min * 44.0) - 1.5;
+        // Minute hand: sleek baton (3.0px width), length 43px, counter-weight 7px
+        let d_min = dist_segment(local_p, -p_min * 7.0, p_min * 43.0) - 1.5;
         let mask_min = 1.0 - smoothstep(-0.4, 0.4, d_min);
         
         // Center Pin: double-ring jeweled pivot
         let d_pin = length(local_p) - 4.5;
         let mask_pin = 1.0 - smoothstep(-0.35, 0.35, d_pin);
-        let d_pin_core = length(local_p) - 2.0;
+        let d_pin_core = length(local_p) - 2.2;
         let mask_pin_core = 1.0 - smoothstep(-0.35, 0.35, d_pin_core);
         
-        // Second hand: signature radiant lemon-gold #DCF842, length 51px with counter-weight
-        let d_sec = dist_segment(local_p, -p_sec * 12.0, p_sec * 51.0) - 0.85;
+        // Second hand: signature radiant lemon-gold #DCF842, length 50px with counter-weight
+        let d_sec = dist_segment(local_p, -p_sec * 12.0, p_sec * 50.0) - 0.85;
         let mask_sec = 1.0 - smoothstep(-0.35, 0.35, d_sec);
         
         let gold = vec3<f32>(0.86, 0.97, 0.26);
-        let white = vec3<f32>(1.0, 1.0, 1.0);
-        let dark_backing = vec3<f32>(0.03, 0.04, 0.06);
+        let white = vec3<f32>(0.98, 0.99, 1.0);
+        let dark_backing = vec3<f32>(0.02, 0.03, 0.05);
         
-        // Outer aesthetic perimeter glint ring at r = 53.5
-        let outer_ring = abs(r_p - 53.5) - 0.65;
-        let mask_ring = (1.0 - smoothstep(-0.35, 0.35, outer_ring)) * 0.55;
+        // Outer aesthetic perimeter glint ring at r = 52.5
+        let outer_ring = abs(r_p - 52.5) - 0.75;
+        let mask_ring = (1.0 - smoothstep(-0.35, 0.35, outer_ring)) * 0.65;
         
-        let white_mask = max(max(tick_mask * 0.95, mask_hour), max(mask_min, mask_pin));
+        let white_mask = max(max(tick_mask, mask_hour), max(mask_min, mask_pin));
         
         if mask_sec > 0.05 {
             app.glyph_mask = mask_sec;
@@ -640,9 +640,11 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let gold = vec3<f32>(0.86, 0.97, 0.26);
         let white = vec3<f32>(0.98, 0.99, 1.0);
         
+        // Proper layering: battery gold fill + housing + crisp white typography
         if mask_fill > 0.05 {
-            app.glyph_mask = mask_fill;
-            app.glyph_color = gold;
+            app.glyph_mask = max(mask_fill, white_elems);
+            // Blend fill with outer shell/numbers if overlapping
+            app.glyph_color = mix(gold, white, clamp((white_elems - mask_fill) * 2.0, 0.0, 1.0));
             app.fluid_color = gold;
             app.fluid_glow = exp(-max(d_fill, 0.0) * 0.6) * 0.30;
         } else {
@@ -725,20 +727,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     // 1. SOFT PHYSICAL CONTACT DROP SHADOW
     // ════════════════════════════════════════════
-    let max_shadow_dist = select(8.0, shadow_pad, is_base_panel);
+    // Note: On Wayland transparent layer shells, emitting dark RGB with non-zero alpha
+    // causes compositor dark fringes against wallpapers. Zero outside SDF.
     if sdf > 0.0 {
-        if sdf > max_shadow_dist {
-            return vec4<f32>(0.0, 0.0, 0.0, 0.0);
-        }
-        let shadow_offset = vec2<f32>(0.0, select(1.5, 3.0, is_base_panel));
-        let shadow_sdf = rr_sdf(local_px - shadow_offset, half_size, r);
-        let d = max(shadow_sdf, 0.0);
-        let spread = select(5.5, 12.0, is_base_panel);
-        let outer_shadow = exp(-d * d / (spread * spread)) * select(0.24, 0.32, is_base_panel);
-        let contact_shadow = exp(-d * 0.40) * select(0.22, 0.22, is_base_panel);
-        let shadow = (outer_shadow + contact_shadow) * 0.5;
-        let edge_fade = 1.0 - smoothstep(max_shadow_dist - 1.0, max_shadow_dist, d);
-        return vec4<f32>(0.0, 0.0, 0.0, shadow * edge_fade);
+        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
     
     // ════════════════════════════════════════════
@@ -763,36 +755,31 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     let h_grad = vec2<f32>(h_r - h_l, h_u - h_d) / (2.0 * eps);
     
-    // Reactive fluid pull: liquid surface tension draws towards pointer
+    // Reactive subtle fluid meniscus pull towards pointer
     let cur_vec = cur_local - local_px;
     let dist_cur = length(cur_vec);
     let cur_dir = cur_vec / max(dist_cur, 0.001);
     let stretch_radius = select(100.0, 160.0, is_base_panel);
     let pull_t = clamp(1.0 - (dist_cur / stretch_radius), 0.0, 1.0) * cur_active;
-    let fluid_tilt = cur_dir * (pull_t * pull_t) * 0.08;
+    let fluid_tilt = cur_dir * (pull_t * pull_t) * 0.04;
     
     let N = normalize(vec3<f32>(-(h_grad * params.curvature * 2.2 + fluid_tilt), 1.0));
     
     // ════════════════════════════════════════════
-    // 4. TRUE OPTICAL REFRACTION & FLUID STRETCH (Snell's Law)
+    // 4. TRUE OPTICAL REFRACTION & CHROMATIC DISPERSION (Snell's Law)
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
     let ior = params.ior;
     let refr_pow = 1.0 - 1.0 / ior;
     
-    // Optical ray bending through liquid glass
-    let refr_scale = select(14.0, 18.0, is_base_panel) * params.refraction_strength;
+    // Pure optical ray bending through liquid glass lens
+    let refr_scale = select(10.0, 14.0, is_base_panel) * params.refraction_strength;
     let refr_ray = N.xy * refr_pow * refr_scale;
+    let refr = refr_ray * px_to_uv;
     
-    // Reactive background stretch: wallpaper behind glass is pulled toward cursor
-    let fluid_stretch = cur_dir * pow(pull_t, 1.5) * select(12.0, 16.0, is_base_panel) * params.refraction_strength;
-    
-    let total_refr_px = refr_ray + fluid_stretch;
-    let refr = total_refr_px * px_to_uv;
-    
-    // Chromatic dispersion (prismatic rainbow edges)
-    let ca_scale = params.dispersion * select(22.0, 30.0, is_base_panel) * (edge * 0.8 + 0.2);
-    let ca_offset = (N.xy + cur_dir * pull_t * 0.3) * ca_scale * px_to_uv;
+    // Chromatic dispersion (subtle prismatic crystal fringe)
+    let ca_scale = params.dispersion * select(10.0, 14.0, is_base_panel) * (edge * 0.8 + 0.2);
+    let ca_offset = N.xy * ca_scale * px_to_uv;
     
     let uv_r = clamp(uv + refr + ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
     let uv_g = clamp(uv + refr, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -818,10 +805,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         col = mix(blurred, sharp, pow(edge, 1.4) * 0.45);
     }
     
-    // Pure, serene Liquid Glass transmission (liquidglassdesign.com aesthetic)
+    // Pure, serene Liquid Glass transmission (luxury Apple frosted crystalline glass)
     if params.padding2.x >= 19.5 {
-        // Clock elements use params.tint as data uniform; keep transmission pristine
-        col = col * 1.02 + vec3<f32>(0.02, 0.02, 0.03);
+        // Clock elements: luxury translucent crystalline plate (15% soft white frost + 6% dark contrast ground)
+        // This guarantees pristine visibility and tactile depth on any wallpaper, whether bright or dark.
+        let lum = dot(col, vec3<f32>(0.299, 0.587, 0.114));
+        let frost = vec3<f32>(0.12, 0.14, 0.18);
+        col = mix(col, frost, 0.32);
+        col = col + vec3<f32>(0.04, 0.05, 0.07);
     } else if params.tint.a > 0.0 {
         col = mix(col, params.tint.rgb, params.tint.a);
     } else {
