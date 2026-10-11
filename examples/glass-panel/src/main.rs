@@ -273,9 +273,9 @@ impl AppData {
                 [0.72, 0.21, 0.40, 0.15],   // 2: Bluetooth Capsule
                 [0.50, 0.38, 0.86, 0.13],   // 3: Display Brightness Liquid Slider
                 [0.50, 0.54, 0.86, 0.13],   // 4: Sound Volume Liquid Slider
-                [0.22, 0.73, 0.24, 0.16],   // 5: Focus / Moon Liquid Lens
-                [0.50, 0.73, 0.26, 0.17],   // 6: Screen Mirroring Hero Lens
-                [0.78, 0.73, 0.24, 0.16],   // 7: Theme / Night Shift Lens
+                [0.24, 0.73, 0.18, 0.135],  // 5: Focus / Moon Clean Circular Button (65px)
+                [0.50, 0.73, 0.18, 0.135],  // 6: Screen Mirroring Clean Circular Button (65px)
+                [0.76, 0.73, 0.18, 0.135],  // 7: Theme / Night Shift Clean Circular Button (65px)
             ];
 
             // Continuous Gaussian proximity wave & smooth second-order spring dynamics
@@ -328,26 +328,26 @@ impl AppData {
             let calc_stretch_bounds = |idx: usize, press: f32| -> [f32; 4] {
                 let [cx, cy, bw, bh] = specs[idx];
                 let t = self.hover_pos[idx].clamp(0.0, 1.0);
-                let scale = 1.0 + t * 0.025 + press;
+                let scale = 1.0 + t * 0.02 + press;
                 let w = bw * scale;
                 let h = bh * scale;
                 [cx - w * 0.5, cy - h * 0.5, w, h]
             };
 
-            // ── Surface 0: Base Liquid Glass Widget ──
+            // ── Surface 0: Base macOS Dark Acrylic Glass Panel ──
             let panel = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::RoundedRectangle { radius: 28.0 })
+                .shape(Shape::RoundedRectangle { radius: 26.0 })
                 .bounds(0.0, 0.0, 1.0, 1.0)
-                .curvature(0.14)
-                .bevel(18.0)
-                .refraction(0.48)
-                .dispersion(0.012)
-                .blur(3.8)
+                .curvature(0.04)
+                .bevel(3.5)
+                .refraction(0.20)
+                .dispersion(0.008)
+                .blur(5.5)
                 .tint(1.0, 1.0, 1.0, 0.0)
                 .roughness(0.0)
-                .specular(0.48)
-                .fresnel(0.65)
+                .specular(0.35)
+                .fresnel(0.35)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
@@ -358,54 +358,54 @@ impl AppData {
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b0[0], b0[1], b0[2], b0[3])
-                .curvature(0.14 + t0 * 0.04)
-                .bevel(8.0 + t0 * 2.0)
-                .refraction(0.36 + t0 * 0.08)
-                .dispersion(0.012)
-                .blur(3.8)
-                .tint(1.0, 1.0, 1.0, 0.03 + t0 * 0.06)
-                .specular(0.50 + t0 * 0.22)
-                .fresnel(0.58 + t0 * 0.14)
+                .curvature(0.02)
+                .bevel(2.5)
+                .refraction(0.0)
+                .dispersion(0.0)
+                .blur(0.0)
+                .tint(1.0, 1.0, 1.0, 0.06 + t0 * 0.08)
+                .specular(0.25 + t0 * 0.10)
+                .fresnel(0.25)
                 .element_type(1.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
-            // ── Subcomponent 2: Wi-Fi Liquid Capsule ──
+            // ── Subcomponent 2: Wi-Fi Capsule (Active Apple Blue) ──
             let t1 = self.hover_pos[1].clamp(0.0, 1.0);
             let p1 = if self.is_pressed && t1 > 0.4 { -0.010 } else { 0.0 };
             let b1 = calc_stretch_bounds(1, p1);
             let wifi_capsule = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::RoundedRectangle { radius: 18.0 })
+                .shape(Shape::RoundedRectangle { radius: 16.0 })
                 .bounds(b1[0], b1[1], b1[2], b1[3])
-                .curvature(0.14 + t1 * 0.04)
-                .bevel(8.0 + t1 * 2.0)
-                .refraction(0.36 + t1 * 0.08)
-                .dispersion(0.012)
-                .blur(3.8)
-                .tint(1.0, 1.0, 1.0, 0.03 + t1 * 0.06)
-                .specular(0.50 + t1 * 0.22)
-                .fresnel(0.58 + t1 * 0.14)
+                .curvature(0.02)
+                .bevel(2.5)
+                .refraction(0.0)
+                .dispersion(0.0)
+                .blur(0.0)
+                .tint(1.0, 1.0, 1.0, 0.08 + t1 * 0.10)
+                .specular(0.30 + t1 * 0.10)
+                .fresnel(0.25)
                 .element_type(2.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
-            // ── Subcomponent 3: Bluetooth Liquid Capsule ──
+            // ── Subcomponent 3: Bluetooth Glass Capsule ──
             let t2 = self.hover_pos[2].clamp(0.0, 1.0);
             let p2 = if self.is_pressed && t2 > 0.4 { -0.010 } else { 0.0 };
             let b2 = calc_stretch_bounds(2, p2);
             let bluetooth_capsule = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::RoundedRectangle { radius: 18.0 })
+                .shape(Shape::RoundedRectangle { radius: 16.0 })
                 .bounds(b2[0], b2[1], b2[2], b2[3])
-                .curvature(0.14 + t2 * 0.04)
-                .bevel(8.0 + t2 * 2.0)
-                .refraction(0.36 + t2 * 0.08)
-                .dispersion(0.012)
-                .blur(3.8)
-                .tint(1.0, 1.0, 1.0, 0.03 + t2 * 0.06)
-                .specular(0.50 + t2 * 0.22)
-                .fresnel(0.58 + t2 * 0.14)
+                .curvature(0.02)
+                .bevel(2.5)
+                .refraction(0.0)
+                .dispersion(0.0)
+                .blur(0.0)
+                .tint(1.0, 1.0, 1.0, 0.08 + t2 * 0.10)
+                .specular(0.25 + t2 * 0.10)
+                .fresnel(0.25)
                 .element_type(3.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
@@ -417,14 +417,14 @@ impl AppData {
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b3[0], b3[1], b3[2], b3[3])
-                .curvature(0.13 + t3 * 0.04)
-                .bevel(7.0 + t3 * 2.0)
-                .refraction(0.34 + t3 * 0.08)
-                .dispersion(0.012)
-                .blur(3.8)
-                .tint(1.0, 1.0, 1.0, 0.03 + t3 * 0.05)
-                .specular(0.48 + t3 * 0.20)
-                .fresnel(0.55 + t3 * 0.12)
+                .curvature(0.02)
+                .bevel(2.5)
+                .refraction(0.0)
+                .dispersion(0.0)
+                .blur(0.0)
+                .tint(1.0, 1.0, 1.0, 0.06 + t3 * 0.08)
+                .specular(0.25 + t3 * 0.08)
+                .fresnel(0.25)
                 .element_type(4.0)
                 .progress(self.brightness_progress)
                 .pointer_pos(px, py)
@@ -437,20 +437,20 @@ impl AppData {
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b4[0], b4[1], b4[2], b4[3])
-                .curvature(0.13 + t4 * 0.04)
-                .bevel(7.0 + t4 * 2.0)
-                .refraction(0.34 + t4 * 0.08)
-                .dispersion(0.012)
-                .blur(3.8)
-                .tint(1.0, 1.0, 1.0, 0.03 + t4 * 0.05)
-                .specular(0.48 + t4 * 0.20)
-                .fresnel(0.55 + t4 * 0.12)
+                .curvature(0.02)
+                .bevel(2.5)
+                .refraction(0.0)
+                .dispersion(0.0)
+                .blur(0.0)
+                .tint(1.0, 1.0, 1.0, 0.06 + t4 * 0.08)
+                .specular(0.25 + t4 * 0.08)
+                .fresnel(0.25)
                 .element_type(5.0)
                 .progress(self.volume_progress)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
-            // ── Subcomponents 6, 7, 8: Bottom Trio of Liquid Lenses ──
+            // ── Subcomponents 6, 7, 8: Clean Circular Action Buttons (macOS Style) ──
             let t5 = self.hover_pos[5].clamp(0.0, 1.0);
             let p5 = if self.is_pressed && t5 > 0.4 { -0.010 } else { 0.0 };
             let b5 = calc_stretch_bounds(5, p5);
@@ -458,33 +458,33 @@ impl AppData {
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b5[0], b5[1], b5[2], b5[3])
-                .curvature(0.14 + t5 * 0.04)
-                .bevel(8.0 + t5 * 2.0)
-                .refraction(0.36 + t5 * 0.08)
-                .dispersion(0.012)
-                .blur(3.8)
-                .tint(1.0, 1.0, 1.0, 0.03 + t5 * 0.06)
-                .specular(0.50 + t5 * 0.22)
-                .fresnel(0.58 + t5 * 0.14)
+                .curvature(0.02)
+                .bevel(2.5)
+                .refraction(0.0)
+                .dispersion(0.0)
+                .blur(0.0)
+                .tint(1.0, 1.0, 1.0, 0.08 + t5 * 0.10)
+                .specular(0.28 + t5 * 0.10)
+                .fresnel(0.25)
                 .element_type(6.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
             let t6 = self.hover_pos[6].clamp(0.0, 1.0);
-            let p6 = if self.is_pressed && t6 > 0.4 { -0.012 } else { 0.0 };
+            let p6 = if self.is_pressed && t6 > 0.4 { -0.010 } else { 0.0 };
             let b6 = calc_stretch_bounds(6, p6);
             let mirror_lens = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b6[0], b6[1], b6[2], b6[3])
-                .curvature(0.14 + t6 * 0.04)
-                .bevel(8.0 + t6 * 2.0)
-                .refraction(0.36 + t6 * 0.08)
-                .dispersion(0.012)
-                .blur(3.8)
-                .tint(1.0, 1.0, 1.0, 0.03 + t6 * 0.06)
-                .specular(0.50 + t6 * 0.22)
-                .fresnel(0.58 + t6 * 0.14)
+                .curvature(0.02)
+                .bevel(2.5)
+                .refraction(0.0)
+                .dispersion(0.0)
+                .blur(0.0)
+                .tint(1.0, 1.0, 1.0, 0.08 + t6 * 0.10)
+                .specular(0.28 + t6 * 0.10)
+                .fresnel(0.25)
                 .element_type(7.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
@@ -496,14 +496,14 @@ impl AppData {
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b7[0], b7[1], b7[2], b7[3])
-                .curvature(0.14 + t7 * 0.04)
-                .bevel(8.0 + t7 * 2.0)
-                .refraction(0.36 + t7 * 0.08)
-                .dispersion(0.012)
-                .blur(3.8)
-                .tint(1.0, 1.0, 1.0, 0.03 + t7 * 0.06)
-                .specular(0.50 + t7 * 0.22)
-                .fresnel(0.58 + t7 * 0.14)
+                .curvature(0.02)
+                .bevel(2.5)
+                .refraction(0.0)
+                .dispersion(0.0)
+                .blur(0.0)
+                .tint(1.0, 1.0, 1.0, 0.08 + t7 * 0.10)
+                .specular(0.28 + t7 * 0.10)
+                .fresnel(0.25)
                 .element_type(8.0)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);

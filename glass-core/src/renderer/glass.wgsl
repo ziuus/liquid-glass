@@ -70,25 +70,17 @@ fn rr_sdf(p: vec2<f32>, b: vec2<f32>, r: f32) -> f32 {
     return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - r;
 }
 
-// ── Refined Liquid Glass Surface Profile (Meniscus Rim + Gentle Optical Dome) ──
+// ── Precision Apple Frosted Glass Profile (Planar Body + Micro Meniscus Edge) ──
 fn droplet_height(p: vec2<f32>, b: vec2<f32>, r: f32, z_radius: f32) -> f32 {
     let d = -rr_sdf(p, b, r);
     if d <= 0.0 {
         return 0.0;
     }
     
-    // 1. Crisp Meniscus Perimeter Bevel (where fluid meets border via surface tension)
-    let meniscus_w = max(z_radius, 4.0);
+    // Flat planar body with a razor-thin 3.5px perimeter bevel
+    let meniscus_w = min(z_radius, 3.5);
     let rim_t = clamp(d / meniscus_w, 0.0, 1.0);
-    let meniscus = sin(rim_t * 1.5707963);
-    
-    // 2. Continuous Convex Volume Dome (subtle liquid optical curve across entire body)
-    let max_d = min(b.x, b.y);
-    let norm_d = clamp(d / max(max_d, 1.0), 0.0, 1.0);
-    let dome = sin(norm_d * 1.5707963);
-    
-    // 65% meniscus edge definition + 35% gentle dome curvature
-    return (meniscus * 0.65 + dome * 0.35) * z_radius;
+    return sin(rim_t * 1.5707963) * meniscus_w;
 }
 
 // ── 10-tap Optimized Golden Spiral Blur (Lightweight & Smooth) ──
@@ -155,7 +147,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         return app;
     }
     
-    // 2. Wi-Fi Glass Capsule: Small, Professional Apple Wi-Fi Arcs (14px)
+    // 2. Wi-Fi Glass Capsule: Small, Professional Apple Wi-Fi Arcs (14px) - Active Apple Blue
     if el_type >= 1.9 && el_type <= 2.1 {
         let p_rel = local_p - vec2<f32>(0.0, 4.5);
         let r = length(p_rel);
@@ -171,7 +163,9 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let in_wedge = select(0.0, 1.0, angle < -0.85);
         let arcs_mask = (1.0 - smoothstep(-0.4, 0.4, min_arc)) * in_wedge;
         
-        app.glyph_mask = max(dot_mask, arcs_mask) * 0.72;
+        app.glyph_mask = max(dot_mask, arcs_mask) * 0.95;
+        app.fluid_color = vec3<f32>(0.0, 0.48, 1.0); // Vibrant Apple Blue #007AFF
+        app.fluid_glow = 0.88;
         return app;
     }
     
@@ -184,11 +178,11 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let d_dn2 = dist_segment(local_p, vec2<f32>(4.5, 3.8), vec2<f32>(-4.0, -3.8)) - 0.8;
         
         let rune = min(d_spine, min(min(d_up1, d_up2), min(d_dn1, d_dn2)));
-        app.glyph_mask = (1.0 - smoothstep(-0.4, 0.4, rune)) * 0.72;
+        app.glyph_mask = (1.0 - smoothstep(-0.4, 0.4, rune)) * 0.90;
         return app;
     }
     
-    // 4. Display Brightness Liquid Slider: Delicate Sun Icon (12px) + Clean Hairline
+    // 4. Display Brightness Liquid Slider: Delicate Sun Icon (12px) + Solid Luminous Fill
     if el_type >= 3.9 && el_type <= 4.1 {
         let sun_center = vec2<f32>(-half.x + 16.0, 0.0);
         let sun_p = local_p - sun_center;
@@ -203,21 +197,22 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             let d_ray = dist_segment(sun_p, ray_start, ray_end) - 0.65;
             rays = max(rays, 1.0 - smoothstep(-0.4, 0.4, d_ray));
         }
-        let sun_icon = max(sun_core, rays) * 0.72;
+        let sun_icon = max(sun_core, rays) * 0.90;
         
         let track_start = -half.x + 2.0;
         let track_width = half.x * 2.0 - 4.0;
         let fill_x = track_start + track_width * clamp(progress, 0.04, 0.98);
         
         let in_fill = select(0.0, 1.0, local_p.x <= fill_x);
-        let divider = 1.0 - smoothstep(0.0, 1.0, abs(local_p.x - fill_x) - 0.4);
+        let divider = 1.0 - smoothstep(0.0, 1.0, abs(local_p.x - fill_x) - 0.5);
         
-        app.glyph_mask = max(sun_icon, divider * 0.55);
-        app.fluid_glow = in_fill * 0.08;
+        app.glyph_mask = max(sun_icon, divider * 0.70);
+        app.fluid_color = vec3<f32>(0.92, 0.94, 0.98);
+        app.fluid_glow = in_fill * 0.85;
         return app;
     }
     
-    // 5. Sound Volume Liquid Slider: Delicate Speaker Icon (12px) + Clean Hairline
+    // 5. Sound Volume Liquid Slider: Delicate Speaker Icon (12px) + Solid Luminous Fill
     if el_type >= 4.9 && el_type <= 5.1 {
         let spk_center = vec2<f32>(-half.x + 16.0, 0.0);
         let spk_p = local_p - spk_center;
@@ -231,17 +226,18 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let angle = atan2(abs(spk_p.y), spk_p.x);
         let in_sound_fan = select(0.0, 1.0, angle < 0.70);
         let sound_arcs = (1.0 - smoothstep(-0.4, 0.4, min(arc1, arc2))) * in_sound_fan;
-        let spk_icon = max(speaker, sound_arcs) * 0.72;
+        let spk_icon = max(speaker, sound_arcs) * 0.90;
         
         let track_start = -half.x + 2.0;
         let track_width = half.x * 2.0 - 4.0;
         let fill_x = track_start + track_width * clamp(progress, 0.04, 0.98);
         
         let in_fill = select(0.0, 1.0, local_p.x <= fill_x);
-        let divider = 1.0 - smoothstep(0.0, 1.0, abs(local_p.x - fill_x) - 0.4);
+        let divider = 1.0 - smoothstep(0.0, 1.0, abs(local_p.x - fill_x) - 0.5);
         
-        app.glyph_mask = max(spk_icon, divider * 0.55);
-        app.fluid_glow = in_fill * 0.08;
+        app.glyph_mask = max(spk_icon, divider * 0.70);
+        app.fluid_color = vec3<f32>(0.92, 0.94, 0.98);
+        app.fluid_glow = in_fill * 0.85;
         return app;
     }
     
@@ -364,153 +360,106 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let h_d = droplet_height(local_px - vec2<f32>(0.0, eps), half_size, r, z_radius);
     
     let h_grad = vec2<f32>(h_r - h_l, h_u - h_d) / (2.0 * eps);
-    // Dynamic optical tilt towards cursor: creates responsive parallax without changing geometry
-    let tilt_3d = (cur_local / max(half_size, vec2<f32>(1.0))) * 0.06 * stretch_t;
-    let N = normalize(vec3<f32>(-(h_grad * params.curvature * 3.0 + tilt_3d), 1.0));
-    
-    // Optical thickness
-    let thick_norm = clamp(h_c / max(z_radius, 1.0), 0.0, 1.0);
+    // Subtle optical parallax tilt towards cursor
+    let tilt_3d = (cur_local / max(half_size, vec2<f32>(1.0))) * 0.04 * stretch_t;
+    let N = normalize(vec3<f32>(-(h_grad * 1.5 + tilt_3d), 1.0));
     
     // ════════════════════════════════════════════
-    // 4. PLANO-CONVEX REFRACTION & LENS MAGNIFICATION
+    // 4. PRECISION BORDER REFRACTION (No bubble bulging)
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
     let ior = params.ior;
     let refr_pow = 1.0 - 1.0 / ior;
     
-    // Physical optical magnification through convex liquid lens
-    let magnification_strength = select(0.12, 0.06, is_base_panel);
-    let center_dir = -local_px / max(half_size, vec2<f32>(1.0));
-    let lens_magnify = center_dir * magnification_strength * thick_norm * params.refraction_strength * 22.0;
+    // Subtle 3.5px perimeter meniscus refraction only at outer boundary of base panel
+    let refr_scale = select(0.0, 3.5, is_base_panel);
+    let refr_ray = N.xy * refr_pow * refr_scale;
+    let refr = refr_ray * px_to_uv;
     
-    // Surface normal refraction ray displacement (Snell's law projection)
-    let refr_ray = N.xy * refr_pow * params.refraction_strength * select(20.0, 28.0, is_base_panel);
-    
-    let refr_px = lens_magnify + refr_ray;
-    let refr = refr_px * px_to_uv;
-    
-    // ════════════════════════════════════════════
-    // 5. CHROMATIC ABERRATION (Dispersion along curvature)
-    // ════════════════════════════════════════════
-    let ca_scale = params.dispersion * 28.0 * (edge * 0.75 + 0.25);
+    let ca_scale = select(0.0, params.dispersion * 8.0 * edge, is_base_panel);
     let ca_offset = N.xy * ca_scale * px_to_uv;
     
-    let base_uv = clamp(uv + refr, vec2<f32>(0.001), vec2<f32>(0.999));
-    let uv_r = clamp(base_uv + ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
-    let uv_g = base_uv;
-    let uv_b = clamp(base_uv - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
+    let uv_r = clamp(uv + refr + ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
+    let uv_g = clamp(uv + refr, vec2<f32>(0.001), vec2<f32>(0.999));
+    let uv_b = clamp(uv + refr - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
     
     // ════════════════════════════════════════════
-    // 6. BACKGROUND SAMPLING (Sharp vs Vibrancy Blur)
+    // 5. BACKGROUND SAMPLING & ACRYLIC MATERIAL
     // ════════════════════════════════════════════
-    let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
-    let sharp_g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
-    let sharp_b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
-    let sharp = vec3<f32>(sharp_r, sharp_g, sharp_b);
-    
     let blur = params.blur_radius;
     let blur_r = blurred_sample(uv_r, blur).r;
     let blur_g = blurred_sample(uv_g, blur).g;
     let blur_b = blurred_sample(uv_b, blur).b;
     let blurred = vec3<f32>(blur_r, blur_g, blur_b);
     
-    // Edge-weighted sharpness: center receives creamy blur, rim stays razor crisp
-    let edge_mix = 1.0 - edge * 0.45;
-    var col = mix(sharp, blurred, edge_mix);
+    var col = blurred;
     
-    // ════════════════════════════════════════════
-    // 7. SATURATION & CRYSTALLINE COLOR PURITY
-    // ════════════════════════════════════════════
-    let lum = dot(col, vec3<f32>(0.299, 0.587, 0.114));
-    col = mix(vec3<f32>(lum), col, 1.10); // Rich 10% saturation lift
-    col *= 1.0 + params.curvature * 0.08 * thick_norm; // Luminous volume lift
-    
-    // Subtle frosted milky transmission
-    let body_lift = select(0.045, 0.025, is_base_panel);
-    col += vec3<f32>(body_lift);
-    
-    if params.tint.a > 0.0 {
-        col = mix(col, params.tint.rgb, params.tint.a);
+    if is_base_panel {
+        // Authentic macOS Sonoma Dark Frosted Acrylic Window:
+        // Deep smoked obsidian glass that harmonizes with any wallpaper
+        let dark_acrylic = vec3<f32>(0.07, 0.08, 0.11);
+        let lum = dot(col, vec3<f32>(0.299, 0.587, 0.114));
+        let saturated = mix(vec3<f32>(lum), col, 1.30); // 30% saturation lift
+        col = mix(saturated * 0.65, dark_acrylic, 0.64);
+    } else {
+        // Subcomponent plate on the acrylic canvas:
+        let plate_tint = params.tint.rgb;
+        let plate_alpha = params.tint.a;
+        col = mix(col, plate_tint, plate_alpha);
     }
     
     // ════════════════════════════════════════════
-    // 8. DIRECTIONAL ILLUMINATION (Apple Glass Bevel)
+    // 6. PRECISION 1PX BORDER & INNER RIM LIGHT
     // ════════════════════════════════════════════
-    // Key light direction from top-left:
+    let border_1px = smoothstep(1.0, 0.0, inside);
     let L_dir = normalize(vec2<f32>(-0.45, -0.7));
     let N_2d = N.xy;
+    let border_light = max(dot(N_2d, L_dir), 0.0) * 0.20 + select(0.06, 0.12, is_base_panel);
+    let border_crest = border_1px * border_light * params.specular_strength;
     
-    // 8a. Directional Bevel Catch (Crisp liquid edge glint)
-    let rim_alignment = max(dot(N_2d, L_dir), 0.0);
-    let rim_crest = pow(edge, 1.8) * rim_alignment * 0.50 * params.specular_strength;
-    
-    // 8b. Subtle Ambient Edge Softening
-    let shadow_alignment = max(dot(N_2d, -L_dir), 0.0);
-    let edge_ao = pow(edge, 2.5) * shadow_alignment * 0.08;
-    col *= (1.0 - edge_ao);
+    // Delicate top-edge inner catch
+    let inner_rim = smoothstep(1.0, 0.0, abs(inside - 1.5)) * max(-N_2d.y, 0.0) * 0.10 * params.specular_strength;
     
     // ════════════════════════════════════════════
-    // 9. HIGH-CLARITY LIQUID SPECULAR HIGHLIGHTS
-    // ════════════════════════════════════════════
-    let V = vec3<f32>(0.0, 0.0, 1.0);
-    let L1 = normalize(vec3<f32>(-0.45, -0.65, 0.65));
-    let H1 = normalize(L1 + V);
-    let spec1 = pow(max(dot(N, H1), 0.0), 64.0) * 0.70 * params.specular_strength;
-    
-    // Softer ambient sky sheen across dome
-    let L2 = normalize(vec3<f32>(0.35, -0.25, 0.85));
-    let H2 = normalize(L2 + V);
-    let spec2 = pow(max(dot(N, H2), 0.0), 28.0) * 0.22 * params.specular_strength;
-    
-    // ════════════════════════════════════════════
-    // 9b. DYNAMIC CURSOR SPOTLIGHT (Apple Liquid Sheen)
+    // 7. INTERACTIVE FLUID LIGHT (Cursor Sheen)
     // ════════════════════════════════════════════
     let cur_pos_px = params.pointer_pos * params.surface_size;
     let delta_cur = cur_pos_px - (uv * params.surface_size);
     let dist_cur = length(delta_cur);
-    let cur_radius = 160.0;
+    let cur_radius = 80.0;
     
-    var cur_spec = 0.0;
-    var cur_rim_glow = 0.0;
+    var cur_glow = 0.0;
     if dist_cur < cur_radius && params.pointer_pos.x >= 0.0 {
         let cur_t = 1.0 - (dist_cur / cur_radius);
-        let cur_t2 = cur_t * cur_t;
-        
-        let L_cur = normalize(vec3<f32>(delta_cur, 35.0));
-        let H_cur = normalize(L_cur + V);
-        cur_spec = pow(max(dot(N, H_cur), 0.0), 40.0) * cur_t2 * 0.85 * params.specular_strength;
-        
-        let cur_dir_2d = normalize(delta_cur + vec2<f32>(0.001));
-        let rim_face_cur = max(dot(N_2d, cur_dir_2d), 0.0);
-        cur_rim_glow = pow(edge, 1.8) * rim_face_cur * cur_t * 0.38;
+        cur_glow = cur_t * cur_t * 0.15 * params.specular_strength;
     }
     
     // ════════════════════════════════════════════
-    // 10. FRESNEL GRAZING-ANGLE REFLECTION & INNER RIM
-    // ════════════════════════════════════════════
-    let cos_theta = clamp(abs(N.z), 0.0, 1.0);
-    let fres = pow(1.0 - cos_theta, 3.2) * params.fresnel_strength;
-    
-    // Precision inner top-edge light catch
-    let inner_rim = smoothstep(0.5, 2.0, inside) * (1.0 - smoothstep(2.0, 4.0, inside)) * max(-N_2d.y, 0.0) * 0.30 * params.specular_strength;
-    
-    // ════════════════════════════════════════════
-    // 11. AUTHENTIC CRISP MINIMAL GLYPHS
+    // 8. CONTROLS, FLUID EMISSION & GLYPHS
     // ════════════════════════════════════════════
     let app = render_element_appearance(local_px, half_size, params.padding2.x, params.padding2.y, params.time);
-    let glyph_crest = app.glyph_mask * vec3<f32>(1.0, 1.0, 1.0) * 0.95;
-    let fluid_emission = app.fluid_color * app.fluid_glow;
+    
+    if app.fluid_glow > 0.0 {
+        col = mix(col, app.fluid_color, app.fluid_glow);
+    }
+    
+    // Invert slider icon to dark charcoal over white fill for perfect contrast
+    var glyph_color = vec3<f32>(1.0, 1.0, 1.0);
+    if (params.padding2.x >= 3.9 && params.padding2.x <= 5.1) {
+        let track_start = -half_size.x + 2.0;
+        let track_width = half_size.x * 2.0 - 4.0;
+        let fill_x = track_start + track_width * clamp(params.padding2.y, 0.04, 0.98);
+        if local_px.x <= fill_x {
+            glyph_color = vec3<f32>(0.12, 0.14, 0.18);
+        }
+    }
     
     // ════════════════════════════════════════════
-    // 12. MASTER COMPOSITE
+    // 9. MASTER COMPOSITE
     // ════════════════════════════════════════════
     var fin = col;
-    // Infuse subtle internal crystal fluid tone
-    fin = mix(fin, fin * (1.0 + fluid_emission * 1.2) + fluid_emission * 0.3, app.fluid_glow);
-    fin += vec3<f32>(rim_crest + inner_rim);
-    fin += vec3<f32>(spec1 + spec2 + cur_spec + cur_rim_glow);
-    fin += glyph_crest;
-    fin = mix(fin, vec3<f32>(1.0, 1.0, 1.0), fres * 0.16);
+    fin += vec3<f32>(border_crest + inner_rim + cur_glow);
+    fin = mix(fin, glyph_color, app.glyph_mask);
     
     return vec4<f32>(fin * mask, mask);
 }
