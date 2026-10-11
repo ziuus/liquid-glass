@@ -90,18 +90,18 @@ fn droplet_height(p: vec2<f32>, b: vec2<f32>, r: f32, z_radius: f32) -> f32 {
     return (meniscus * 0.84 + fluid_lens) * z_radius;
 }
 
-// ── 10-tap Optimized Golden Spiral Blur (Lightweight & Smooth) ──
+// ── 16-tap Golden Spiral Frosted Dispersion Blur ──
 fn blurred_sample(uv: vec2<f32>, radius: f32) -> vec3<f32> {
     if radius <= 0.5 {
         return textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
     }
     
     var color = vec3<f32>(0.0);
-    let samples = 10.0;
+    let samples = 16.0;
     let golden_angle = 2.39996323;
     
     for (var i = 0.0; i < samples; i += 1.0) {
-        let r = sqrt(i + 0.5) / sqrt(samples);
+        let r = sqrt((i + 0.5) / samples);
         let theta = i * golden_angle;
         let offset = vec2<f32>(r * cos(theta), r * sin(theta)) * radius;
         let sample_uv = clamp(uv + offset / params.surface_size, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -339,10 +339,12 @@ fn draw_clock_letter(p: vec2<f32>, ch: u32, scale: f32) -> f32 {
         }
         // 'U'
         case 85u: {
-            let left = dist_segment(q, vec2<f32>(-2.2, -4.2), vec2<f32>(-2.2, 1.5));
-            let right = dist_segment(q, vec2<f32>(2.2, -4.2), vec2<f32>(2.2, 1.5));
+            let left = dist_segment(q, vec2<f32>(-2.2, -4.2), vec2<f32>(-2.2, 2.2));
+            let right = dist_segment(q, vec2<f32>(2.2, -4.2), vec2<f32>(2.2, 2.2));
             let bot = dist_segment(q, vec2<f32>(-2.2, 4.2), vec2<f32>(2.2, 4.2));
-            d = min(min(left, right), bot);
+            let c_l = dist_segment(q, vec2<f32>(-2.2, 2.2), vec2<f32>(-2.2, 4.2));
+            let c_r = dist_segment(q, vec2<f32>(2.2, 2.2), vec2<f32>(2.2, 4.2));
+            d = min(min(left, right), min(bot, min(c_l, c_r)));
         }
         // 'N'
         case 78u: {
@@ -653,10 +655,10 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
     // ─────────────────────────────────────────────────────────────
     // 25. Unified Luxury Minimalist Liquid Glass Widget (390px x 94px capsule)
     // Cohesive layout:
-    // Left: Compact Swiss Analog Dial (center_x = -120.0, r = 32.0)
-    // Middle: Thin crystalline vertical divider (x = -70.0)
-    // Center: Digital Time + Date (center_x = 10.0)
-    // Right: Luxury Battery Pill (center_x = 125.0)
+    // Left: Swiss Minimalist Dial (center_x = -115.0, r = 36.0)
+    // Middle: Thin crystalline vertical divider (x = -62.0)
+    // Center: Digital Time + Date (center_x = 42.0, y = 0.0)
+    // Header/Top-Right: Compact status battery pill (cx = 125.0, cy = -22.0)
     // ─────────────────────────────────────────────────────────────
     if el_type >= 24.9 && el_type <= 25.1 {
         let is_12h = (tint.w > 0.5);
@@ -668,26 +670,26 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let mn = tint.y;
         let sec = tint.z;
         
-        // ── 1. Left Swiss Minimalist Dial ──
-        let dial_cx = -120.0;
+        // ── 1. Swiss Minimalist Dial (r = 35.0, prominent luxury timepiece) ──
+        let dial_cx = -115.0;
         let p_dial = local_p - vec2<f32>(dial_cx, 0.0);
         let r_dial = length(p_dial);
         let ang_dial = atan2(p_dial.y, p_dial.x);
         
-        // 12 Minimalist Hour Ticks
+        // 12 Precision Hour Ticks
         let mod_ang = (ang_dial + 3.14159265 / 12.0) % (3.14159265 / 6.0) - (3.14159265 / 12.0);
         let tick_dist = abs(mod_ang) * r_dial;
         let mod_card = (ang_dial + 3.14159265 / 4.0) % (3.14159265 / 2.0) - (3.14159265 / 4.0);
-        let is_cardinal = (abs(mod_card) * r_dial < 2.5);
-        let tick_inner = select(25.0, 21.0, is_cardinal);
-        let tick_rad = (r_dial >= tick_inner && r_dial <= 28.0);
+        let is_cardinal = (abs(mod_card) * r_dial < 2.8);
+        let tick_inner = select(28.0, 23.0, is_cardinal);
+        let tick_rad = (r_dial >= tick_inner && r_dial <= 32.5);
         var dial_ticks = 0.0;
         if tick_rad {
-            let tick_w = select(0.75, 1.25, is_cardinal);
+            let tick_w = select(0.85, 1.45, is_cardinal);
             dial_ticks = 1.0 - smoothstep(tick_w, tick_w + 0.40, tick_dist);
         }
         
-        // Dial Hands
+        // Hands
         let hour_angle = (tint.x % 12.0 + mn / 60.0 + sec / 3600.0) * (3.14159265 / 6.0) - 1.5707963;
         let min_angle = (mn + sec / 60.0) * (3.14159265 / 30.0) - 1.5707963;
         let sec_angle = sec * (3.14159265 / 30.0) - 1.5707963;
@@ -696,29 +698,32 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let p_m_dir = vec2<f32>(cos(min_angle), sin(min_angle));
         let p_s_dir = vec2<f32>(cos(sec_angle), sin(sec_angle));
         
-        let d_h = dist_segment(p_dial, -p_h_dir * 3.5, p_h_dir * 16.5) - 1.6;
+        // Hour hand: 4.0px wide, 19px length
+        let d_h = dist_segment(p_dial, -p_h_dir * 4.0, p_h_dir * 19.0) - 1.8;
         let mask_h = 1.0 - smoothstep(-0.35, 0.35, d_h);
-        let d_m = dist_segment(p_dial, -p_m_dir * 4.0, p_m_dir * 23.5) - 1.1;
+        // Minute hand: 2.8px wide, 27px length
+        let d_m = dist_segment(p_dial, -p_m_dir * 5.0, p_m_dir * 27.0) - 1.3;
         let mask_m = 1.0 - smoothstep(-0.35, 0.35, d_m);
-        let d_s = dist_segment(p_dial, -p_s_dir * 6.5, p_s_dir * 26.5) - 0.65;
+        // Sweeping second hand: thin gold needle
+        let d_s = dist_segment(p_dial, -p_s_dir * 8.0, p_s_dir * 31.0) - 0.75;
         let mask_s = 1.0 - smoothstep(-0.35, 0.35, d_s);
-        let d_pin = length(p_dial) - 2.4;
+        let d_pin = length(p_dial) - 2.8;
         let mask_pin = 1.0 - smoothstep(-0.35, 0.35, d_pin);
         
-        // Aesthetic Perimeter Rim on dial
-        let dial_ring = abs(r_dial - 29.5) - 0.60;
-        let mask_ring = (1.0 - smoothstep(-0.35, 0.35, dial_ring)) * 0.45;
+        // Aesthetic Perimeter Rim
+        let dial_ring = abs(r_dial - 34.0) - 0.65;
+        let mask_ring = (1.0 - smoothstep(-0.35, 0.35, dial_ring)) * 0.50;
         
         // ── 2. Subtle Crystalline Vertical Separator ──
-        let sep_x = -70.0;
-        let d_sep = rr_sdf(local_p - vec2<f32>(sep_x, 0.0), vec2<f32>(0.5, 26.0), 0.5);
-        let mask_sep = (1.0 - smoothstep(-0.35, 0.35, d_sep)) * 0.28;
+        let sep_x = -62.0;
+        let d_sep = rr_sdf(local_p - vec2<f32>(sep_x, 0.0), vec2<f32>(0.5, 30.0), 0.5);
+        let mask_sep = (1.0 - smoothstep(-0.35, 0.35, d_sep)) * 0.30;
         
         // ── 3. Center Digital Time & Date ──
-        let time_cx = 8.0;
-        let time_y = -10.0;
-        let t_scale = 2.45;
-        let sp = 17.5;
+        let time_cx = 38.0;
+        let time_y = -9.0;
+        let t_scale = 2.5;
+        let sp = 18.0;
         
         let h_tens = u32(hr / 10.0);
         let h_ones = u32(hr % 10.0);
@@ -731,12 +736,12 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let d_tm0 = draw_digit(local_p - vec2<f32>(time_cx + 1.05 * sp, time_y), m_tens, t_scale);
         let d_tm1 = draw_digit(local_p - vec2<f32>(time_cx + 2.15 * sp, time_y), m_ones, t_scale);
         
-        let d_time_digits = min(min(d_th0, d_th1), min(d_tm0, d_tm1)) - 0.70;
+        let d_time_digits = min(min(d_th0, d_th1), min(d_tm0, d_tm1)) - 0.75;
         let mask_time_digits = 1.0 - smoothstep(-0.35, 0.35, d_time_digits);
         let colon_pulse = 0.55 + 0.45 * sin(sec * 3.14159265);
         let mask_time_colon = (1.0 - smoothstep(-0.35, 0.35, d_tcol)) * colon_pulse;
         
-        // Sub-row: Day / Date (y = 17.0)
+        // Sub-row: Day / Date (y = 18.0)
         let wday_code = u32(progress / 10000.0);
         let rem_date = progress % 10000.0;
         let mday_code = u32(rem_date / 100.0);
@@ -744,10 +749,10 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         
         let d_tens = mday_code / 10u;
         let d_ones = mday_code % 10u;
-        let date_y = 17.0;
-        let date_scale = 1.05;
-        let dsp = 8.5;
-        let date_cx = time_cx;
+        let date_y = 18.0;
+        let date_scale = 1.10;
+        let dsp = 9.0;
+        let date_cx = time_cx - 15.0;
         
         var w0 = 83u; var w1 = 85u; var w2 = 78u; // SUN
         if wday_code == 1u { w0 = 77u; w1 = 79u; w2 = 78u; } // MON
@@ -764,35 +769,36 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let dd1 = draw_digit(local_p - vec2<f32>(date_cx + 2.3 * dsp, date_y), d_ones, date_scale);
         
         let d_date = min(min(dw0, min(dw1, dw2)), min(dd0, dd1)) - 0.45;
-        let mask_date = (1.0 - smoothstep(-0.35, 0.35, d_date)) * 0.75;
+        let mask_date = (1.0 - smoothstep(-0.35, 0.35, d_date)) * 0.80;
         
-        // ── 4. Right Minimalist Luxury Battery ──
-        let bat_cx = 120.0;
-        let bat_cy = -6.0;
+        // ── 4. Compact Minimalist Battery Status Module (Integrated inline on the right) ──
+        let bat_cx = time_cx + 56.0;
+        let bat_cy = 18.0;
         let p_bat = local_p - vec2<f32>(bat_cx, bat_cy);
-        let bat_half = vec2<f32>(18.0, 9.0);
-        let d_shell = rr_sdf(p_bat, bat_half, 4.0);
-        let mask_shell = smoothstep(0.35, -0.35, abs(d_shell) - 0.7);
-        let d_bump = rr_sdf(p_bat - vec2<f32>(19.8, 0.0), vec2<f32>(1.8, 3.5), 1.5);
+        // Compact Apple status battery icon: 20px x 9px, corner 2.5px
+        let bat_half = vec2<f32>(10.0, 4.5);
+        let d_shell = rr_sdf(p_bat, bat_half, 2.5);
+        let mask_shell = smoothstep(0.35, -0.35, abs(d_shell) - 0.65);
+        let d_bump = rr_sdf(p_bat - vec2<f32>(11.2, 0.0), vec2<f32>(1.2, 2.2), 1.0);
         let mask_bump = smoothstep(0.35, -0.35, d_bump);
-        let mask_housing = max(mask_shell, mask_bump) * 0.70;
+        let mask_housing = max(mask_shell, mask_bump) * 0.75;
         
-        let fill_max_w = 30.0;
+        let fill_max_w = 16.0;
         let fill_w = (bat_val / 100.0) * fill_max_w;
-        let fill_x = -15.0 + fill_w * 0.5;
-        let d_fill = rr_sdf(p_bat - vec2<f32>(fill_x, 0.0), vec2<f32>(max(fill_w * 0.5, 0.8), 6.5), 2.5);
+        let fill_x = -8.0 + fill_w * 0.5;
+        let d_fill = rr_sdf(p_bat - vec2<f32>(fill_x, 0.0), vec2<f32>(max(fill_w * 0.5, 0.5), 3.0), 1.5);
         let mask_fill = smoothstep(0.35, -0.35, d_fill) * 0.90;
         
-        // Battery Percentage below
+        // Battery Percentage Number next to icon
         let bat_u = u32(clamp(bat_val, 0.0, 100.0));
         let b_tens = bat_u / 10u;
         let b_ones = bat_u % 10u;
-        let b_scale = 1.0;
-        let bsp = 7.0;
-        let db0 = draw_digit(local_p - vec2<f32>(bat_cx - 0.65 * bsp, 17.0), b_tens, b_scale);
-        let db1 = draw_digit(local_p - vec2<f32>(bat_cx + 0.65 * bsp, 17.0), b_ones, b_scale);
+        let b_scale = 0.95;
+        let bsp = 6.8;
+        let db0 = draw_digit(local_p - vec2<f32>(bat_cx + 20.0, bat_cy), b_tens, b_scale);
+        let db1 = draw_digit(local_p - vec2<f32>(bat_cx + 20.0 + bsp, bat_cy), b_ones, b_scale);
         let d_bnum = min(db0, db1) - 0.40;
-        let mask_bnum = (1.0 - smoothstep(-0.35, 0.35, d_bnum)) * 0.75;
+        let mask_bnum = (1.0 - smoothstep(-0.35, 0.35, d_bnum)) * 0.80;
         
         // Colors & Composite
         let gold = vec3<f32>(0.86, 0.97, 0.26);
@@ -943,12 +949,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         col = mix(blurred, sharp, pow(edge, 1.4) * 0.45);
     }
     
-    // Pure, pristine Liquid Glass transmission (100% crystal clear water lens, zero dark tint)
+    // Pure frosted crystalline transmission (tactile frosted glass - optical diffusion without paint)
     if params.tint.a > 0.0 && params.padding2.x < 19.5 {
         col = mix(col, params.tint.rgb, params.tint.a);
     } else {
-        // Pristine clear liquid glass: subtle luminous lift, no dark coloring
-        col = col * 1.02 + vec3<f32>(0.02, 0.02, 0.03);
+        // Natural optical transmission: clear luminous crystalline glass with soft optical lift
+        col = col * 1.03 + vec3<f32>(0.015, 0.015, 0.02);
     }
     
     // ════════════════════════════════════════════
