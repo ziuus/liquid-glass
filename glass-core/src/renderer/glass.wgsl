@@ -70,24 +70,26 @@ fn rr_sdf(p: vec2<f32>, b: vec2<f32>, r: f32) -> f32 {
     return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - r;
 }
 
-// ── Authentic Apple Liquid Glass Profile (Fluid Meniscus + Optical Lens) ──
+// ── Authentic Apple Liquid Glass Profile (Deep Peripheral Meniscus + Optical Lens) ──
 fn droplet_height(p: vec2<f32>, b: vec2<f32>, r: f32, z_radius: f32) -> f32 {
     let d = -rr_sdf(p, b, r);
     if d <= 0.0 {
         return 0.0;
     }
     
-    // 1. Capillary Surface Tension Meniscus (steep curve at perimeter, smooth roll-off)
-    let meniscus_w = min(z_radius, 6.0);
-    let rim_t = clamp(d / meniscus_w, 0.0, 1.0);
-    let meniscus = 1.0 - pow(1.0 - rim_t, 2.2);
+    // 1. Steep Bevel Meniscus (concentrated in outer 14-20px edge)
+    // Produces genuine caustic prismatic edge refractions like macOS/iOS glass
+    let meniscus_w = min(z_radius * 2.5, 20.0);
+    let edge_t = clamp(d / meniscus_w, 0.0, 1.0);
+    // Smooth cosine S-curve roll-off for water meniscus
+    let meniscus = 0.5 - 0.5 * cos(edge_t * 3.14159265);
     
-    // 2. Continuous Fluid Volume (subtle lens curve across interior)
+    // 2. Subtle interior optical curvature across the center plate
     let min_d = min(b.x, b.y);
-    let norm_d = clamp(d / max(min_d, 1.0), 0.0, 1.0);
-    let fluid_lens = sin(norm_d * 1.5707963) * 0.16;
+    let center_t = clamp(d / max(min_d, 1.0), 0.0, 1.0);
+    let dome = sqrt(clamp(1.0 - (1.0 - center_t) * (1.0 - center_t), 0.0, 1.0)) * 0.15;
     
-    return (meniscus * 0.84 + fluid_lens) * z_radius;
+    return (meniscus * 0.85 + dome) * z_radius;
 }
 
 // ── 16-tap Golden Spiral Frosted Dispersion Blur ──
@@ -321,6 +323,15 @@ fn draw_colon(p: vec2<f32>, scale: f32) -> f32 {
     let d_top = length(q - vec2<f32>(0.0, -2.2));
     let d_bot = length(q - vec2<f32>(0.0, 2.2));
     return (min(d_top, d_bot) - 0.75) * scale;
+}
+
+// ── Precision Percentage Symbol SDF for Battery Percentage ──
+fn draw_percent(p: vec2<f32>, scale: f32) -> f32 {
+    let q = p / scale;
+    let slash = dist_segment(q, vec2<f32>(-2.0, 3.2), vec2<f32>(2.0, -3.2));
+    let dot1 = length(q - vec2<f32>(-1.4, -1.8)) - 0.85;
+    let dot2 = length(q - vec2<f32>(1.4, 1.8)) - 0.85;
+    return min(slash, min(dot1, dot2)) * scale;
 }
 
 // ── Extended Letters for Date & Clock Display ──
@@ -655,10 +666,9 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
     // ─────────────────────────────────────────────────────────────
     // 25. Unified Luxury Minimalist Liquid Glass Widget (390px x 94px capsule)
     // Cohesive layout:
-    // Left: Swiss Minimalist Dial (center_x = -115.0, r = 36.0)
-    // Middle: Thin crystalline vertical divider (x = -62.0)
-    // Center: Digital Time + Date (center_x = 42.0, y = 0.0)
-    // Header/Top-Right: Compact status battery pill (cx = 125.0, cy = -22.0)
+    // Left: Swiss Minimalist Dial (center_x = -118.0, r = 36.0)
+    // Middle: Thin crystalline vertical divider (x = -64.0)
+    // Center: Digital Time + Date + Battery
     // ─────────────────────────────────────────────────────────────
     if el_type >= 24.9 && el_type <= 25.1 {
         let is_12h = (tint.w > 0.5);
@@ -670,8 +680,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let mn = tint.y;
         let sec = tint.z;
         
-        // ── 1. Swiss Minimalist Dial (r = 35.0, prominent luxury timepiece) ──
-        let dial_cx = -115.0;
+        // ── 1. Swiss Minimalist Dial (r = 36.0, prominent luxury timepiece) ──
+        let dial_cx = -118.0;
         let p_dial = local_p - vec2<f32>(dial_cx, 0.0);
         let r_dial = length(p_dial);
         let ang_dial = atan2(p_dial.y, p_dial.x);
@@ -681,11 +691,11 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let tick_dist = abs(mod_ang) * r_dial;
         let mod_card = (ang_dial + 3.14159265 / 4.0) % (3.14159265 / 2.0) - (3.14159265 / 4.0);
         let is_cardinal = (abs(mod_card) * r_dial < 2.8);
-        let tick_inner = select(28.0, 23.0, is_cardinal);
-        let tick_rad = (r_dial >= tick_inner && r_dial <= 32.5);
+        let tick_inner = select(29.0, 24.0, is_cardinal);
+        let tick_rad = (r_dial >= tick_inner && r_dial <= 33.5);
         var dial_ticks = 0.0;
         if tick_rad {
-            let tick_w = select(0.85, 1.45, is_cardinal);
+            let tick_w = select(0.85, 1.55, is_cardinal);
             dial_ticks = 1.0 - smoothstep(tick_w, tick_w + 0.40, tick_dist);
         }
         
@@ -698,32 +708,32 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let p_m_dir = vec2<f32>(cos(min_angle), sin(min_angle));
         let p_s_dir = vec2<f32>(cos(sec_angle), sin(sec_angle));
         
-        // Hour hand: 4.0px wide, 19px length
-        let d_h = dist_segment(p_dial, -p_h_dir * 4.0, p_h_dir * 19.0) - 1.8;
+        // Hour hand: 3.8px wide, 20px length
+        let d_h = dist_segment(p_dial, -p_h_dir * 4.0, p_h_dir * 20.0) - 1.8;
         let mask_h = 1.0 - smoothstep(-0.35, 0.35, d_h);
-        // Minute hand: 2.8px wide, 27px length
-        let d_m = dist_segment(p_dial, -p_m_dir * 5.0, p_m_dir * 27.0) - 1.3;
+        // Minute hand: 2.5px wide, 29px length
+        let d_m = dist_segment(p_dial, -p_m_dir * 5.0, p_m_dir * 29.0) - 1.25;
         let mask_m = 1.0 - smoothstep(-0.35, 0.35, d_m);
         // Sweeping second hand: thin gold needle
-        let d_s = dist_segment(p_dial, -p_s_dir * 8.0, p_s_dir * 31.0) - 0.75;
+        let d_s = dist_segment(p_dial, -p_s_dir * 9.0, p_s_dir * 32.0) - 0.75;
         let mask_s = 1.0 - smoothstep(-0.35, 0.35, d_s);
         let d_pin = length(p_dial) - 2.8;
         let mask_pin = 1.0 - smoothstep(-0.35, 0.35, d_pin);
         
         // Aesthetic Perimeter Rim
-        let dial_ring = abs(r_dial - 34.0) - 0.65;
-        let mask_ring = (1.0 - smoothstep(-0.35, 0.35, dial_ring)) * 0.50;
+        let dial_ring = abs(r_dial - 35.0) - 0.65;
+        let mask_ring = (1.0 - smoothstep(-0.35, 0.35, dial_ring)) * 0.40;
         
         // ── 2. Subtle Crystalline Vertical Separator ──
-        let sep_x = -62.0;
+        let sep_x = -64.0;
         let d_sep = rr_sdf(local_p - vec2<f32>(sep_x, 0.0), vec2<f32>(0.5, 30.0), 0.5);
         let mask_sep = (1.0 - smoothstep(-0.35, 0.35, d_sep)) * 0.30;
         
         // ── 3. Center Digital Time & Date ──
         let time_cx = 38.0;
-        let time_y = -9.0;
-        let t_scale = 2.5;
-        let sp = 18.0;
+        let time_y = -10.0;
+        let t_scale = 2.6;
+        let sp = 18.5;
         
         let h_tens = u32(hr / 10.0);
         let h_ones = u32(hr % 10.0);
@@ -736,12 +746,12 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let d_tm0 = draw_digit(local_p - vec2<f32>(time_cx + 1.05 * sp, time_y), m_tens, t_scale);
         let d_tm1 = draw_digit(local_p - vec2<f32>(time_cx + 2.15 * sp, time_y), m_ones, t_scale);
         
-        let d_time_digits = min(min(d_th0, d_th1), min(d_tm0, d_tm1)) - 0.75;
+        let d_time_digits = min(min(d_th0, d_th1), min(d_tm0, d_tm1)) - 0.80;
         let mask_time_digits = 1.0 - smoothstep(-0.35, 0.35, d_time_digits);
         let colon_pulse = 0.55 + 0.45 * sin(sec * 3.14159265);
         let mask_time_colon = (1.0 - smoothstep(-0.35, 0.35, d_tcol)) * colon_pulse;
         
-        // Sub-row: Day / Date (y = 18.0)
+        // Sub-row: Day / Date (y = 19.0)
         let wday_code = u32(progress / 10000.0);
         let rem_date = progress % 10000.0;
         let mday_code = u32(rem_date / 100.0);
@@ -749,10 +759,10 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         
         let d_tens = mday_code / 10u;
         let d_ones = mday_code % 10u;
-        let date_y = 18.0;
-        let date_scale = 1.10;
-        let dsp = 9.0;
-        let date_cx = time_cx - 15.0;
+        let date_y = 19.0;
+        let date_scale = 1.15;
+        let dsp = 9.2;
+        let date_cx = time_cx - 24.0;
         
         var w0 = 83u; var w1 = 85u; var w2 = 78u; // SUN
         if wday_code == 1u { w0 = 77u; w1 = 79u; w2 = 78u; } // MON
@@ -768,37 +778,50 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let dd0 = draw_digit(local_p - vec2<f32>(date_cx + 1.2 * dsp, date_y), d_tens, date_scale);
         let dd1 = draw_digit(local_p - vec2<f32>(date_cx + 2.3 * dsp, date_y), d_ones, date_scale);
         
-        let d_date = min(min(dw0, min(dw1, dw2)), min(dd0, dd1)) - 0.45;
-        let mask_date = (1.0 - smoothstep(-0.35, 0.35, d_date)) * 0.80;
+        let d_date = min(min(dw0, min(dw1, dw2)), min(dd0, dd1)) - 0.48;
+        let mask_date = (1.0 - smoothstep(-0.35, 0.35, d_date)) * 0.85;
         
         // ── 4. Compact Minimalist Battery Status Module (Integrated inline on the right) ──
-        let bat_cx = time_cx + 56.0;
-        let bat_cy = 18.0;
+        let bat_cx = time_cx + 48.0;
+        let bat_cy = 19.0;
         let p_bat = local_p - vec2<f32>(bat_cx, bat_cy);
-        // Compact Apple status battery icon: 20px x 9px, corner 2.5px
-        let bat_half = vec2<f32>(10.0, 4.5);
-        let d_shell = rr_sdf(p_bat, bat_half, 2.5);
-        let mask_shell = smoothstep(0.35, -0.35, abs(d_shell) - 0.65);
-        let d_bump = rr_sdf(p_bat - vec2<f32>(11.2, 0.0), vec2<f32>(1.2, 2.2), 1.0);
+        // Compact Apple status battery icon: 22px x 10px, corner 3.0px
+        let bat_half = vec2<f32>(11.0, 5.0);
+        let d_shell = rr_sdf(p_bat, bat_half, 3.0);
+        let mask_shell = smoothstep(0.35, -0.35, abs(d_shell) - 0.70);
+        let d_bump = rr_sdf(p_bat - vec2<f32>(12.2, 0.0), vec2<f32>(1.2, 2.4), 1.0);
         let mask_bump = smoothstep(0.35, -0.35, d_bump);
-        let mask_housing = max(mask_shell, mask_bump) * 0.75;
+        let mask_housing = max(mask_shell, mask_bump) * 0.80;
         
-        let fill_max_w = 16.0;
+        let fill_max_w = 18.0;
         let fill_w = (bat_val / 100.0) * fill_max_w;
-        let fill_x = -8.0 + fill_w * 0.5;
-        let d_fill = rr_sdf(p_bat - vec2<f32>(fill_x, 0.0), vec2<f32>(max(fill_w * 0.5, 0.5), 3.0), 1.5);
+        let fill_x = -9.0 + fill_w * 0.5;
+        let d_fill = rr_sdf(p_bat - vec2<f32>(fill_x, 0.0), vec2<f32>(max(fill_w * 0.5, 0.5), 3.5), 1.8);
         let mask_fill = smoothstep(0.35, -0.35, d_fill) * 0.90;
         
-        // Battery Percentage Number next to icon
+        // Battery Percentage Number & % symbol next to icon
         let bat_u = u32(clamp(bat_val, 0.0, 100.0));
-        let b_tens = bat_u / 10u;
+        let b_tens = (bat_u % 100u) / 10u;
         let b_ones = bat_u % 10u;
-        let b_scale = 0.95;
-        let bsp = 6.8;
-        let db0 = draw_digit(local_p - vec2<f32>(bat_cx + 20.0, bat_cy), b_tens, b_scale);
-        let db1 = draw_digit(local_p - vec2<f32>(bat_cx + 20.0 + bsp, bat_cy), b_ones, b_scale);
-        let d_bnum = min(db0, db1) - 0.40;
-        let mask_bnum = (1.0 - smoothstep(-0.35, 0.35, d_bnum)) * 0.80;
+        let b_scale = 1.00;
+        let bsp = 7.0;
+        let num_start_x = bat_cx + 20.0;
+        
+        var mask_bnum = 0.0;
+        if bat_u >= 100u {
+            let db_h = draw_digit(local_p - vec2<f32>(num_start_x, bat_cy), 1u, b_scale);
+            let db0 = draw_digit(local_p - vec2<f32>(num_start_x + bsp, bat_cy), 0u, b_scale);
+            let db1 = draw_digit(local_p - vec2<f32>(num_start_x + bsp * 2.0, bat_cy), 0u, b_scale);
+            let db_pct = draw_percent(local_p - vec2<f32>(num_start_x + bsp * 3.1, bat_cy), b_scale);
+            let d_all = min(min(db_h, db0), min(db1, db_pct)) - 0.42;
+            mask_bnum = (1.0 - smoothstep(-0.35, 0.35, d_all)) * 0.85;
+        } else {
+            let db0 = draw_digit(local_p - vec2<f32>(num_start_x, bat_cy), b_tens, b_scale);
+            let db1 = draw_digit(local_p - vec2<f32>(num_start_x + bsp, bat_cy), b_ones, b_scale);
+            let db_pct = draw_percent(local_p - vec2<f32>(num_start_x + bsp * 2.1, bat_cy), b_scale);
+            let d_all = min(min(db0, db1), db_pct) - 0.42;
+            mask_bnum = (1.0 - smoothstep(-0.35, 0.35, d_all)) * 0.85;
+        }
         
         // Colors & Composite
         let gold = vec3<f32>(0.86, 0.97, 0.26);
@@ -881,14 +904,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 2. ANTI-ALIASED SILKY MASK
     // ════════════════════════════════════════════
     let mask = 1.0 - smoothstep(-1.0, 0.1, sdf);
-    let inside = -sdf;
-    let min_dim = min(half_size.x, half_size.y);
-    let edge = smoothstep(min_dim * 0.35, 0.0, inside);
+    let inside = max(-sdf, 0.0);
+    // Bevel proximity metric: 1.0 at outer boundary, smoothly dropping to 0.0 towards interior
+    let bevel_w = min(params.bevel * 2.4, 22.0);
+    let edge = 1.0 - clamp(inside / bevel_w, 0.0, 1.0);
     
     // ════════════════════════════════════════════
     // 3. CONTINUOUS LIQUID DOME & SURFACE NORMAL
     // ════════════════════════════════════════════
-    let z_radius = min(max(params.bevel, 2.5), min_dim * 0.75);
+    let min_dim = min(half_size.x, half_size.y);
+    let z_radius = min(max(params.bevel, 6.0), min_dim * 0.75);
     let eps = 1.0;
     
     let h_c = droplet_height(local_px, half_size, r, z_radius);
@@ -907,30 +932,31 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let pull_t = clamp(1.0 - (dist_cur / stretch_radius), 0.0, 1.0) * cur_active;
     let fluid_tilt = cur_dir * (pull_t * pull_t) * 0.04;
     
-    let N = normalize(vec3<f32>(-(h_grad * params.curvature * 2.2 + fluid_tilt), 1.0));
+    let N = normalize(vec3<f32>(-(h_grad * params.curvature * 2.8 + fluid_tilt), 1.0));
+    let N_2d = N.xy;
     
     // ════════════════════════════════════════════
-    // 4. TRUE OPTICAL REFRACTION & CHROMATIC DISPERSION (Snell's Law)
+    // 4. TRUE OPTICAL REFRACTION & SPECTRAL CHROMATIC DISPERSION (Snell's Law)
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
-    let ior = params.ior;
+    let ior = 1.52; // Optical crown glass IOR
     let refr_pow = 1.0 - 1.0 / ior;
     
-    // Pure optical ray bending through liquid glass lens
-    let refr_scale = select(10.0, 14.0, is_base_panel) * params.refraction_strength;
-    let refr_ray = N.xy * refr_pow * refr_scale;
+    // Genuine optical ray deflection through the liquid meniscus
+    let refr_scale = 26.0 * params.refraction_strength;
+    let refr_ray = N_2d * refr_pow * refr_scale;
     let refr = refr_ray * px_to_uv;
     
-    // Chromatic dispersion (subtle prismatic crystal fringe)
-    let ca_scale = params.dispersion * select(10.0, 14.0, is_base_panel) * (edge * 0.8 + 0.2);
-    let ca_offset = N.xy * ca_scale * px_to_uv;
+    // Prismatic spectral rainbow dispersion along the bevel contour (distinct R, G, B deflection)
+    let ca_scale = 20.0 * params.dispersion * (edge * 0.85 + 0.15);
+    let ca_offset = N_2d * ca_scale * px_to_uv;
     
     let uv_r = clamp(uv + refr + ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
     let uv_g = clamp(uv + refr, vec2<f32>(0.001), vec2<f32>(0.999));
     let uv_b = clamp(uv + refr - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
     
     // ════════════════════════════════════════════
-    // 5. BACKGROUND SAMPLING & LIQUID CLARITY
+    // 5. BACKGROUND SAMPLING & DUAL-ZONE CLARITY
     // ════════════════════════════════════════════
     let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
     let sharp_g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
@@ -942,42 +968,57 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if blur <= 0.5 {
         col = sharp;
     } else {
-        // Fast 16-tap golden spiral blur on center ray
+        // Center plate gets soft frosted diffusion; outer bevel retains crystal optical liquid refraction
         let blurred = blurred_sample(uv_g, blur);
-        col = mix(blurred, sharp, pow(edge, 1.4) * 0.40);
+        let frost_amount = smoothstep(0.8, 0.15, edge);
+        col = mix(sharp, blurred, frost_amount * 0.85);
     }
     
-    // Pure frosted crystalline transmission (tactile frosted glass - optical diffusion without paint)
-    if params.tint.a > 0.0 && params.padding2.x < 19.5 {
-        col = mix(col, params.tint.rgb, params.tint.a);
-    } else {
-        // Natural optical transmission: clear luminous crystalline glass with soft optical lift
-        col = col * 1.03 + vec3<f32>(0.015, 0.015, 0.02);
-    }
+    // Authentic Liquid Glass Transmission & Surface Sheen (Subsurface Scattering)
+    // Translucent milky physical glass body that elevates clarity without dark color plates
+    col = mix(col, vec3<f32>(0.98, 0.99, 1.0), 0.08) + vec3<f32>(0.06, 0.07, 0.09) * (1.05 - uv.y * 0.20);
     
     // ════════════════════════════════════════════
-    // 6. DIRECTIONAL RIM & LIQUID SPECULAR GLEAM
+    // 6. FRESNEL TOTAL INTERNAL REFLECTION & SPECTRAL RAINBOW RIM
     // ════════════════════════════════════════════
-    let L_dir = normalize(vec2<f32>(-0.45, -0.7));
-    let N_2d = N.xy;
+    // Fresnel reflection at grazing angles: physical glass reflects ambient light at its curved perimeter
+    let fresnel = pow(1.0 - max(N.z, 0.0), 4.0);
+    let fresnel_gleam = fresnel * pow(edge, 1.8) * vec3<f32>(0.96, 0.98, 1.0) * 0.45;
+    col += fresnel_gleam;
     
-    // Directional meniscus bevel catch (sunlight glint)
-    let rim_alignment = max(dot(N_2d, L_dir), 0.0);
-    let rim_crest = pow(edge, 1.8) * rim_alignment * 0.50 * params.specular_strength;
+    // Prismatic iridescent caustics: razor-sharp spectral dispersion along the outer rim curve
+    let rim_ang = atan2(N_2d.y, N_2d.x);
+    let rainbow_spectral = vec3<f32>(
+        0.5 + 0.5 * cos(rim_ang * 2.0),
+        0.5 + 0.5 * cos(rim_ang * 2.0 + 2.094),
+        0.5 + 0.5 * cos(rim_ang * 2.0 + 4.188)
+    );
+    let caustic_rim = pow(edge, 4.0) * rainbow_spectral * 0.35 * (params.dispersion * 20.0);
     
-    // Ambient liquid specular sheen
+    // ════════════════════════════════════════════
+    // 7. DUAL SUNLIGHT SPECULAR & MENISCUS HIGHLIGHTS
+    // ════════════════════════════════════════════
+    let L_top = normalize(vec2<f32>(-0.55, -0.80)); // Top-left primary sunlight
+    let L_bot = normalize(vec2<f32>(0.55, 0.80));   // Bottom-right ambient counter-fill
+    
+    let rim_top = max(dot(N_2d, L_top), 0.0);
+    let rim_bot = max(dot(N_2d, L_bot), 0.0);
+    
+    let crest_top = pow(edge, 2.0) * rim_top * 0.65 * params.specular_strength;
+    let crest_bot = pow(edge, 2.5) * rim_bot * 0.30 * params.specular_strength;
+    
+    // Razor-sharp 1.4px outer meniscus boundary stroke
+    let rim_stroke = smoothstep(1.6, 0.3, inside);
+    let border_crest = rim_stroke * (rim_top * 0.70 + 0.30) * 0.90 * params.specular_strength;
+    
+    // 3D Specular Sunlight Gleam
     let V = vec3<f32>(0.0, 0.0, 1.0);
-    let L1 = normalize(vec3<f32>(-0.4, -0.65, 0.75));
+    let L1 = normalize(vec3<f32>(-0.45, -0.70, 0.65));
     let H1 = normalize(L1 + V);
-    let spec1 = pow(max(dot(N, H1), 0.0), 64.0) * 0.40 * params.specular_strength;
-    
-    // Crisp Apple Liquid Glass rim stroke (1.5px width)
-    let rim_stroke = smoothstep(1.8, 0.2, inside);
-    let rim_dir = max(dot(N_2d, L_dir), 0.0) * 0.55 + 0.35;
-    let border_crest = rim_stroke * rim_dir * 0.75 * params.specular_strength;
+    let spec1 = pow(max(dot(N, H1), 0.0), 64.0) * 0.45 * params.specular_strength;
     
     // ════════════════════════════════════════════
-    // 7. INTERACTIVE CURSOR LIQUID SPOTLIGHT
+    // 8. INTERACTIVE CURSOR LIQUID SPOTLIGHT
     // ════════════════════════════════════════════
     var cur_spec = 0.0;
     var cur_rim_glow = 0.0;
@@ -995,17 +1036,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     
     // ════════════════════════════════════════════
-    // 8. CONTROLS, FLUID EMISSION & GLYPHS
+    // 9. CONTROLS, FLUID EMISSION & GLYPHS
     // ════════════════════════════════════════════
     let app = render_element_appearance(local_px, half_size, params.padding2.x, params.padding2.y, params.time, params.tint);
     
     // ════════════════════════════════════════════
-    // 9. MASTER COMPOSITE
+    // 10. MASTER COMPOSITE
     // ════════════════════════════════════════════
     var fin = col;
+    fin += caustic_rim;
+    fin += vec3<f32>(border_crest + crest_top + crest_bot + spec1);
+    fin += vec3<f32>(cur_spec + cur_rim_glow);
     fin += app.fluid_color * app.fluid_glow;
-    fin += vec3<f32>(border_crest + rim_crest);
-    fin += vec3<f32>(spec1 + cur_spec + cur_rim_glow);
     fin = mix(fin, app.glyph_color, app.glyph_mask);
     
     return vec4<f32>(fin * mask, mask);

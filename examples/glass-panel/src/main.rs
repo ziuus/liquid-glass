@@ -299,7 +299,6 @@ impl AppData {
             let dt = 1.0f32 / 60.0f32;
             let spring_k = 260.0f32;
             let damping = 18.0f32;
-            let active = true; // Continuous 60 FPS clock animation for sweeping second hand
 
             // Hover spring
             let in_box = px >= spec[0] - spec[2] * 0.5 && px <= spec[0] + spec[2] * 0.5 && py >= spec[1] - spec[3] * 0.5 && py <= spec[1] + spec[3] * 0.5;
@@ -308,6 +307,12 @@ impl AppData {
             self.hover_vel[0] += force * dt;
             self.hover_pos[0] += self.hover_vel[0] * dt;
 
+            // 60 FPS during cursor interaction, spring motion, or velocity damping; throttled to 2 Hz when idle
+            let active = in_box 
+                || (self.hover_pos[0] - target).abs() > 0.005 
+                || self.cursor_velocity[0].abs() > 0.001 
+                || self.cursor_velocity[1].abs() > 0.001;
+
             // Static widget position (Zero displacement on hover)
             let b0 = [spec[0] - spec[2] * 0.5, spec[1] - spec[3] * 0.5, spec[2], spec[3]];
 
@@ -315,19 +320,19 @@ impl AppData {
             let date_bat_code = (wday as f32 * 10000.0) + (mday as f32 * 100.0) + bat_capacity;
             let format_flag = if self.is_12h { 1.0f32 } else { 0.0f32 };
 
-            // Single Unified Liquid Glass Island Surface
+            // Single Unified Liquid Glass Island Surface (Authentic Physical Optics)
             let island = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b0[0], b0[1], b0[2], b0[3])
-                .curvature(0.045)
-                .bevel(4.0)
-                .refraction(0.12)
-                .dispersion(0.005)
-                .blur(24.0)
+                .curvature(0.08)
+                .bevel(9.5)
+                .refraction(0.55)
+                .dispersion(0.035)
+                .blur(16.0)
                 .tint(hr, min, sec, format_flag)
-                .specular(0.55)
-                .fresnel(0.32)
+                .specular(0.85)
+                .fresnel(0.65)
                 .element_type(25.0)
                 .progress(date_bat_code)
                 .pointer_pos(px, py)
@@ -556,7 +561,11 @@ fn main() {
             }
             last_frame = std::time::Instant::now();
         } else {
-            let _ = event_queue.blocking_dispatch(&mut app_data);
+            // Low idle CPU: sleep 1000ms between clock updates unless woken by input
+            std::thread::sleep(std::time::Duration::from_millis(1000));
+            let _ = event_queue.dispatch_pending(&mut app_data);
+            let still_animating = app_data.draw();
+            app_data.animating = still_animating;
             last_frame = std::time::Instant::now();
         }
     }
