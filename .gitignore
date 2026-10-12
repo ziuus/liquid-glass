@@ -1,1 +1,7 @@
 target/
+
+# Patches and scratch
+*.patch
+*.diff
+*.orig
+/scratch/
