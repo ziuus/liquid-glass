@@ -752,10 +752,10 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let mask_time_colon = (1.0 - smoothstep(-0.35, 0.35, d_tcol)) * colon_pulse;
         
         // Sub-row: Day / Date (y = 19.0)
-        let wday_code = u32(progress / 10000.0);
-        let rem_date = progress % 10000.0;
-        let mday_code = u32(rem_date / 100.0);
-        let bat_val = (rem_date % 100.0);
+        let wday_code = u32(progress / 100000.0);
+        let rem_date = progress % 100000.0;
+        let mday_code = u32(rem_date / 1000.0);
+        let bat_val = (rem_date % 1000.0);
         
         let d_tens = mday_code / 10u;
         let d_ones = mday_code % 10u;
@@ -974,26 +974,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         col = mix(sharp, blurred, frost_amount * 0.85);
     }
     
-    // Authentic Liquid Glass Transmission & Surface Sheen (Subsurface Scattering)
-    // Translucent milky physical glass body that elevates clarity without dark color plates
-    col = mix(col, vec3<f32>(0.98, 0.99, 1.0), 0.08) + vec3<f32>(0.06, 0.07, 0.09) * (1.05 - uv.y * 0.20);
+    // Pure Crystal Liquid Glass Transmission: subtle water surface luminance (zero dark tint, zero cloudy fog)
+    let water_sheen = vec3<f32>(0.025, 0.030, 0.035) * (1.0 - uv.y * 0.20);
+    col = col * 1.02 + water_sheen;
     
     // ════════════════════════════════════════════
-    // 6. FRESNEL TOTAL INTERNAL REFLECTION & SPECTRAL RAINBOW RIM
+    // 6. FRESNEL TOTAL INTERNAL REFLECTION (Pure White Reflected Light)
     // ════════════════════════════════════════════
-    // Fresnel reflection at grazing angles: physical glass reflects ambient light at its curved perimeter
-    let fresnel = pow(1.0 - max(N.z, 0.0), 4.0);
-    let fresnel_gleam = fresnel * pow(edge, 1.8) * vec3<f32>(0.96, 0.98, 1.0) * 0.45;
+    let fresnel = pow(1.0 - max(N.z, 0.0), 3.5);
+    let fresnel_gleam = fresnel * pow(edge, 1.5) * vec3<f32>(1.0, 1.0, 1.0) * 0.35;
     col += fresnel_gleam;
-    
-    // Prismatic iridescent caustics: razor-sharp spectral dispersion along the outer rim curve
-    let rim_ang = atan2(N_2d.y, N_2d.x);
-    let rainbow_spectral = vec3<f32>(
-        0.5 + 0.5 * cos(rim_ang * 2.0),
-        0.5 + 0.5 * cos(rim_ang * 2.0 + 2.094),
-        0.5 + 0.5 * cos(rim_ang * 2.0 + 4.188)
-    );
-    let caustic_rim = pow(edge, 4.0) * rainbow_spectral * 0.35 * (params.dispersion * 20.0);
     
     // ════════════════════════════════════════════
     // 7. DUAL SUNLIGHT SPECULAR & MENISCUS HIGHLIGHTS
@@ -1004,18 +994,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let rim_top = max(dot(N_2d, L_top), 0.0);
     let rim_bot = max(dot(N_2d, L_bot), 0.0);
     
-    let crest_top = pow(edge, 2.0) * rim_top * 0.65 * params.specular_strength;
-    let crest_bot = pow(edge, 2.5) * rim_bot * 0.30 * params.specular_strength;
+    let crest_top = pow(edge, 2.0) * rim_top * 0.55 * params.specular_strength;
+    let crest_bot = pow(edge, 2.5) * rim_bot * 0.25 * params.specular_strength;
     
-    // Razor-sharp 1.4px outer meniscus boundary stroke
-    let rim_stroke = smoothstep(1.6, 0.3, inside);
-    let border_crest = rim_stroke * (rim_top * 0.70 + 0.30) * 0.90 * params.specular_strength;
+    // Razor-sharp 1.4px outer meniscus boundary stroke (authentic polished bevel glint)
+    let rim_stroke = smoothstep(1.5, 0.25, inside);
+    let border_crest = rim_stroke * (rim_top * 0.65 + 0.35) * 0.95 * params.specular_strength;
     
     // 3D Specular Sunlight Gleam
     let V = vec3<f32>(0.0, 0.0, 1.0);
     let L1 = normalize(vec3<f32>(-0.45, -0.70, 0.65));
     let H1 = normalize(L1 + V);
-    let spec1 = pow(max(dot(N, H1), 0.0), 64.0) * 0.45 * params.specular_strength;
+    let spec1 = pow(max(dot(N, H1), 0.0), 64.0) * 0.40 * params.specular_strength;
     
     // ════════════════════════════════════════════
     // 8. INTERACTIVE CURSOR LIQUID SPOTLIGHT
@@ -1044,7 +1034,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 10. MASTER COMPOSITE
     // ════════════════════════════════════════════
     var fin = col;
-    fin += caustic_rim;
     fin += vec3<f32>(border_crest + crest_top + crest_bot + spec1);
     fin += vec3<f32>(cur_spec + cur_rim_glow);
     fin += app.fluid_color * app.fluid_glow;

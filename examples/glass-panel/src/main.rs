@@ -316,23 +316,23 @@ impl AppData {
             // Static widget position (Zero displacement on hover)
             let b0 = [spec[0] - spec[2] * 0.5, spec[1] - spec[3] * 0.5, spec[2], spec[3]];
 
-            // Packed format: wday * 10000 + mday * 100 + bat_capacity
-            let date_bat_code = (wday as f32 * 10000.0) + (mday as f32 * 100.0) + bat_capacity;
+            // Packed format: wday * 100000 + mday * 1000 + bat_capacity (prevents 100% overflow)
+            let date_bat_code = (wday as f32 * 100000.0) + (mday as f32 * 1000.0) + bat_capacity;
             let format_flag = if self.is_12h { 1.0f32 } else { 0.0f32 };
 
-            // Single Unified Liquid Glass Island Surface (Authentic Physical Optics)
+            // Single Unified Liquid Glass Island Surface (Authentic Crystal Water Optics)
             let island = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b0[0], b0[1], b0[2], b0[3])
-                .curvature(0.08)
-                .bevel(9.5)
-                .refraction(0.55)
-                .dispersion(0.035)
-                .blur(16.0)
+                .curvature(0.09)
+                .bevel(12.0)
+                .refraction(0.70)
+                .dispersion(0.025)
+                .blur(5.0)
                 .tint(hr, min, sec, format_flag)
-                .specular(0.85)
-                .fresnel(0.65)
+                .specular(0.95)
+                .fresnel(0.70)
                 .element_type(25.0)
                 .progress(date_bat_code)
                 .pointer_pos(px, py)
@@ -488,7 +488,7 @@ fn main() {
     
     layer_surface.set_anchor(Anchor::TOP | Anchor::LEFT);
     layer_surface.set_size(app_data.width, app_data.height);
-    layer_surface.set_margin(40, 0, 0, 40); // top, right, bottom, left
+    layer_surface.set_margin(260, 0, 0, 40); // top = 260 (below clock box), right, bottom, left = 40
     layer_surface.set_exclusive_zone(0);
     layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
     layer_surface.commit();
@@ -526,11 +526,11 @@ fn main() {
     )).expect("Failed to init WGPU");
     
     // 1. Primary: load authentic wallpaper background directly
-    if let Some((cw, ch, bg_data)) = load_wallpaper_region(40, 40, app_data.width, app_data.height) {
+    if let Some((cw, ch, bg_data)) = load_wallpaper_region(40, 260, app_data.width, app_data.height) {
         renderer.update_background(cw, ch, &bg_data);
     } else if let Some(output) = app_data.output_state.outputs().next() {
         // Fallback: screencopy capture
-        app_data.screencopy.capture(&output, 40, 40, app_data.width as i32, app_data.height as i32, &qh);
+        app_data.screencopy.capture(&output, 40, 260, app_data.width as i32, app_data.height as i32, &qh);
         while !app_data.screencopy.done {
             event_queue.blocking_dispatch(&mut app_data).unwrap();
         }
