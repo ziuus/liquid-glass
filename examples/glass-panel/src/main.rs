@@ -47,9 +47,10 @@ struct AppData {
     pointer: Option<wl_pointer::WlPointer>,
     cursor_pos: [f32; 2],
     cursor_velocity: [f32; 2],
-    hover_pos: [f32; 2], // [0]: Left dial, [1]: Right capsule
+    hover_pos: [f32; 2],
     hover_vel: [f32; 2],
     is_pressed: bool,
+    is_toggled: bool,
     is_12h: bool,
     pill_offset_x: f32,
     pill_vel_x: f32,
@@ -222,10 +223,7 @@ impl PointerHandler for AppData {
                 PointerEventKind::Press { .. } => {
                     had_event = true;
                     self.is_pressed = true;
-                    // Clicking the right capsule toggles between 12H and 24H mode
-                    if self.cursor_pos[0] >= 0.22 && self.cursor_pos[0] <= 0.98 {
-                        self.is_12h = !self.is_12h;
-                    }
+                    self.is_toggled = !self.is_toggled;
                 }
                 PointerEventKind::Release { .. } => {
                     had_event = true;
@@ -286,15 +284,9 @@ impl AppData {
             let vx = self.cursor_velocity[0];
             let vy = self.cursor_velocity[1];
 
-            let (hr, min, sec, wday, mday) = get_local_time();
-            if self.last_battery_time.elapsed().as_secs() >= 10 {
-                self.last_battery = get_battery_info();
-                self.last_battery_time = std::time::Instant::now();
-            }
-            let bat_capacity = self.last_battery;
-
-            // Unified Luxury Liquid Glass Island (390px x 94px)
-            let spec: [f32; 4] = [0.50, 0.50, 390.0 / 420.0, 94.0 / 110.0];
+            // Square Liquid Glass Box (190px x 190px inside 220px surface)
+            let box_ratio = 190.0 / 220.0;
+            let spec: [f32; 4] = [0.50, 0.50, box_ratio, box_ratio];
 
             let dt = 1.0f32 / 60.0f32;
             let spring_k = 260.0f32;
@@ -307,34 +299,31 @@ impl AppData {
             self.hover_vel[0] += force * dt;
             self.hover_pos[0] += self.hover_vel[0] * dt;
 
-            // 60 FPS during cursor interaction, spring motion, or velocity damping; throttled to 2 Hz when idle
+            // 60 FPS during cursor interaction, spring motion, or velocity damping
             let active = in_box 
                 || (self.hover_pos[0] - target).abs() > 0.005 
                 || self.cursor_velocity[0].abs() > 0.001 
                 || self.cursor_velocity[1].abs() > 0.001;
 
-            // Static widget position (Zero displacement on hover)
             let b0 = [spec[0] - spec[2] * 0.5, spec[1] - spec[3] * 0.5, spec[2], spec[3]];
+            let toggle_state = if self.is_toggled { 1.0f32 } else { 0.0f32 };
+            let press_state = if self.is_pressed { 1.0f32 } else { 0.0f32 };
 
-            // Packed format: wday * 100000 + mday * 1000 + bat_capacity (prevents 100% overflow)
-            let date_bat_code = (wday as f32 * 100000.0) + (mday as f32 * 1000.0) + bat_capacity;
-            let format_flag = if self.is_12h { 1.0f32 } else { 0.0f32 };
-
-            // Single Unified Liquid Glass Island Surface (Authentic Crystal Water Optics)
-            let island = GlassSurface::new()
+            // Pure Liquid Glass Square Box Surface with Interactive Center Button
+            let square_box = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::Capsule)
+                .shape(Shape::RoundedRectangle { radius: 36.0 })
                 .bounds(b0[0], b0[1], b0[2], b0[3])
-                .curvature(0.09)
-                .bevel(12.0)
-                .refraction(0.70)
+                .curvature(0.10)
+                .bevel(14.0)
+                .refraction(0.75)
                 .dispersion(0.025)
                 .blur(5.0)
-                .tint(hr, min, sec, format_flag)
+                .tint(toggle_state, press_state, self.hover_pos[0], 0.0)
                 .specular(0.95)
                 .fresnel(0.70)
-                .element_type(25.0)
-                .progress(date_bat_code)
+                .element_type(30.0)
+                .progress(toggle_state)
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
@@ -342,7 +331,7 @@ impl AppData {
             self.cursor_velocity[0] *= 0.85;
             self.cursor_velocity[1] *= 0.85;
 
-            let surfaces = vec![island];
+            let surfaces = vec![square_box];
             let _ = renderer.render(&surfaces);
             active
         } else {
@@ -460,12 +449,13 @@ fn main() {
         hover_pos: [0.0; 2],
         hover_vel: [0.0; 2],
         is_pressed: false,
+        is_toggled: false,
         is_12h: false,
         pill_offset_x: 0.0,
         pill_vel_x: 0.0,
         
-        width: 420,
-        height: 110,
+        width: 220,
+        height: 220,
         first_configure: true,
         exit: false,
         frame_counter: 0,

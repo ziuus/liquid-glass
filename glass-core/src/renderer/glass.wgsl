@@ -664,188 +664,64 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
     }
 
     // ─────────────────────────────────────────────────────────────
-    // 25. Unified Luxury Minimalist Liquid Glass Widget (390px x 94px capsule)
-    // Cohesive layout:
-    // Left: Swiss Minimalist Dial (center_x = -118.0, r = 36.0)
-    // Middle: Thin crystalline vertical divider (x = -64.0)
-    // Center: Digital Time + Date + Battery
+    // 30. Minimalist Liquid Glass Square Box with Center Action Button
     // ─────────────────────────────────────────────────────────────
-    if el_type >= 24.9 && el_type <= 25.1 {
-        let is_12h = (tint.w > 0.5);
-        var hr = tint.x;
-        if is_12h {
-            if hr == 0.0 { hr = 12.0; }
-            else if hr > 12.0 { hr = hr - 12.0; }
-        }
-        let mn = tint.y;
-        let sec = tint.z;
+    // ─────────────────────────────────────────────────────────────
+    // 30. Minimalist Liquid Glass Square Box with Center Action Button
+    // ─────────────────────────────────────────────────────────────
+    if el_type >= 29.5 && el_type <= 30.5 {
+        let is_toggled = (tint.x > 0.5);
+        let is_pressed = (tint.y > 0.5);
+        let hover_amt = tint.z; // 0.0 - 1.0 spring
         
-        // ── 1. Swiss Minimalist Dial (r = 36.0, prominent luxury timepiece) ──
-        let dial_cx = -118.0;
-        let p_dial = local_p - vec2<f32>(dial_cx, 0.0);
-        let r_dial = length(p_dial);
-        let ang_dial = atan2(p_dial.y, p_dial.x);
+        // Button tactile scale: slight expansion on hover (+4%), slight compression on press (-5%)
+        let btn_scale = select(1.0 + hover_amt * 0.04, 0.94, is_pressed);
+        let p_btn = local_p / btn_scale;
         
-        // 12 Precision Hour Ticks
-        let mod_ang = (ang_dial + 3.14159265 / 12.0) % (3.14159265 / 6.0) - (3.14159265 / 12.0);
-        let tick_dist = abs(mod_ang) * r_dial;
-        let mod_card = (ang_dial + 3.14159265 / 4.0) % (3.14159265 / 2.0) - (3.14159265 / 4.0);
-        let is_cardinal = (abs(mod_card) * r_dial < 2.8);
-        let tick_inner = select(29.0, 24.0, is_cardinal);
-        let tick_rad = (r_dial >= tick_inner && r_dial <= 33.5);
-        var dial_ticks = 0.0;
-        if tick_rad {
-            let tick_w = select(0.85, 1.55, is_cardinal);
-            dial_ticks = 1.0 - smoothstep(tick_w, tick_w + 0.40, tick_dist);
-        }
+        let btn_r = 36.0;
+        let d_btn = length(p_btn) - btn_r;
         
-        // Hands
-        let hour_angle = (tint.x % 12.0 + mn / 60.0 + sec / 3600.0) * (3.14159265 / 6.0) - 1.5707963;
-        let min_angle = (mn + sec / 60.0) * (3.14159265 / 30.0) - 1.5707963;
-        let sec_angle = sec * (3.14159265 / 30.0) - 1.5707963;
+        // Polished glass button face (subtle frosted translucent glass disc)
+        let btn_fill = (1.0 - smoothstep(-0.8, 0.8, d_btn)) * (0.18 + hover_amt * 0.14);
         
-        let p_h_dir = vec2<f32>(cos(hour_angle), sin(hour_angle));
-        let p_m_dir = vec2<f32>(cos(min_angle), sin(min_angle));
-        let p_s_dir = vec2<f32>(cos(sec_angle), sin(sec_angle));
+        // Button surface specular sunlight catch
+        let btn_dir = normalize(p_btn + vec2<f32>(0.001));
+        let btn_sun = max(dot(btn_dir, vec2<f32>(-0.6, -0.8)), 0.0);
+        let btn_rim = smoothstep(1.4, 0.0, abs(d_btn)) * (btn_sun * 0.65 + 0.30);
         
-        // Hour hand: 3.8px wide, 20px length
-        let d_h = dist_segment(p_dial, -p_h_dir * 4.0, p_h_dir * 20.0) - 1.8;
-        let mask_h = 1.0 - smoothstep(-0.35, 0.35, d_h);
-        // Minute hand: 2.5px wide, 29px length
-        let d_m = dist_segment(p_dial, -p_m_dir * 5.0, p_m_dir * 29.0) - 1.25;
-        let mask_m = 1.0 - smoothstep(-0.35, 0.35, d_m);
-        // Sweeping second hand: thin gold needle
-        let d_s = dist_segment(p_dial, -p_s_dir * 9.0, p_s_dir * 32.0) - 0.75;
-        let mask_s = 1.0 - smoothstep(-0.35, 0.35, d_s);
-        let d_pin = length(p_dial) - 2.8;
-        let mask_pin = 1.0 - smoothstep(-0.35, 0.35, d_pin);
-        
-        // Aesthetic Perimeter Rim
-        let dial_ring = abs(r_dial - 35.0) - 0.65;
-        let mask_ring = (1.0 - smoothstep(-0.35, 0.35, dial_ring)) * 0.40;
-        
-        // ── 2. Subtle Crystalline Vertical Separator ──
-        let sep_x = -64.0;
-        let d_sep = rr_sdf(local_p - vec2<f32>(sep_x, 0.0), vec2<f32>(0.5, 30.0), 0.5);
-        let mask_sep = (1.0 - smoothstep(-0.35, 0.35, d_sep)) * 0.30;
-        
-        // ── 3. Center Digital Time & Date ──
-        let time_cx = 38.0;
-        let time_y = -10.0;
-        let t_scale = 2.6;
-        let sp = 18.5;
-        
-        let h_tens = u32(hr / 10.0);
-        let h_ones = u32(hr % 10.0);
-        let m_tens = u32(mn / 10.0);
-        let m_ones = u32(mn % 10.0);
-        
-        let d_th0 = draw_digit(local_p - vec2<f32>(time_cx - 2.15 * sp, time_y), h_tens, t_scale);
-        let d_th1 = draw_digit(local_p - vec2<f32>(time_cx - 1.05 * sp, time_y), h_ones, t_scale);
-        let d_tcol = draw_colon(local_p - vec2<f32>(time_cx, time_y), t_scale);
-        let d_tm0 = draw_digit(local_p - vec2<f32>(time_cx + 1.05 * sp, time_y), m_tens, t_scale);
-        let d_tm1 = draw_digit(local_p - vec2<f32>(time_cx + 2.15 * sp, time_y), m_ones, t_scale);
-        
-        let d_time_digits = min(min(d_th0, d_th1), min(d_tm0, d_tm1)) - 0.80;
-        let mask_time_digits = 1.0 - smoothstep(-0.35, 0.35, d_time_digits);
-        let colon_pulse = 0.55 + 0.45 * sin(sec * 3.14159265);
-        let mask_time_colon = (1.0 - smoothstep(-0.35, 0.35, d_tcol)) * colon_pulse;
-        
-        // Sub-row: Day / Date (y = 19.0)
-        let wday_code = u32(progress / 100000.0);
-        let rem_date = progress % 100000.0;
-        let mday_code = u32(rem_date / 1000.0);
-        let bat_val = (rem_date % 1000.0);
-        
-        let d_tens = mday_code / 10u;
-        let d_ones = mday_code % 10u;
-        let date_y = 19.0;
-        let date_scale = 1.15;
-        let dsp = 9.2;
-        let date_cx = time_cx - 24.0;
-        
-        var w0 = 83u; var w1 = 85u; var w2 = 78u; // SUN
-        if wday_code == 1u { w0 = 77u; w1 = 79u; w2 = 78u; } // MON
-        else if wday_code == 2u { w0 = 84u; w1 = 85u; w2 = 69u; } // TUE
-        else if wday_code == 3u { w0 = 87u; w1 = 69u; w2 = 68u; } // WED
-        else if wday_code == 4u { w0 = 84u; w1 = 72u; w2 = 85u; } // THU
-        else if wday_code == 5u { w0 = 70u; w1 = 82u; w2 = 73u; } // FRI
-        else if wday_code == 6u { w0 = 83u; w1 = 65u; w2 = 84u; } // SAT
-        
-        let dw0 = draw_clock_letter(local_p - vec2<f32>(date_cx - 2.8 * dsp, date_y), w0, date_scale);
-        let dw1 = draw_clock_letter(local_p - vec2<f32>(date_cx - 1.8 * dsp, date_y), w1, date_scale);
-        let dw2 = draw_clock_letter(local_p - vec2<f32>(date_cx - 0.8 * dsp, date_y), w2, date_scale);
-        let dd0 = draw_digit(local_p - vec2<f32>(date_cx + 1.2 * dsp, date_y), d_tens, date_scale);
-        let dd1 = draw_digit(local_p - vec2<f32>(date_cx + 2.3 * dsp, date_y), d_ones, date_scale);
-        
-        let d_date = min(min(dw0, min(dw1, dw2)), min(dd0, dd1)) - 0.48;
-        let mask_date = (1.0 - smoothstep(-0.35, 0.35, d_date)) * 0.85;
-        
-        // ── 4. Compact Minimalist Battery Status Module (Integrated inline on the right) ──
-        let bat_cx = time_cx + 48.0;
-        let bat_cy = 19.0;
-        let p_bat = local_p - vec2<f32>(bat_cx, bat_cy);
-        // Compact Apple status battery icon: 22px x 10px, corner 3.0px
-        let bat_half = vec2<f32>(11.0, 5.0);
-        let d_shell = rr_sdf(p_bat, bat_half, 3.0);
-        let mask_shell = smoothstep(0.35, -0.35, abs(d_shell) - 0.70);
-        let d_bump = rr_sdf(p_bat - vec2<f32>(12.2, 0.0), vec2<f32>(1.2, 2.4), 1.0);
-        let mask_bump = smoothstep(0.35, -0.35, d_bump);
-        let mask_housing = max(mask_shell, mask_bump) * 0.80;
-        
-        let fill_max_w = 18.0;
-        let fill_w = (bat_val / 100.0) * fill_max_w;
-        let fill_x = -9.0 + fill_w * 0.5;
-        let d_fill = rr_sdf(p_bat - vec2<f32>(fill_x, 0.0), vec2<f32>(max(fill_w * 0.5, 0.5), 3.5), 1.8);
-        let mask_fill = smoothstep(0.35, -0.35, d_fill) * 0.90;
-        
-        // Battery Percentage Number & % symbol next to icon
-        let bat_u = u32(clamp(bat_val, 0.0, 100.0));
-        let b_tens = (bat_u % 100u) / 10u;
-        let b_ones = bat_u % 10u;
-        let b_scale = 1.00;
-        let bsp = 7.0;
-        let num_start_x = bat_cx + 20.0;
-        
-        var mask_bnum = 0.0;
-        if bat_u >= 100u {
-            let db_h = draw_digit(local_p - vec2<f32>(num_start_x, bat_cy), 1u, b_scale);
-            let db0 = draw_digit(local_p - vec2<f32>(num_start_x + bsp, bat_cy), 0u, b_scale);
-            let db1 = draw_digit(local_p - vec2<f32>(num_start_x + bsp * 2.0, bat_cy), 0u, b_scale);
-            let db_pct = draw_percent(local_p - vec2<f32>(num_start_x + bsp * 3.1, bat_cy), b_scale);
-            let d_all = min(min(db_h, db0), min(db1, db_pct)) - 0.42;
-            mask_bnum = (1.0 - smoothstep(-0.35, 0.35, d_all)) * 0.85;
+        // Center Icon: Toggle between Play (triangle) and Pause (two vertical batons)
+        var mask_icon = 0.0;
+        if is_toggled {
+            // Pause: two sleek rounded vertical batons
+            let b0 = rr_sdf(p_btn - vec2<f32>(-6.5, 0.0), vec2<f32>(3.0, 11.0), 2.0);
+            let b1 = rr_sdf(p_btn - vec2<f32>(6.5, 0.0), vec2<f32>(3.0, 11.0), 2.0);
+            let d_pause = min(b0, b1);
+            mask_icon = 1.0 - smoothstep(-0.4, 0.4, d_pause);
         } else {
-            let db0 = draw_digit(local_p - vec2<f32>(num_start_x, bat_cy), b_tens, b_scale);
-            let db1 = draw_digit(local_p - vec2<f32>(num_start_x + bsp, bat_cy), b_ones, b_scale);
-            let db_pct = draw_percent(local_p - vec2<f32>(num_start_x + bsp * 2.1, bat_cy), b_scale);
-            let d_all = min(min(db0, db1), db_pct) - 0.42;
-            mask_bnum = (1.0 - smoothstep(-0.35, 0.35, d_all)) * 0.85;
+            // Play: precision rounded equilateral triangle (with optical center offset)
+            let q = p_btn - vec2<f32>(2.5, 0.0);
+            let e0 = dist_segment(q, vec2<f32>(-8.5, -12.5), vec2<f32>(-8.5, 12.5));
+            let e1 = dist_segment(q, vec2<f32>(-8.5, 12.5), vec2<f32>(13.5, 0.0));
+            let e2 = dist_segment(q, vec2<f32>(13.5, 0.0), vec2<f32>(-8.5, -12.5));
+            let tri_edge = min(min(e0, e1), e2);
+            let is_in = (q.x >= -8.5) && (q.x * 1.15 + abs(q.y) * 1.4 <= 15.5);
+            let d_play = select(tri_edge, -tri_edge, is_in);
+            mask_icon = 1.0 - smoothstep(-0.4, 0.4, d_play);
         }
         
-        // Colors & Composite
-        let gold = vec3<f32>(0.86, 0.97, 0.26);
+        // Composite icon (100% white) over translucent disc and specular rim
+        let total_mask = max(mask_icon, max(btn_fill, btn_rim));
         let white = vec3<f32>(0.98, 0.99, 1.0);
         
-        let white_components = max(
-            max(max(dial_ticks, mask_h), max(mask_m, mask_pin)),
-            max(max(mask_ring, mask_sep), max(max(mask_time_digits, mask_time_colon), max(mask_date, max(mask_housing, mask_bnum))))
-        );
+        app.glyph_mask = total_mask;
+        app.glyph_color = white;
         
-        if mask_s > 0.05 {
-            app.glyph_mask = mask_s;
-            app.glyph_color = gold;
-            app.fluid_color = gold;
-            app.fluid_glow = exp(-max(d_s, 0.0) * 0.8) * 0.40;
-        } else if mask_fill > 0.05 {
-            app.glyph_mask = max(mask_fill, white_components);
-            app.glyph_color = mix(gold, white, clamp((white_components - mask_fill) * 2.0, 0.0, 1.0));
-            app.fluid_color = gold;
-            app.fluid_glow = exp(-max(d_fill, 0.0) * 0.6) * 0.25;
-        } else {
-            app.glyph_mask = white_components;
-            app.glyph_color = white;
+        // Ethereal liquid glow under button on hover
+        if hover_amt > 0.01 {
+            app.fluid_color = vec3<f32>(0.45, 0.82, 1.0);
+            app.fluid_glow = exp(-max(d_btn, 0.0) * 0.16) * hover_amt * 0.35;
         }
+        
         return app;
     }
     
