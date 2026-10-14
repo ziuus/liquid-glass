@@ -223,7 +223,11 @@ impl PointerHandler for AppData {
                 PointerEventKind::Press { .. } => {
                     had_event = true;
                     self.is_pressed = true;
-                    self.is_toggled = !self.is_toggled;
+                    let dx = self.cursor_pos[0] - 0.50;
+                    let dy = self.cursor_pos[1] - 0.50;
+                    if (dx * dx + dy * dy).sqrt() <= (48.0 / 220.0) {
+                        self.is_toggled = !self.is_toggled;
+                    }
                 }
                 PointerEventKind::Release { .. } => {
                     had_event = true;
@@ -292,18 +296,17 @@ impl AppData {
             let spring_k = 260.0f32;
             let damping = 18.0f32;
 
-            // Hover spring
-            let in_box = px >= spec[0] - spec[2] * 0.5 && px <= spec[0] + spec[2] * 0.5 && py >= spec[1] - spec[3] * 0.5 && py <= spec[1] + spec[3] * 0.5;
-            let target = if in_box { 1.0f32 } else { 0.0f32 };
+            // Center Button Hover spring
+            let dx = px - 0.50;
+            let dy = py - 0.50;
+            let in_button = (dx * dx + dy * dy).sqrt() <= (40.0 / 220.0);
+            let target = if in_button { 1.0f32 } else { 0.0f32 };
             let force = -spring_k * (self.hover_pos[0] - target) - damping * self.hover_vel[0];
             self.hover_vel[0] += force * dt;
             self.hover_pos[0] += self.hover_vel[0] * dt;
 
-            // 60 FPS during cursor interaction, spring motion, or velocity damping
-            let active = in_box 
-                || (self.hover_pos[0] - target).abs() > 0.005 
-                || self.cursor_velocity[0].abs() > 0.001 
-                || self.cursor_velocity[1].abs() > 0.001;
+            // Redraw only while spring is moving towards target
+            let active = (self.hover_pos[0] - target).abs() > 0.003 || self.hover_vel[0].abs() > 0.003;
 
             let b0 = [spec[0] - spec[2] * 0.5, spec[1] - spec[3] * 0.5, spec[2], spec[3]];
             let toggle_state = if self.is_toggled { 1.0f32 } else { 0.0f32 };

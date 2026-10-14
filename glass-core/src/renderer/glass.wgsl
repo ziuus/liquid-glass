@@ -800,15 +800,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     let h_grad = vec2<f32>(h_r - h_l, h_u - h_d) / (2.0 * eps);
     
-    // Reactive subtle fluid meniscus pull towards pointer
-    let cur_vec = cur_local - local_px;
-    let dist_cur = length(cur_vec);
-    let cur_dir = cur_vec / max(dist_cur, 0.001);
-    let stretch_radius = select(100.0, 160.0, is_base_panel);
-    let pull_t = clamp(1.0 - (dist_cur / stretch_radius), 0.0, 1.0) * cur_active;
-    let fluid_tilt = cur_dir * (pull_t * pull_t) * 0.04;
-    
-    let N = normalize(vec3<f32>(-(h_grad * params.curvature * 2.8 + fluid_tilt), 1.0));
+    let N = normalize(vec3<f32>(-(h_grad * params.curvature * 2.8), 1.0));
     let N_2d = N.xy;
     
     // ════════════════════════════════════════════
@@ -884,34 +876,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let spec1 = pow(max(dot(N, H1), 0.0), 64.0) * 0.40 * params.specular_strength;
     
     // ════════════════════════════════════════════
-    // 8. INTERACTIVE CURSOR LIQUID SPOTLIGHT
-    // ════════════════════════════════════════════
-    var cur_spec = 0.0;
-    var cur_rim_glow = 0.0;
-    if dist_cur < stretch_radius && params.pointer_pos.x >= 0.0 {
-        let cur_t = 1.0 - (dist_cur / stretch_radius);
-        let cur_t2 = cur_t * cur_t;
-        
-        let L_cur = normalize(vec3<f32>(cur_vec, 30.0));
-        let H_cur = normalize(L_cur + V);
-        cur_spec = pow(max(dot(N, H_cur), 0.0), 96.0) * cur_t2 * 0.40 * params.specular_strength;
-        
-        let cur_dir_2d = normalize(cur_vec + vec2<f32>(0.001));
-        let rim_face_cur = max(dot(N_2d, cur_dir_2d), 0.0);
-        cur_rim_glow = pow(edge, 1.6) * rim_face_cur * cur_t * 0.35 * params.specular_strength;
-    }
-    
-    // ════════════════════════════════════════════
-    // 9. CONTROLS, FLUID EMISSION & GLYPHS
+    // 8. CONTROLS, FLUID EMISSION & GLYPHS
     // ════════════════════════════════════════════
     let app = render_element_appearance(local_px, half_size, params.padding2.x, params.padding2.y, params.time, params.tint);
     
     // ════════════════════════════════════════════
-    // 10. MASTER COMPOSITE
+    // 9. MASTER COMPOSITE
     // ════════════════════════════════════════════
     var fin = col;
     fin += vec3<f32>(border_crest + crest_top + crest_bot + spec1);
-    fin += vec3<f32>(cur_spec + cur_rim_glow);
     fin += app.fluid_color * app.fluid_glow;
     fin = mix(fin, app.glyph_color, app.glyph_mask);
     
