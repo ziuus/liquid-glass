@@ -876,15 +876,48 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let spec1 = pow(max(dot(N, H1), 0.0), 64.0) * 0.40 * params.specular_strength;
     
     // ════════════════════════════════════════════
-    // 8. CONTROLS, FLUID EMISSION & GLYPHS
+    // 8. MACOS / VISIONOS DYNAMIC LIQUID EDGE HOVER (Side-Approach Flare)
+    // ════════════════════════════════════════════
+    // When hovering from any side towards the component:
+    // The curved boundary bevel facing the cursor lights up with a focused, radiant liquid flare
+    // that glides around the rounded edge contour, strictly confined to the perimeter (zero flat interior spot).
+    var side_bevel_flare = 0.0;
+    var side_rim_flare = 0.0;
+    if params.pointer_pos.x >= 0.0 {
+        let cur_px = params.pointer_pos * params.surface_size - center;
+        let to_cur = cur_px - local_px;
+        let dist_to_cur = length(to_cur);
+        let dir_to_cur = to_cur / max(dist_to_cur, 0.001);
+        
+        // Outward normal of the molded glass edge facing the cursor
+        let bevel_facing = max(dot(N_2d, dir_to_cur), 0.0);
+        
+        // Dynamic reach: responds as cursor approaches within 130px of the edge
+        let prox = clamp(1.0 - (dist_to_cur / 130.0), 0.0, 1.0);
+        let prox_curve = prox * prox;
+        
+        // Concentrated along the curved bevel (pow(edge, 1.4) strictly vanishes inside the box)
+        side_bevel_flare = pow(edge, 1.4) * pow(bevel_facing, 2.8) * prox_curve * 1.50 * params.specular_strength;
+        // Polished 1px glass perimeter glint
+        side_rim_flare = rim_stroke * pow(bevel_facing, 2.0) * prox * 1.70 * params.specular_strength;
+    }
+
+    // ════════════════════════════════════════════
+    // 9. CONTROLS, FLUID EMISSION & GLYPHS
     // ════════════════════════════════════════════
     let app = render_element_appearance(local_px, half_size, params.padding2.x, params.padding2.y, params.time, params.tint);
     
     // ════════════════════════════════════════════
-    // 9. MASTER COMPOSITE
+    // 10. MASTER COMPOSITE
     // ════════════════════════════════════════════
     var fin = col;
     fin += vec3<f32>(border_crest + crest_top + crest_bot + spec1);
+    
+    // macOS edge prismatic glint
+    let flare_mag = side_bevel_flare + side_rim_flare;
+    let flare_rgb = vec3<f32>(flare_mag * 1.04, flare_mag * 0.98, flare_mag * 1.08);
+    fin += flare_rgb;
+    
     fin += app.fluid_color * app.fluid_glow;
     fin = mix(fin, app.glyph_color, app.glyph_mask);
     

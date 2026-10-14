@@ -225,7 +225,7 @@ impl PointerHandler for AppData {
                     self.is_pressed = true;
                     let dx = self.cursor_pos[0] - 0.50;
                     let dy = self.cursor_pos[1] - 0.50;
-                    if (dx * dx + dy * dy).sqrt() <= (48.0 / 220.0) {
+                    if (dx * dx + dy * dy).sqrt() <= (44.0 / 250.0) {
                         self.is_toggled = !self.is_toggled;
                     }
                 }
@@ -288,8 +288,8 @@ impl AppData {
             let vx = self.cursor_velocity[0];
             let vy = self.cursor_velocity[1];
 
-            // Square Liquid Glass Box (190px x 190px inside 220px surface)
-            let box_ratio = 190.0 / 220.0;
+            // Square Liquid Glass Box (190px x 190px centered inside 250px surface, 30px margin around for edge hover reach)
+            let box_ratio = 190.0 / 250.0;
             let spec: [f32; 4] = [0.50, 0.50, box_ratio, box_ratio];
 
             let dt = 1.0f32 / 60.0f32;
@@ -299,14 +299,16 @@ impl AppData {
             // Center Button Hover spring
             let dx = px - 0.50;
             let dy = py - 0.50;
-            let in_button = (dx * dx + dy * dy).sqrt() <= (40.0 / 220.0);
+            let in_button = (dx * dx + dy * dy).sqrt() <= (38.0 / 250.0);
             let target = if in_button { 1.0f32 } else { 0.0f32 };
             let force = -spring_k * (self.hover_pos[0] - target) - damping * self.hover_vel[0];
             self.hover_vel[0] += force * dt;
             self.hover_pos[0] += self.hover_vel[0] * dt;
 
-            // Redraw only while spring is moving towards target
-            let active = (self.hover_pos[0] - target).abs() > 0.003 || self.hover_vel[0].abs() > 0.003;
+            // Redraw while spring is moving towards target or cursor is actively moving on/near the box
+            let spring_moving = (self.hover_pos[0] - target).abs() > 0.003 || self.hover_vel[0].abs() > 0.003;
+            let cursor_moving = self.cursor_velocity[0].abs() > 0.0005 || self.cursor_velocity[1].abs() > 0.0005;
+            let active = spring_moving || cursor_moving;
 
             let b0 = [spec[0] - spec[2] * 0.5, spec[1] - spec[3] * 0.5, spec[2], spec[3]];
             let toggle_state = if self.is_toggled { 1.0f32 } else { 0.0f32 };
@@ -457,8 +459,8 @@ fn main() {
         pill_offset_x: 0.0,
         pill_vel_x: 0.0,
         
-        width: 220,
-        height: 220,
+        width: 250,
+        height: 250,
         first_configure: true,
         exit: false,
         frame_counter: 0,
@@ -481,7 +483,8 @@ fn main() {
     
     layer_surface.set_anchor(Anchor::TOP | Anchor::LEFT);
     layer_surface.set_size(app_data.width, app_data.height);
-    layer_surface.set_margin(260, 0, 0, 40); // top = 260 (below clock box), right, bottom, left = 40
+    // Center the 190x190 box exactly at (40, 260) with 30px transparent border reach on all sides
+    layer_surface.set_margin(230, 0, 0, 10); 
     layer_surface.set_exclusive_zone(0);
     layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
     layer_surface.commit();
@@ -519,11 +522,11 @@ fn main() {
     )).expect("Failed to init WGPU");
     
     // 1. Primary: load authentic wallpaper background directly
-    if let Some((cw, ch, bg_data)) = load_wallpaper_region(40, 260, app_data.width, app_data.height) {
+    if let Some((cw, ch, bg_data)) = load_wallpaper_region(10, 230, app_data.width, app_data.height) {
         renderer.update_background(cw, ch, &bg_data);
     } else if let Some(output) = app_data.output_state.outputs().next() {
         // Fallback: screencopy capture
-        app_data.screencopy.capture(&output, 40, 260, app_data.width as i32, app_data.height as i32, &qh);
+        app_data.screencopy.capture(&output, 10, 230, app_data.width as i32, app_data.height as i32, &qh);
         while !app_data.screencopy.done {
             event_queue.blocking_dispatch(&mut app_data).unwrap();
         }
@@ -554,11 +557,9 @@ fn main() {
             }
             last_frame = std::time::Instant::now();
         } else {
-            // Low idle CPU: sleep 1000ms between clock updates unless woken by input
-            std::thread::sleep(std::time::Duration::from_millis(1000));
-            let _ = event_queue.dispatch_pending(&mut app_data);
-            let still_animating = app_data.draw();
-            app_data.animating = still_animating;
+            // Instant wake-up on pointer/touch input with zero idle CPU
+            let _ = event_queue.blocking_dispatch(&mut app_data);
+            app_data.animating = true;
             last_frame = std::time::Instant::now();
         }
     }
