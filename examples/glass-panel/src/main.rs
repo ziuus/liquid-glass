@@ -305,10 +305,9 @@ impl AppData {
             self.hover_vel[0] += force * dt;
             self.hover_pos[0] += self.hover_vel[0] * dt;
 
-            // Redraw while spring is moving towards target or cursor is actively moving on/near the box
+            // Redraw while spring is moving towards target
             let spring_moving = (self.hover_pos[0] - target).abs() > 0.003 || self.hover_vel[0].abs() > 0.003;
-            let cursor_moving = self.cursor_velocity[0].abs() > 0.0005 || self.cursor_velocity[1].abs() > 0.0005;
-            let active = spring_moving || cursor_moving;
+            let active = spring_moving;
 
             let b0 = [spec[0] - spec[2] * 0.5, spec[1] - spec[3] * 0.5, spec[2], spec[3]];
             let toggle_state = if self.is_toggled { 1.0f32 } else { 0.0f32 };
@@ -557,9 +556,8 @@ fn main() {
             }
             last_frame = std::time::Instant::now();
         } else {
-            // Instant wake-up on pointer/touch input with zero idle CPU
+            // Sleep in kernel epoll_wait until next Wayland event (0.0% CPU when idle)
             let _ = event_queue.blocking_dispatch(&mut app_data);
-            app_data.animating = true;
             last_frame = std::time::Instant::now();
         }
     }
