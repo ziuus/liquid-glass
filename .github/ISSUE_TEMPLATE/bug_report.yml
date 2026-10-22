@@ -1,0 +1,40 @@
+name: Bug Report
+description: File a bug report to help us improve Liquid Glass
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug report! Please provide as much detail as possible.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug encountered.
+      placeholder: Tell us what you see vs. what you expected to see.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: System Environment
+      description: OS, Linux Kernel, GPU & Driver, Wayland Compositor (e.g., Hyprland, Sway, KDE, GNOME).
+      placeholder: e.g. Arch Linux, AMD Radeon RX 6700XT (RADV), Hyprland 0.44
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Steps to Reproduce
+      description: Exact commands or interactions to reproduce the issue.
+      placeholder: |
+        1. Run `cargo run -p glass-panel`
+        2. Drag widget...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Terminal Logs / GPU Output
+      description: Copy & paste relevant backtraces or stdout/stderr logs.
+      render: shell
