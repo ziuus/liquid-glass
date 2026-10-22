@@ -4,7 +4,7 @@
 
 ---
 
-# Liquid Glass: Bringing True Apple-Grade Physical Optical Lensing to Linux & Wayland in Rust
+# Liquid Glass: Physical Optical Lensing & Glassmorphism UI Engine for Linux in Rust (WGPU)
 
 Most "frosted glass" or "glassmorphism" implementations on the web and Linux desktops boil down to a simple 2D box-blur shader layered over a background capture. 
 

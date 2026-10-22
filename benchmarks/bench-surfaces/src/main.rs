@@ -1,6 +1,6 @@
 use winit::{
     event::*,
-    event_loop::{ControlFlow, EventLoop},
+    event_loop::EventLoop,
     window::WindowBuilder,
 };
 use glass_core::{GlassRenderer, GlassSurface, Material, geometry::Shape};
@@ -23,7 +23,7 @@ async fn run() {
     let counts = [1, 5, 10, 25, 50, 100];
     let mut current_count_idx = 0;
     
-    let mut generate_surfaces = |count: usize| {
+    let generate_surfaces = |count: usize| {
         let mut surfaces = Vec::with_capacity(count);
         for i in 0..count {
             let x = (i % 10) as f32 * 0.1;

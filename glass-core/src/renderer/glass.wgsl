@@ -70,26 +70,55 @@ fn rr_sdf(p: vec2<f32>, b: vec2<f32>, r: f32) -> f32 {
     return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - r;
 }
 
-// ── Authentic Apple Liquid Glass Profile (Deep Peripheral Meniscus + Optical Lens) ──
-fn droplet_height(p: vec2<f32>, b: vec2<f32>, r: f32, z_radius: f32) -> f32 {
+// ── Authentic Apple Liquid Droplet Profile (Plano-Convex Lens + Fluid Dynamics) ──
+fn droplet_height(p: vec2<f32>, b: vec2<f32>, r: f32, z_radius: f32, cur_px: vec2<f32>, cur_vel: vec2<f32>, time: f32, cur_active: f32) -> f32 {
     let d = -rr_sdf(p, b, r);
     if d <= 0.0 {
         return 0.0;
     }
-    
-    // 1. Steep Bevel Meniscus (concentrated in outer 14-20px edge)
-    // Produces genuine caustic prismatic edge refractions like macOS/iOS glass
-    let meniscus_w = min(z_radius * 2.5, 20.0);
+
+    // Normalized interior depth: 0 at border, 1 at deep interior
+    let min_b = min(b.x, b.y);
+    let t = clamp(d / min_b, 0.0, 1.0);
+
+    // 1. Organic Plano-Convex Liquid Lens Dome:
+    // Follows the Young-Laplace spherical cap profile for liquid droplets on surface
+    let dome_lens = sqrt(clamp(1.0 - (1.0 - t) * (1.0 - t), 0.0, 1.0));
+
+    // 2. Steep Boundary Meniscus roll-off (surface tension lip)
+    let meniscus_w = min(z_radius * 2.2, 22.0);
     let edge_t = clamp(d / meniscus_w, 0.0, 1.0);
-    // Smooth cosine S-curve roll-off for water meniscus
     let meniscus = 0.5 - 0.5 * cos(edge_t * 3.14159265);
-    
-    // 2. Subtle interior optical curvature across the center plate
-    let min_d = min(b.x, b.y);
-    let center_t = clamp(d / max(min_d, 1.0), 0.0, 1.0);
-    let dome = sqrt(clamp(1.0 - (1.0 - center_t) * (1.0 - center_t), 0.0, 1.0)) * 0.15;
-    
-    return (meniscus * 0.85 + dome) * z_radius;
+
+    // Height combines smooth global plano-convex lens dome + steep meniscus
+    var h = (meniscus * 0.40 + dome_lens * 0.60) * z_radius;
+
+    // 3. Fluid Dynamics: Natural surface tension breathing oscillation
+    let breathing = sin(time * 1.8) * 0.012 * z_radius * dome_lens;
+    h += breathing;
+
+    // 4. Reactive Pointer Capillary Attraction & Fluid Waves:
+    if cur_active > 0.5 {
+        let to_cur = cur_px - p;
+        let dist = length(to_cur);
+
+        // Capillary liquid attraction: pointer pulls the droplet surface toward it
+        let pull_sigma = 80.0;
+        let pull = exp(-(dist * dist) / (2.0 * pull_sigma * pull_sigma)) * (z_radius * 0.35);
+
+        // Fluid ripple radiating when pointer is near / moving
+        let wave_decay = exp(-dist / 65.0);
+        let wave = sin(dist * 0.18 - time * 6.5) * wave_decay * (z_radius * 0.12);
+
+        // Dynamic fluid shear from pointer velocity: liquid sloshes with movement
+        let vel_mag = length(cur_vel);
+        let vel_dir = cur_vel / max(vel_mag, 0.001);
+        let shear = dot(to_cur / max(dist, 1.0), vel_dir) * clamp(vel_mag * 0.05, 0.0, 1.0) * (z_radius * 0.18) * wave_decay;
+
+        h += (pull + wave + shear) * smoothstep(0.0, 0.25, t);
+    }
+
+    return max(h, 0.0);
 }
 
 // ── 16-tap Golden Spiral Frosted Dispersion Blur ──
@@ -664,6 +693,192 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
     }
 
     // ─────────────────────────────────────────────────────────────
+    // 25. Unified Luxury Minimalist Liquid Glass Widget (390px x 94px capsule)
+    // Cohesive layout:
+    // Left: Swiss Minimalist Dial (center_x = -118.0, r = 36.0)
+    // Middle: Thin crystalline vertical divider (x = -64.0)
+    // Center: Digital Time + Date + Battery
+    // ─────────────────────────────────────────────────────────────
+    if el_type >= 24.9 && el_type <= 25.1 {
+        let is_12h = (tint.w > 0.5);
+        var hr = tint.x;
+        if is_12h {
+            if hr == 0.0 { hr = 12.0; }
+            else if hr > 12.0 { hr = hr - 12.0; }
+        }
+        let mn = tint.y;
+        let sec = tint.z;
+        
+        // ── 1. Swiss Minimalist Dial (r = 36.0, prominent luxury timepiece) ──
+        let dial_cx = -118.0;
+        let p_dial = local_p - vec2<f32>(dial_cx, 0.0);
+        let r_dial = length(p_dial);
+        let ang_dial = atan2(p_dial.y, p_dial.x);
+        
+        // 12 Precision Hour Ticks
+        let mod_ang = (ang_dial + 3.14159265 / 12.0) % (3.14159265 / 6.0) - (3.14159265 / 12.0);
+        let tick_dist = abs(mod_ang) * r_dial;
+        let mod_card = (ang_dial + 3.14159265 / 4.0) % (3.14159265 / 2.0) - (3.14159265 / 4.0);
+        let is_cardinal = (abs(mod_card) * r_dial < 2.8);
+        let tick_inner = select(29.0, 24.0, is_cardinal);
+        let tick_rad = (r_dial >= tick_inner && r_dial <= 33.5);
+        var dial_ticks = 0.0;
+        if tick_rad {
+            let tick_w = select(0.85, 1.55, is_cardinal);
+            dial_ticks = 1.0 - smoothstep(tick_w, tick_w + 0.40, tick_dist);
+        }
+        
+        // Hands
+        let hour_angle = (tint.x % 12.0 + mn / 60.0 + sec / 3600.0) * (3.14159265 / 6.0) - 1.5707963;
+        let min_angle = (mn + sec / 60.0) * (3.14159265 / 30.0) - 1.5707963;
+        let sec_angle = sec * (3.14159265 / 30.0) - 1.5707963;
+        
+        let p_h_dir = vec2<f32>(cos(hour_angle), sin(hour_angle));
+        let p_m_dir = vec2<f32>(cos(min_angle), sin(min_angle));
+        let p_s_dir = vec2<f32>(cos(sec_angle), sin(sec_angle));
+        
+        // Hour hand: 3.8px wide, 20px length
+        let d_h = dist_segment(p_dial, -p_h_dir * 4.0, p_h_dir * 20.0) - 1.8;
+        let mask_h = 1.0 - smoothstep(-0.35, 0.35, d_h);
+        // Minute hand: 2.5px wide, 29px length
+        let d_m = dist_segment(p_dial, -p_m_dir * 5.0, p_m_dir * 29.0) - 1.25;
+        let mask_m = 1.0 - smoothstep(-0.35, 0.35, d_m);
+        // Sweeping second hand: thin gold needle
+        let d_s = dist_segment(p_dial, -p_s_dir * 9.0, p_s_dir * 32.0) - 0.75;
+        let mask_s = 1.0 - smoothstep(-0.35, 0.35, d_s);
+        let d_pin = length(p_dial) - 2.8;
+        let mask_pin = 1.0 - smoothstep(-0.35, 0.35, d_pin);
+        
+        // Aesthetic Perimeter Rim
+        let dial_ring = abs(r_dial - 35.0) - 0.65;
+        let mask_ring = (1.0 - smoothstep(-0.35, 0.35, dial_ring)) * 0.40;
+        
+        // ── 2. Subtle Crystalline Vertical Separator ──
+        let sep_x = -64.0;
+        let d_sep = rr_sdf(local_p - vec2<f32>(sep_x, 0.0), vec2<f32>(0.5, 30.0), 0.5);
+        let mask_sep = (1.0 - smoothstep(-0.35, 0.35, d_sep)) * 0.30;
+        
+        // ── 3. Center Digital Time & Date ──
+        let time_cx = 38.0;
+        let time_y = -10.0;
+        let t_scale = 2.6;
+        let sp = 18.5;
+        
+        let h_tens = u32(hr / 10.0);
+        let h_ones = u32(hr % 10.0);
+        let m_tens = u32(mn / 10.0);
+        let m_ones = u32(mn % 10.0);
+        
+        let d_th0 = draw_digit(local_p - vec2<f32>(time_cx - 2.15 * sp, time_y), h_tens, t_scale);
+        let d_th1 = draw_digit(local_p - vec2<f32>(time_cx - 1.05 * sp, time_y), h_ones, t_scale);
+        let d_tcol = draw_colon(local_p - vec2<f32>(time_cx, time_y), t_scale);
+        let d_tm0 = draw_digit(local_p - vec2<f32>(time_cx + 1.05 * sp, time_y), m_tens, t_scale);
+        let d_tm1 = draw_digit(local_p - vec2<f32>(time_cx + 2.15 * sp, time_y), m_ones, t_scale);
+        
+        let d_time_digits = min(min(d_th0, d_th1), min(d_tm0, d_tm1)) - 0.80;
+        let mask_time_digits = 1.0 - smoothstep(-0.35, 0.35, d_time_digits);
+        let colon_pulse = 0.55 + 0.45 * sin(sec * 3.14159265);
+        let mask_time_colon = (1.0 - smoothstep(-0.35, 0.35, d_tcol)) * colon_pulse;
+        
+        // Sub-row: Day / Date (y = 19.0)
+        let wday_code = u32(progress / 100000.0);
+        let rem_date = progress % 100000.0;
+        let mday_code = u32(rem_date / 1000.0);
+        let bat_val = (rem_date % 1000.0);
+        
+        let d_tens = mday_code / 10u;
+        let d_ones = mday_code % 10u;
+        let date_y = 19.0;
+        let date_scale = 1.15;
+        let dsp = 9.2;
+        let date_cx = time_cx - 24.0;
+        
+        var w0 = 83u; var w1 = 85u; var w2 = 78u; // SUN
+        if wday_code == 1u { w0 = 77u; w1 = 79u; w2 = 78u; } // MON
+        else if wday_code == 2u { w0 = 84u; w1 = 85u; w2 = 69u; } // TUE
+        else if wday_code == 3u { w0 = 87u; w1 = 69u; w2 = 68u; } // WED
+        else if wday_code == 4u { w0 = 84u; w1 = 72u; w2 = 85u; } // THU
+        else if wday_code == 5u { w0 = 70u; w1 = 82u; w2 = 73u; } // FRI
+        else if wday_code == 6u { w0 = 83u; w1 = 65u; w2 = 84u; } // SAT
+        
+        let dw0 = draw_clock_letter(local_p - vec2<f32>(date_cx - 2.8 * dsp, date_y), w0, date_scale);
+        let dw1 = draw_clock_letter(local_p - vec2<f32>(date_cx - 1.8 * dsp, date_y), w1, date_scale);
+        let dw2 = draw_clock_letter(local_p - vec2<f32>(date_cx - 0.8 * dsp, date_y), w2, date_scale);
+        let dd0 = draw_digit(local_p - vec2<f32>(date_cx + 1.2 * dsp, date_y), d_tens, date_scale);
+        let dd1 = draw_digit(local_p - vec2<f32>(date_cx + 2.3 * dsp, date_y), d_ones, date_scale);
+        
+        let d_date = min(min(dw0, min(dw1, dw2)), min(dd0, dd1)) - 0.48;
+        let mask_date = (1.0 - smoothstep(-0.35, 0.35, d_date)) * 0.85;
+        
+        // ── 4. Compact Minimalist Battery Status Module (Integrated inline on the right) ──
+        let bat_cx = time_cx + 48.0;
+        let bat_cy = 19.0;
+        let p_bat = local_p - vec2<f32>(bat_cx, bat_cy);
+        // Compact Apple status battery icon: 22px x 10px, corner 3.0px
+        let bat_half = vec2<f32>(11.0, 5.0);
+        let d_shell = rr_sdf(p_bat, bat_half, 3.0);
+        let mask_shell = smoothstep(0.35, -0.35, abs(d_shell) - 0.70);
+        let d_bump = rr_sdf(p_bat - vec2<f32>(12.2, 0.0), vec2<f32>(1.2, 2.4), 1.0);
+        let mask_bump = smoothstep(0.35, -0.35, d_bump);
+        let mask_housing = max(mask_shell, mask_bump) * 0.80;
+        
+        let fill_max_w = 18.0;
+        let fill_w = (bat_val / 100.0) * fill_max_w;
+        let fill_x = -9.0 + fill_w * 0.5;
+        let d_fill = rr_sdf(p_bat - vec2<f32>(fill_x, 0.0), vec2<f32>(max(fill_w * 0.5, 0.5), 3.5), 1.8);
+        let mask_fill = smoothstep(0.35, -0.35, d_fill) * 0.90;
+        
+        // Battery Percentage Number & % symbol next to icon
+        let bat_u = u32(clamp(bat_val, 0.0, 100.0));
+        let b_tens = (bat_u % 100u) / 10u;
+        let b_ones = bat_u % 10u;
+        let b_scale = 1.00;
+        let bsp = 7.0;
+        let num_start_x = bat_cx + 20.0;
+        
+        var mask_bnum = 0.0;
+        if bat_u >= 100u {
+            let db_h = draw_digit(local_p - vec2<f32>(num_start_x, bat_cy), 1u, b_scale);
+            let db0 = draw_digit(local_p - vec2<f32>(num_start_x + bsp, bat_cy), 0u, b_scale);
+            let db1 = draw_digit(local_p - vec2<f32>(num_start_x + bsp * 2.0, bat_cy), 0u, b_scale);
+            let db_pct = draw_percent(local_p - vec2<f32>(num_start_x + bsp * 3.1, bat_cy), b_scale);
+            let d_all = min(min(db_h, db0), min(db1, db_pct)) - 0.42;
+            mask_bnum = (1.0 - smoothstep(-0.35, 0.35, d_all)) * 0.85;
+        } else {
+            let db0 = draw_digit(local_p - vec2<f32>(num_start_x, bat_cy), b_tens, b_scale);
+            let db1 = draw_digit(local_p - vec2<f32>(num_start_x + bsp, bat_cy), b_ones, b_scale);
+            let db_pct = draw_percent(local_p - vec2<f32>(num_start_x + bsp * 2.1, bat_cy), b_scale);
+            let d_all = min(min(db0, db1), db_pct) - 0.42;
+            mask_bnum = (1.0 - smoothstep(-0.35, 0.35, d_all)) * 0.85;
+        }
+        
+        // Colors & Composite
+        let gold = vec3<f32>(0.86, 0.97, 0.26);
+        let white = vec3<f32>(0.98, 0.99, 1.0);
+        
+        let white_components = max(
+            max(max(dial_ticks, mask_h), max(mask_m, mask_pin)),
+            max(max(mask_ring, mask_sep), max(max(mask_time_digits, mask_time_colon), max(mask_date, max(mask_housing, mask_bnum))))
+        );
+        
+        if mask_s > 0.05 {
+            app.glyph_mask = mask_s;
+            app.glyph_color = gold;
+            app.fluid_color = gold;
+            app.fluid_glow = exp(-max(d_s, 0.0) * 0.8) * 0.40;
+        } else if mask_fill > 0.05 {
+            app.glyph_mask = max(mask_fill, white_components);
+            app.glyph_color = mix(gold, white, clamp((white_components - mask_fill) * 2.0, 0.0, 1.0));
+            app.fluid_color = gold;
+            app.fluid_glow = exp(-max(d_fill, 0.0) * 0.6) * 0.25;
+        } else {
+            app.glyph_mask = white_components;
+            app.glyph_color = white;
+        }
+        return app;
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // 30. Minimalist Liquid Glass Square Box with Center Action Button
     // ─────────────────────────────────────────────────────────────
     // ─────────────────────────────────────────────────────────────
@@ -708,23 +923,242 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             let d_play = select(tri_edge, -tri_edge, is_in);
             mask_icon = 1.0 - smoothstep(-0.4, 0.4, d_play);
         }
+
+        let white = vec3<f32>(0.98, 0.99, 1.0);
+
+        // Pure crisp icon mask (no opaque white blob filling the button)
+        app.glyph_mask = mask_icon;
+        app.glyph_color = white;
+
+        // Button glass surface specular glint and ethereal hover liquid glow
+        let btn_spec = btn_rim * 0.65 + btn_fill * 0.15;
+        app.fluid_color = mix(white, vec3<f32>(0.40, 0.82, 1.0), hover_amt);
+        app.fluid_glow = btn_spec + exp(-max(d_btn, 0.0) * 0.16) * hover_amt * 0.35;
+
+        return app;
+    }
+    
+
+    // ─────────────────────────────────────────────────────────────
+    // 35. Apple Liquid Glass Media Control Island (420px x 110px capsule)
+    // ─────────────────────────────────────────────────────────────
+    if el_type >= 34.5 && el_type <= 35.5 {
+        let is_playing = (tint.x > 0.5);
+        let prog = clamp(tint.y, 0.0, 1.0);
+        let hover_play = tint.z; // 0.0 - 1.0
+        let elapsed_sec = tint.w;
+        let is_pressed = (progress % 10.0 > 0.5);
         
-        // Composite icon (100% white) over translucent disc and specular rim
-        let total_mask = max(mask_icon, max(btn_fill, btn_rim));
+        // ── 1. Vinyl Album Disc with Music Note (cx = -135.0, cy = -4.0, r = 28.0) ──
+        let p_vinyl = local_p - vec2<f32>(-135.0, -4.0);
+        let r_vinyl = length(p_vinyl);
+        
+        let d_disc = r_vinyl - 28.0;
+        let mask_disc_edge = smoothstep(0.4, -0.4, abs(d_disc) - 0.65);
+        let mask_disc_fill = (1.0 - smoothstep(-0.5, 0.5, d_disc)) * 0.16;
+        
+        // Concentric vinyl grooves
+        var grooves = 0.0;
+        if r_vinyl >= 11.5 && r_vinyl <= 26.5 {
+            grooves = (sin(r_vinyl * 2.8) * 0.5 + 0.5) * 0.22;
+        }
+        
+        // Center label disc (r = 10.5)
+        let d_label = r_vinyl - 10.5;
+        let mask_label = (1.0 - smoothstep(-0.4, 0.4, d_label)) * 0.28;
+        let mask_spindle = 1.0 - smoothstep(-0.35, 0.35, r_vinyl - 2.8);
+        
+        // Rotating center music note (♫)
+        let rot_speed = select(0.0, time * 2.2, is_playing);
+        let p_rot = vec2<f32>(cos(rot_speed) * p_vinyl.x - sin(rot_speed) * p_vinyl.y, 
+                              sin(rot_speed) * p_vinyl.x + cos(rot_speed) * p_vinyl.y);
+                              
+        let d_n1 = length(p_rot - vec2<f32>(-3.2, 2.8)) - 2.0;
+        let d_n2 = length(p_rot - vec2<f32>(3.2, 1.2)) - 2.0;
+        let d_st1 = dist_segment(p_rot, vec2<f32>(-1.6, 2.8), vec2<f32>(-1.6, -3.8)) - 0.65;
+        let d_st2 = dist_segment(p_rot, vec2<f32>(4.8, 1.2), vec2<f32>(4.8, -5.4)) - 0.65;
+        let d_bm = dist_segment(p_rot, vec2<f32>(-1.6, -3.8), vec2<f32>(4.8, -5.4)) - 1.0;
+        let d_note = min(min(d_n1, d_n2), min(min(d_st1, d_st2), d_bm));
+        let mask_note = 1.0 - smoothstep(-0.35, 0.35, d_note);
+        
+        // ── 2. Equalizer Audio Wave Visualizer (-92.0 to -42.0, y = -4.0) ──
+        var eq_mask = 0.0;
+        for (var i = 0; i < 5; i++) {
+            let bx = -92.0 + f32(i) * 11.0;
+            let phase = f32(i) * 1.35;
+            let bar_h = select(2.8, 3.5 + 8.5 * abs(sin(time * 3.8 + phase)), is_playing);
+            let d_bar = rr_sdf(local_p - vec2<f32>(bx, -4.0), vec2<f32>(1.8, bar_h), 1.2);
+            eq_mask = max(eq_mask, 1.0 - smoothstep(-0.35, 0.35, d_bar));
+        }
+        
+        // ── 3. Subtle Vertical Crystalline Divider (x = -26.0, y = -4.0) ──
+        let d_sep = rr_sdf(local_p - vec2<f32>(-26.0, -4.0), vec2<f32>(0.5, 20.0), 0.5);
+        let mask_sep = (1.0 - smoothstep(-0.35, 0.35, d_sep)) * 0.30;
+        
+        // ── 4. Transport Controls: Prev (x = 4.0), Play (x = 48.0), Next (x = 92.0) at y = -10.0 ──
+        let y_ctrl = -10.0;
+        
+        // Previous (|<<) at x = 4.0
+        let p_prev = local_p - vec2<f32>(4.0, y_ctrl);
+        let bar_prev = dist_segment(p_prev, vec2<f32>(-6.5, -5.5), vec2<f32>(-6.5, 5.5)) - 0.85;
+        // Two left-pointing triangles
+        let q_pr1 = p_prev - vec2<f32>(-2.0, 0.0);
+        let e_pr1_0 = dist_segment(q_pr1, vec2<f32>(3.5, -5.5), vec2<f32>(3.5, 5.5));
+        let e_pr1_1 = dist_segment(q_pr1, vec2<f32>(3.5, 5.5), vec2<f32>(-3.5, 0.0));
+        let e_pr1_2 = dist_segment(q_pr1, vec2<f32>(-3.5, 0.0), vec2<f32>(3.5, -5.5));
+        let in_pr1 = (q_pr1.x <= 3.5) && (q_pr1.x * -1.0 + abs(q_pr1.y) * 1.2 <= 4.2);
+        let d_tri_pr1 = select(min(min(e_pr1_0, e_pr1_1), e_pr1_2), -min(min(e_pr1_0, e_pr1_1), e_pr1_2), in_pr1) - 0.4;
+        
+        let q_pr2 = p_prev - vec2<f32>(4.5, 0.0);
+        let e_pr2_0 = dist_segment(q_pr2, vec2<f32>(3.5, -5.5), vec2<f32>(3.5, 5.5));
+        let e_pr2_1 = dist_segment(q_pr2, vec2<f32>(3.5, 5.5), vec2<f32>(-3.5, 0.0));
+        let e_pr2_2 = dist_segment(q_pr2, vec2<f32>(-3.5, 0.0), vec2<f32>(3.5, -5.5));
+        let in_pr2 = (q_pr2.x <= 3.5) && (q_pr2.x * -1.0 + abs(q_pr2.y) * 1.2 <= 4.2);
+        let d_tri_pr2 = select(min(min(e_pr2_0, e_pr2_1), e_pr2_2), -min(min(e_pr2_0, e_pr2_1), e_pr2_2), in_pr2) - 0.4;
+        let mask_prev = 1.0 - smoothstep(-0.4, 0.4, min(bar_prev, min(d_tri_pr1, d_tri_pr2)));
+        
+        // Next (>>|) at x = 92.0
+        let p_next = local_p - vec2<f32>(92.0, y_ctrl);
+        let bar_next = dist_segment(p_next, vec2<f32>(6.5, -5.5), vec2<f32>(6.5, 5.5)) - 0.85;
+        // Two right-pointing triangles
+        let q_nx1 = p_next - vec2<f32>(-4.5, 0.0);
+        let e_nx1_0 = dist_segment(q_nx1, vec2<f32>(-3.5, -5.5), vec2<f32>(-3.5, 5.5));
+        let e_nx1_1 = dist_segment(q_nx1, vec2<f32>(-3.5, 5.5), vec2<f32>(3.5, 0.0));
+        let e_nx1_2 = dist_segment(q_nx1, vec2<f32>(3.5, 0.0), vec2<f32>(-3.5, -5.5));
+        let in_nx1 = (q_nx1.x >= -3.5) && (q_nx1.x * 1.0 + abs(q_nx1.y) * 1.2 <= 4.2);
+        let d_tri_nx1 = select(min(min(e_nx1_0, e_nx1_1), e_nx1_2), -min(min(e_nx1_0, e_nx1_1), e_nx1_2), in_nx1) - 0.4;
+        
+        let q_nx2 = p_next - vec2<f32>(2.0, 0.0);
+        let e_nx2_0 = dist_segment(q_nx2, vec2<f32>(-3.5, -5.5), vec2<f32>(-3.5, 5.5));
+        let e_nx2_1 = dist_segment(q_nx2, vec2<f32>(-3.5, 5.5), vec2<f32>(3.5, 0.0));
+        let e_nx2_2 = dist_segment(q_nx2, vec2<f32>(3.5, 0.0), vec2<f32>(-3.5, -5.5));
+        let in_nx2 = (q_nx2.x >= -3.5) && (q_nx2.x * 1.0 + abs(q_nx2.y) * 1.2 <= 4.2);
+        let d_tri_nx2 = select(min(min(e_nx2_0, e_nx2_1), e_nx2_2), -min(min(e_nx2_0, e_nx2_1), e_nx2_2), in_nx2) - 0.4;
+        let mask_next = 1.0 - smoothstep(-0.4, 0.4, min(bar_next, min(d_tri_nx1, d_tri_nx2)));
+        
+        // Hero Play / Pause Button at x = 48.0
+        let btn_scale = select(1.0 + hover_play * 0.05, 0.94, is_pressed);
+        let p_btn = (local_p - vec2<f32>(48.0, y_ctrl)) / btn_scale;
+        let btn_r = 21.0;
+        let d_btn = length(p_btn) - btn_r;
+        let btn_fill = (1.0 - smoothstep(-0.8, 0.8, d_btn)) * (0.22 + hover_play * 0.16);
+        let btn_dir = normalize(p_btn + vec2<f32>(0.001));
+        let btn_sun = max(dot(btn_dir, vec2<f32>(-0.6, -0.8)), 0.0);
+        let btn_rim = smoothstep(1.3, 0.0, abs(d_btn)) * (btn_sun * 0.70 + 0.35);
+        
+        var mask_play_icon = 0.0;
+        if is_playing {
+            // Pause: two sleek rounded vertical batons
+            let b0 = rr_sdf(p_btn - vec2<f32>(-4.2, 0.0), vec2<f32>(2.2, 7.5), 1.6);
+            let b1 = rr_sdf(p_btn - vec2<f32>(4.2, 0.0), vec2<f32>(2.2, 7.5), 1.6);
+            let d_pause = min(b0, b1);
+            mask_play_icon = 1.0 - smoothstep(-0.35, 0.35, d_pause);
+        } else {
+            // Play: precision equilateral triangle with optical center offset
+            let q_pl = p_btn - vec2<f32>(1.8, 0.0);
+            let e0 = dist_segment(q_pl, vec2<f32>(-5.5, -8.0), vec2<f32>(-5.5, 8.0));
+            let e1 = dist_segment(q_pl, vec2<f32>(-5.5, 8.0), vec2<f32>(9.0, 0.0));
+            let e2 = dist_segment(q_pl, vec2<f32>(9.0, 0.0), vec2<f32>(-5.5, -8.0));
+            let is_in = (q_pl.x >= -5.5) && (q_pl.x * 1.1 + abs(q_pl.y) * 1.3 <= 10.5);
+            let d_pl = select(min(min(e0, e1), e2), -min(min(e0, e1), e2), is_in) - 0.4;
+            mask_play_icon = 1.0 - smoothstep(-0.35, 0.35, d_pl);
+        }
+        
+        // ── 5. Timeline Progress Bar Track & Scrubber Knob (y = 22.0) ──
+        let y_bar = 22.0;
+        // Total track spans from x = -15.0 to x = 135.0 (width = 150.0)
+        let bar_len = 150.0;
+        let d_rail = rr_sdf(local_p - vec2<f32>(60.0, y_bar), vec2<f32>(75.0, 1.8), 1.4);
+        let mask_rail = (1.0 - smoothstep(-0.35, 0.35, d_rail)) * 0.28;
+        
+        let fill_w = prog * bar_len;
+        let fill_cx = -15.0 + fill_w * 0.5;
+        let d_fill = rr_sdf(local_p - vec2<f32>(fill_cx, y_bar), vec2<f32>(max(fill_w * 0.5, 1.0), 2.0), 1.4);
+        let mask_fill = 1.0 - smoothstep(-0.35, 0.35, d_fill);
+        
+        // Scrubber Knob (circle r = 4.2)
+        let p_knob = local_p - vec2<f32>(-15.0 + fill_w, y_bar);
+        let d_knob = length(p_knob) - 4.5;
+        let mask_knob = 1.0 - smoothstep(-0.35, 0.35, d_knob);
+        
+        // ── 6. Elapsed Time Display (x = -40.0, y = 22.0) ──
+        let cur_sec = u32(elapsed_sec);
+        let e_min = (cur_sec / 60u) % 10u;
+        let e_s_tens = (cur_sec % 60u) / 10u;
+        let e_s_ones = cur_sec % 10u;
+        let t_scale = 1.05;
+        let tsp = 7.2;
+        let d_em = draw_digit(local_p - vec2<f32>(-50.0 - tsp, y_bar), e_min, t_scale);
+        let d_ecol = draw_colon(local_p - vec2<f32>(-50.0, y_bar), t_scale);
+        let d_es0 = draw_digit(local_p - vec2<f32>(-50.0 + tsp * 0.9, y_bar), e_s_tens, t_scale);
+        let d_es1 = draw_digit(local_p - vec2<f32>(-50.0 + tsp * 1.9, y_bar), e_s_ones, t_scale);
+        let d_time_text = min(min(d_em, d_ecol), min(d_es0, d_es1)) - 0.42;
+        let mask_time_text = (1.0 - smoothstep(-0.35, 0.35, d_time_text)) * 0.85;
+        
+        // ── 7. Volume Speaker Icon & Soundwaves (x = 162.0, y = y_ctrl) ──
+        let p_spk = local_p - vec2<f32>(160.0, y_ctrl);
+        // Speaker box: 4px x 6px
+        let d_spk_box = rr_sdf(p_spk - vec2<f32>(-4.0, 0.0), vec2<f32>(2.0, 3.0), 0.8);
+        // Speaker cone: triangle
+        let d_spk_cone = dist_segment(p_spk, vec2<f32>(-2.0, -3.0), vec2<f32>(2.0, -6.5));
+        let d_spk_cone_b = dist_segment(p_spk, vec2<f32>(-2.0, 3.0), vec2<f32>(2.0, 6.5));
+        let d_spk_cone_f = dist_segment(p_spk, vec2<f32>(2.0, -6.5), vec2<f32>(2.0, 6.5));
+        let in_cone = (p_spk.x >= -2.0) && (p_spk.x <= 2.0) && (abs(p_spk.y) <= 3.0 + (p_spk.x + 2.0) * 0.9);
+        let d_cone = select(min(min(d_spk_cone, d_spk_cone_b), d_spk_cone_f), -min(min(d_spk_cone, d_spk_cone_b), d_spk_cone_f), in_cone) - 0.35;
+        let mask_speaker = 1.0 - smoothstep(-0.35, 0.35, min(d_spk_box, d_cone));
+        
+        // Soundwave arc 1 (r = 6.8) and arc 2 (r = 10.8)
+        let r_arc = length(p_spk - vec2<f32>(1.0, 0.0));
+        let ang_arc = atan2(p_spk.y, p_spk.x - 1.0);
+        var mask_wave = 0.0;
+        if abs(ang_arc) <= 0.85 {
+            let d_arc1 = abs(r_arc - 6.5) - 0.75;
+            let d_arc2 = abs(r_arc - 10.5) - 0.75;
+            mask_wave = 1.0 - smoothstep(-0.35, 0.35, min(d_arc1, d_arc2));
+        }
+        let mask_sound = max(mask_speaker, mask_wave) * 0.85;
+        
+        // ── 8. Colors & Master Composite ──
+        let gold = vec3<f32>(0.86, 0.97, 0.26);
+        let cyan = vec3<f32>(0.38, 0.85, 1.0);
         let white = vec3<f32>(0.98, 0.99, 1.0);
         
-        app.glyph_mask = total_mask;
-        app.glyph_color = white;
+        let white_elems = max(
+            max(max(mask_prev, mask_next), max(mask_play_icon, mask_time_text)),
+            max(max(mask_disc_edge, mask_disc_fill), max(mask_label, max(mask_rail, max(mask_sep, mask_sound))))
+        );
         
-        // Ethereal liquid glow under button on hover
-        if hover_amt > 0.01 {
-            app.fluid_color = vec3<f32>(0.45, 0.82, 1.0);
-            app.fluid_glow = exp(-max(d_btn, 0.0) * 0.16) * hover_amt * 0.35;
+        if eq_mask > 0.05 {
+            app.glyph_mask = max(eq_mask, white_elems);
+            app.glyph_color = mix(gold, white, clamp((white_elems - eq_mask) * 2.0, 0.0, 1.0));
+            app.fluid_color = gold;
+            app.fluid_glow = exp(-abs(local_p.y + 4.0) * 0.25) * 0.35;
+        } else if mask_fill > 0.05 || mask_knob > 0.05 {
+            let active_fill = max(mask_fill, mask_knob);
+            app.glyph_mask = max(active_fill, white_elems);
+            app.glyph_color = mix(cyan, white, clamp((white_elems - active_fill) * 2.0, 0.0, 1.0));
+            app.fluid_color = cyan;
+            app.fluid_glow = exp(-max(d_knob, 0.0) * 0.4) * 0.45;
+        } else if mask_note > 0.05 {
+            app.glyph_mask = max(mask_note, white_elems);
+            app.glyph_color = gold;
+            app.fluid_color = gold;
+            app.fluid_glow = exp(-max(d_note, 0.0) * 0.6) * 0.30;
+        } else {
+            app.glyph_mask = max(white_elems, grooves);
+            app.glyph_color = white;
+        }
+        
+        // Tactile button glow on hover
+        if hover_play > 0.01 {
+            let glow_col = vec3<f32>(0.40, 0.85, 1.0);
+            app.fluid_color = mix(app.fluid_color, glow_col, hover_play);
+            app.fluid_glow = max(app.fluid_glow, exp(-max(d_btn, 0.0) * 0.16) * hover_play * 0.40);
         }
         
         return app;
     }
-    
+
     return app;
 }
 
@@ -791,59 +1225,70 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let min_dim = min(half_size.x, half_size.y);
     let z_radius = min(max(params.bevel, 6.0), min_dim * 0.75);
     let eps = 1.0;
-    
-    let h_c = droplet_height(local_px, half_size, r, z_radius);
-    let h_r = droplet_height(local_px + vec2<f32>(eps, 0.0), half_size, r, z_radius);
-    let h_l = droplet_height(local_px - vec2<f32>(eps, 0.0), half_size, r, z_radius);
-    let h_u = droplet_height(local_px + vec2<f32>(0.0, eps), half_size, r, z_radius);
-    let h_d = droplet_height(local_px - vec2<f32>(0.0, eps), half_size, r, z_radius);
-    
+
+    let h_c = droplet_height(local_px, half_size, r, z_radius, cur_local, params.pointer_velocity, params.time, cur_active);
+    let h_r = droplet_height(local_px + vec2<f32>(eps, 0.0), half_size, r, z_radius, cur_local, params.pointer_velocity, params.time, cur_active);
+    let h_l = droplet_height(local_px - vec2<f32>(eps, 0.0), half_size, r, z_radius, cur_local, params.pointer_velocity, params.time, cur_active);
+    let h_u = droplet_height(local_px + vec2<f32>(0.0, eps), half_size, r, z_radius, cur_local, params.pointer_velocity, params.time, cur_active);
+    let h_d = droplet_height(local_px - vec2<f32>(0.0, eps), half_size, r, z_radius, cur_local, params.pointer_velocity, params.time, cur_active);
+
     let h_grad = vec2<f32>(h_r - h_l, h_u - h_d) / (2.0 * eps);
-    
-    let N = normalize(vec3<f32>(-(h_grad * params.curvature * 2.8), 1.0));
+
+    let N = normalize(vec3<f32>(-(h_grad * params.curvature * 3.2), 1.0));
     let N_2d = N.xy;
-    
+
     // ════════════════════════════════════════════
-    // 4. TRUE OPTICAL REFRACTION & SPECTRAL CHROMATIC DISPERSION (Snell's Law)
+    // 4. TRUE OPTICAL LENS MAGNIFICATION & CHROMATIC DISPERSION (Snell's Law)
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
-    let ior = 1.52; // Optical crown glass IOR
+    let ior = 1.52; // Optical crown glass / liquid IOR
     let refr_pow = 1.0 - 1.0 / ior;
-    
-    // Genuine optical ray deflection through the liquid meniscus
-    let refr_scale = 26.0 * params.refraction_strength;
-    let refr_ray = N_2d * refr_pow * refr_scale;
-    let refr = refr_ray * px_to_uv;
-    
+
+    // Center of this droplet in UV space
+    let center_uv = center / params.surface_size;
+    let from_center_uv = uv - center_uv;
+
+    // Genuine Plano-Convex Lens Magnification (Snell's Law zoom across the liquid dome):
+    // Inside a convex droplet, rays bend toward the center optical axis, magnifying the background
+    let norm_h = clamp(h_c / max(z_radius, 1.0), 0.0, 1.2);
+    let zoom_factor = 1.0 + norm_h * 0.38 * params.refraction_strength;
+    let refr_magnify = from_center_uv * (1.0 / zoom_factor - 1.0);
+
+    // Peripheral Meniscus Ray Deflection (steep prism curvature at the liquid border)
+    let refr_scale = 28.0 * params.refraction_strength * clamp(h_c * 1.5, 0.25, 1.2);
+    let refr_ray = N_2d * refr_pow * refr_scale * px_to_uv;
+
+    let refr_total = refr_magnify + refr_ray;
+
     // Prismatic spectral rainbow dispersion along the bevel contour (distinct R, G, B deflection)
-    let ca_scale = 20.0 * params.dispersion * (edge * 0.85 + 0.15);
+    let ca_scale = 22.0 * params.dispersion * (edge * 0.85 + 0.15);
     let ca_offset = N_2d * ca_scale * px_to_uv;
-    
-    let uv_r = clamp(uv + refr + ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
-    let uv_g = clamp(uv + refr, vec2<f32>(0.001), vec2<f32>(0.999));
-    let uv_b = clamp(uv + refr - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
-    
+
+    let uv_r = clamp(uv + refr_total + ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
+    let uv_g = clamp(uv + refr_total, vec2<f32>(0.001), vec2<f32>(0.999));
+    let uv_b = clamp(uv + refr_total - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
+
     // ════════════════════════════════════════════
-    // 5. BACKGROUND SAMPLING & DUAL-ZONE CLARITY
+    // 5. BACKGROUND SAMPLING & CRYSTALLINE WATER CLARITY
     // ════════════════════════════════════════════
     let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
     let sharp_g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
     let sharp_b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
     let sharp = vec3<f32>(sharp_r, sharp_g, sharp_b);
-    
+
     var col: vec3<f32>;
     let blur = params.blur_radius;
     if blur <= 0.5 {
         col = sharp;
     } else {
-        // Center plate gets soft frosted diffusion; outer bevel retains crystal optical liquid refraction
+        // Liquid glass: center core is a crystal clear magnifying lens; only gentle frost if blur requested
         let blurred = blurred_sample(uv_g, blur);
-        let frost_amount = smoothstep(0.8, 0.15, edge);
-        col = mix(sharp, blurred, frost_amount * 0.85);
+        let frost_amount = smoothstep(0.85, 0.25, edge) * min(blur / 25.0, 0.45);
+        col = mix(sharp, blurred, frost_amount);
     }
-    
-    // Pure Crystal Liquid Glass Transmission: subtle water surface luminance (zero dark tint, zero cloudy fog)
-    let water_sheen = vec3<f32>(0.025, 0.030, 0.035) * (1.0 - uv.y * 0.20);
+
+    // Crystal liquid water transmission: pristine clarity, no murky darkness
+    let water_sheen = vec3<f32>(0.015, 0.020, 0.025) * (1.0 - uv.y * 0.15);
     col = col * 1.02 + water_sheen;
     
     // ════════════════════════════════════════════

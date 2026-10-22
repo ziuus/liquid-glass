@@ -1,5 +1,5 @@
 [workspace]
-members = ["benchmarks/bench-surfaces", "examples/glass-panel","examples/simple-window",
+members = ["benchmarks/bench-surfaces", "examples/glass-panel","examples/simple-window", "examples/simple-demo", "examples/sdl-widget",
     "glass-core",
     "glass-platform",
     "glass-ui"

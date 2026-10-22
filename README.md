@@ -2,7 +2,7 @@
 
 # 🪟 Liquid Glass
 
-**Apple-Grade Physical Liquid Glass & Optical Lensing Engine for Linux & Wayland**
+**Physical Liquid Glass & Optical Lensing Engine for Linux & Wayland**
 
 [![CI](https://github.com/ziuus/liquid-glass/actions/workflows/ci.yml/badge.svg)](https://github.com/ziuus/liquid-glass/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange?style=for-the-badge&logo=rust)](https://www.rust-lang.org)
@@ -157,12 +157,12 @@ let surfaces = vec![
 renderer.render(&surfaces)?;
 ```
 
-### 3. Calibrated Apple Vibrancy Materials
+### 3. Calibrated Vibrancy Materials
 
 ```rust
 use glass_core::{GlassMaterial, MaterialType};
 
-// Pre-calibrated materials matching Apple HIG & NSVisualEffectView:
+// Pre-calibrated materials matching modern desktop vibrancy:
 let sidebar = GlassMaterial::new(MaterialType::Sidebar);
 let hud     = GlassMaterial::new(MaterialType::HUD);
 let menu    = GlassMaterial::menu().with_corner_radius(12.0);
@@ -186,7 +186,7 @@ Check out our [**Contributing Guide**](CONTRIBUTING.md) to get started.
 ## 📚 Documentation & Research
 
 - [**Usage & Material Guide**](docs/USAGE_GUIDE.md): Deep dive into materials, blend modes, and layering.
-- [**Apple Design System Analysis**](docs/LIQUID_GLASS_ANALYSIS.md): Analysis of macOS/visionOS blur, vibrancy, and optical thickness.
+- [**physical Design System Analysis**](docs/LIQUID_GLASS_ANALYSIS.md): Analysis of macOS/visionOS blur, vibrancy, and optical thickness.
 - [**Fluid Dynamics Research**](docs/FLUID_DYNAMICS_RESEARCH.md): Physical equations for surface tension, contact angle, and viscous damping.
 - [**Transformation Summary**](docs/TRANSFORMATION_SUMMARY.md): Evolution of the engine architecture.
 

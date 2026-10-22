@@ -1,7 +1,11 @@
+mod blur;
+
 use raw_window_handle::{HasWindowHandle, HasDisplayHandle};
 use std::sync::Arc;
 use std::time::Instant;
 use bytemuck::{Pod, Zeroable};
+
+pub use blur::BlurPipeline;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]

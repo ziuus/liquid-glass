@@ -1,18 +1,18 @@
 // I will keep capture module for Screencopy specific struct and delegation.
 use smithay_client_toolkit::{
-    registry::{ProvidesRegistryState, RegistryState, GlobalProxy},
-    shm::{Shm, ShmHandler, slot::{SlotPool, Buffer}},
+    registry::RegistryState,
+    shm::{Shm, slot::SlotPool},
 };
 use wayland_client::{
-    protocol::{wl_output::WlOutput, wl_shm::WlShm, wl_buffer::WlBuffer},
-    Connection, QueueHandle, Dispatch, delegate_dispatch,
+    protocol::wl_output::WlOutput,
+    Connection, QueueHandle, Dispatch,
 };
 use wayland_protocols_wlr::screencopy::v1::client::{
     zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1,
     zwlr_screencopy_frame_v1::{ZwlrScreencopyFrameV1, Event as FrameEvent, ZwlrScreencopyFrameV1 as Frame},
 };
-use std::os::fd::AsRawFd;
 
+#[allow(dead_code)]
 pub struct ScreencopyState {
     pub manager: Option<ZwlrScreencopyManagerV1>,
     pub frame: Option<Frame>,
@@ -46,6 +46,7 @@ impl ScreencopyState {
         }
     }
 
+    #[allow(dead_code)]
     pub fn capture(&mut self, output: &WlOutput, x: i32, y: i32, width: i32, height: i32, qh: &QueueHandle<super::AppData>) {
         if self.is_capturing {
             return;

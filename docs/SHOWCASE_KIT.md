@@ -7,7 +7,7 @@ This kit contains ready-to-publish showcase copy and launch assets for **Reddit,
 ## 1. 𝕏 (Twitter) / Bluesky Launch Thread
 
 **Post 1 (Hook with media):**
-> Built a true Apple-grade Liquid Glass & Optical Lensing engine for Linux & Wayland in Rust + WGPU 🦀✨
+> Built an open-source Liquid Glass & Optical Lensing engine for Linux & Wayland in Rust + WGPU 🦀✨
 >
 > 💎 Real-time Snell's law refraction ($IOR = 1.33 - 1.52$)  
 > 🌈 Spectral chromatic dispersion & meniscus rim lighting  
@@ -39,7 +39,7 @@ This kit contains ready-to-publish showcase copy and launch assets for **Reddit,
 
 ### For `r/rust`:
 **Title:**
-> *Liquid Glass: Apple-grade physical optical lensing & fluid glass UI engine for Linux in Rust & WGPU*
+> *Liquid Glass: Physical optical lensing & fluid glass UI engine for Linux in Rust & WGPU*
 
 **Body:**
 > Hey r/rust!

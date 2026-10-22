@@ -20,8 +20,6 @@ pub mod capabilities {
 }
 
 pub mod wayland {
-    use wayland_client::{Connection, QueueHandle};
-    use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 
     // Placeholder for Wayland context
     pub struct WaylandContext {

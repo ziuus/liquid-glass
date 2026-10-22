@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide shows how to use the redesigned liquid glass engine to create authentic Apple-style UI with vibrancy materials, blur effects, spring animations, and proper layering.
+This guide shows how to use the liquid glass engine to create authentic UI with vibrancy materials, blur effects, spring animations, and proper layering.
 
 ## Quick Start
 
@@ -30,7 +30,7 @@ let hud = GlassMaterial::new(MaterialType::HUD)
 
 ### Pre-built Materials
 
-The engine includes Apple-calibrated materials:
+The engine includes pre-calibrated vibrancy materials:
 
 ```rust
 // Window backgrounds - ultra-thin glass
@@ -203,7 +203,7 @@ let scale = transition.scale.value;
 
 ### Multi-pass Gaussian Blur
 
-The engine uses a multi-pass pipeline for Apple-quality blur:
+The engine uses a multi-pass pipeline for physical-quality blur:
 
 ```rust
 use glass_core::BlurPipeline;
@@ -479,14 +479,14 @@ let params = MaterialParams {
     // ... complex physics params
 };
 
-// NEW (Apple-style)
+// NEW (Physical)
 let material = GlassMaterial::new(MaterialType::WindowBackground);
 // Pre-calibrated for authentic look
 ```
 
 ## Best Practices
 
-1. **Use presets first**: The built-in materials match Apple's design language
+1. **Use presets first**: The built-in materials match physical's design language
 2. **Animate with springs**: Never use linear interpolation for glass transitions
 3. **Layer properly**: Background blur → Glass → Foreground content
 4. **Mind the shadows**: Shadows should be large and soft (40-60px blur)
