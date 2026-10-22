@@ -1,0 +1,11 @@
+[package]
+name = "simple-demo"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "simple-demo"
+path = "src/main.rs"
+
+[dependencies]
+glass-core = { path = "../../glass-core" }

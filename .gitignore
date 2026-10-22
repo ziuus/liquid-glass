@@ -5,3 +5,7 @@ target/
 *.diff
 *.orig
 /scratch/
+
+# Intermediate / experimentation shaders
+glass-core/src/renderer/glass_liquid.wgsl
+glass-core/src/renderer/glass_ui.wgsl

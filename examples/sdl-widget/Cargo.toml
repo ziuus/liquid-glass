@@ -1,0 +1,8 @@
+[package]
+name = "sdl-widget"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+glass-core = { path = "../../glass-core" }
+sdl2 = "0.36"
