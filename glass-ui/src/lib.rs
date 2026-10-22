@@ -23,18 +23,18 @@ impl GlassCard {
             bounds: [x, y, w, h],
             shape: Shape::RoundedRectangle { radius: 24.0 },
             material: Material::LiquidGlass,
-            blur_radius: 24.0,
-            refraction: 0.70,
-            dispersion: 0.03,
-            bevel: 10.0,
-            specular: 0.95,
-            fresnel: 0.70,
-            tint: [1.0, 1.0, 1.0, 0.06],
+            blur_radius: 16.0,
+            refraction: 0.50,
+            dispersion: 0.015,
+            bevel: 7.0,
+            specular: 0.80,
+            fresnel: 0.55,
+            tint: [1.0, 1.0, 1.0, 0.04],
         }
     }
 
     pub fn island(x: f32, y: f32, w: f32, h: f32) -> Self {
-        Self::new(x, y, w, h).shape(Shape::Capsule).bevel(12.0).specular(1.0)
+        Self::new(x, y, w, h).shape(Shape::Capsule).bevel(8.0).specular(0.85)
     }
 
     pub fn shape(mut self, shape: Shape) -> Self {
@@ -454,7 +454,7 @@ mod tests {
             .refraction(0.85);
         let s = card.to_surface();
         assert_eq!(s.bounds, [0.1, 0.1, 0.8, 0.8]);
-        assert_eq!(s.bevel, 12.0);
+        assert_eq!(s.bevel, 8.0);
     }
 
     #[test]

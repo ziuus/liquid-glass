@@ -393,19 +393,19 @@ impl AppData {
             let b0 = [spec[0] - spec[2] * 0.5, spec[1] - spec[3] * 0.5, spec[2], spec[3]];
             let play_flag = if self.is_playing { 1.0f32 } else { 0.0f32 };
 
-            // Apple Liquid Glass Media Control Island
+            // Liquid Glass Media Control Island
             let island = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b0[0], b0[1], b0[2], b0[3])
-                .curvature(0.09)
-                .bevel(12.0)
-                .refraction(0.70)
-                .dispersion(0.025)
-                .blur(5.0)
+                .curvature(0.05)
+                .bevel(8.0)
+                .refraction(0.55)
+                .dispersion(0.015)
+                .blur(4.0)
                 .tint(play_flag, self.track_progress, self.hover_play_pos, self.elapsed_sec)
-                .specular(0.95)
-                .fresnel(0.70)
+                .specular(0.80)
+                .fresnel(0.55)
                 .element_type(35.0)
                 .progress(if self.is_pressed { 1.0 } else { 0.0 })
                 .pointer_pos(px, py)

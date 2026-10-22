@@ -70,7 +70,7 @@ fn rr_sdf(p: vec2<f32>, b: vec2<f32>, r: f32) -> f32 {
     return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - r;
 }
 
-// ── Authentic Apple Liquid Droplet Profile (Plano-Convex Lens + Fluid Dynamics) ──
+// ── Authentic Physical Liquid Droplet Profile (Plano-Convex Lens + Fluid Dynamics) ──
 fn droplet_height(p: vec2<f32>, b: vec2<f32>, r: f32, z_radius: f32, cur_px: vec2<f32>, cur_vel: vec2<f32>, time: f32, cur_active: f32) -> f32 {
     let d = -rr_sdf(p, b, r);
     if d <= 0.0 {
@@ -86,15 +86,15 @@ fn droplet_height(p: vec2<f32>, b: vec2<f32>, r: f32, z_radius: f32, cur_px: vec
     let dome_lens = sqrt(clamp(1.0 - (1.0 - t) * (1.0 - t), 0.0, 1.0));
 
     // 2. Steep Boundary Meniscus roll-off (surface tension lip)
-    let meniscus_w = min(z_radius * 2.2, 22.0);
+    let meniscus_w = clamp(z_radius * 1.4, 4.0, 14.0);
     let edge_t = clamp(d / meniscus_w, 0.0, 1.0);
     let meniscus = 0.5 - 0.5 * cos(edge_t * 3.14159265);
 
     // Height combines smooth global plano-convex lens dome + steep meniscus
-    var h = (meniscus * 0.40 + dome_lens * 0.60) * z_radius;
+    var h = (meniscus * 0.35 + dome_lens * 0.65) * z_radius;
 
     // 3. Fluid Dynamics: Natural surface tension breathing oscillation
-    let breathing = sin(time * 1.8) * 0.012 * z_radius * dome_lens;
+    let breathing = sin(time * 1.8) * 0.008 * z_radius * dome_lens;
     h += breathing;
 
     // 4. Reactive Pointer Capillary Attraction & Fluid Waves:
@@ -940,7 +940,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
     
 
     // ─────────────────────────────────────────────────────────────
-    // 35. Apple Liquid Glass Media Control Island (420px x 110px capsule)
+    // 35. Liquid Glass Media Control Island (420px x 110px capsule)
     // ─────────────────────────────────────────────────────────────
     if el_type >= 34.5 && el_type <= 35.5 {
         let is_playing = (tint.x > 0.5);
@@ -1215,15 +1215,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     let mask = 1.0 - smoothstep(-1.0, 0.1, sdf);
     let inside = max(-sdf, 0.0);
-    // Bevel proximity metric: 1.0 at outer boundary, smoothly dropping to 0.0 towards interior
-    let bevel_w = min(params.bevel * 2.4, 22.0);
+    // Bevel proximity metric: tight, refined boundary slope (8-14px)
+    let bevel_w = clamp(params.bevel * 1.1, 4.0, 14.0);
     let edge = 1.0 - clamp(inside / bevel_w, 0.0, 1.0);
-    
+
     // ════════════════════════════════════════════
     // 3. CONTINUOUS LIQUID DOME & SURFACE NORMAL
     // ════════════════════════════════════════════
     let min_dim = min(half_size.x, half_size.y);
-    let z_radius = min(max(params.bevel, 6.0), min_dim * 0.75);
+    let z_radius = min(max(params.bevel * 0.75, 4.0), min_dim * 0.50);
     let eps = 1.0;
 
     let h_c = droplet_height(local_px, half_size, r, z_radius, cur_local, params.pointer_velocity, params.time, cur_active);
@@ -1234,34 +1234,33 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let h_grad = vec2<f32>(h_r - h_l, h_u - h_d) / (2.0 * eps);
 
-    let N = normalize(vec3<f32>(-(h_grad * params.curvature * 3.2), 1.0));
+    let N = normalize(vec3<f32>(-(h_grad * params.curvature * 2.0), 1.0));
     let N_2d = N.xy;
 
     // ════════════════════════════════════════════
     // 4. TRUE OPTICAL LENS MAGNIFICATION & CHROMATIC DISPERSION (Snell's Law)
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
-    let ior = 1.52; // Optical crown glass / liquid IOR
+    let ior = 1.48; // Crown glass / water IOR
     let refr_pow = 1.0 - 1.0 / ior;
 
     // Center of this droplet in UV space
     let center_uv = center / params.surface_size;
     let from_center_uv = uv - center_uv;
 
-    // Genuine Plano-Convex Lens Magnification (Snell's Law zoom across the liquid dome):
-    // Inside a convex droplet, rays bend toward the center optical axis, magnifying the background
-    let norm_h = clamp(h_c / max(z_radius, 1.0), 0.0, 1.2);
-    let zoom_factor = 1.0 + norm_h * 0.38 * params.refraction_strength;
+    // Plano-Convex Lens Magnification (gentle, crisp magnification across the interior):
+    let norm_h = clamp(h_c / max(z_radius, 1.0), 0.0, 1.0);
+    let zoom_factor = 1.0 + norm_h * 0.16 * params.refraction_strength;
     let refr_magnify = from_center_uv * (1.0 / zoom_factor - 1.0);
 
-    // Peripheral Meniscus Ray Deflection (steep prism curvature at the liquid border)
-    let refr_scale = 28.0 * params.refraction_strength * clamp(h_c * 1.5, 0.25, 1.2);
+    // Peripheral Meniscus Ray Deflection (subtle prism refraction at perimeter)
+    let refr_scale = 12.0 * params.refraction_strength * clamp(h_c * 1.2, 0.20, 1.0);
     let refr_ray = N_2d * refr_pow * refr_scale * px_to_uv;
 
     let refr_total = refr_magnify + refr_ray;
 
-    // Prismatic spectral rainbow dispersion along the bevel contour (distinct R, G, B deflection)
-    let ca_scale = 22.0 * params.dispersion * (edge * 0.85 + 0.15);
+    // Prismatic spectral rainbow dispersion along the bevel contour (delicate, elegant edge catch)
+    let ca_scale = 8.0 * params.dispersion * (pow(edge, 1.8) * 0.85 + 0.15);
     let ca_offset = N_2d * ca_scale * px_to_uv;
 
     let uv_r = clamp(uv + refr_total + ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1281,51 +1280,48 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if blur <= 0.5 {
         col = sharp;
     } else {
-        // Liquid glass: center core is a crystal clear magnifying lens; only gentle frost if blur requested
+        // Liquid glass: center core is crystal-clear; delicate frost only towards boundary
         let blurred = blurred_sample(uv_g, blur);
-        let frost_amount = smoothstep(0.85, 0.25, edge) * min(blur / 25.0, 0.45);
+        let frost_amount = smoothstep(0.90, 0.30, edge) * min(blur / 28.0, 0.38);
         col = mix(sharp, blurred, frost_amount);
     }
 
     // Crystal liquid water transmission: pristine clarity, no murky darkness
-    let water_sheen = vec3<f32>(0.015, 0.020, 0.025) * (1.0 - uv.y * 0.15);
-    col = col * 1.02 + water_sheen;
-    
+    let water_sheen = vec3<f32>(0.008, 0.012, 0.016) * (1.0 - uv.y * 0.10);
+    col = col * 1.008 + water_sheen;
+
     // ════════════════════════════════════════════
-    // 6. FRESNEL TOTAL INTERNAL REFLECTION (Pure White Reflected Light)
+    // 6. FRESNEL TOTAL INTERNAL REFLECTION
     // ════════════════════════════════════════════
-    let fresnel = pow(1.0 - max(N.z, 0.0), 3.5);
-    let fresnel_gleam = fresnel * pow(edge, 1.5) * vec3<f32>(1.0, 1.0, 1.0) * 0.35;
+    let fresnel = pow(1.0 - max(N.z, 0.0), 3.8);
+    let fresnel_gleam = fresnel * pow(edge, 2.0) * vec3<f32>(1.0, 1.0, 1.0) * 0.22;
     col += fresnel_gleam;
-    
+
     // ════════════════════════════════════════════
     // 7. DUAL SUNLIGHT SPECULAR & MENISCUS HIGHLIGHTS
     // ════════════════════════════════════════════
     let L_top = normalize(vec2<f32>(-0.55, -0.80)); // Top-left primary sunlight
     let L_bot = normalize(vec2<f32>(0.55, 0.80));   // Bottom-right ambient counter-fill
-    
+
     let rim_top = max(dot(N_2d, L_top), 0.0);
     let rim_bot = max(dot(N_2d, L_bot), 0.0);
-    
-    let crest_top = pow(edge, 2.0) * rim_top * 0.55 * params.specular_strength;
-    let crest_bot = pow(edge, 2.5) * rim_bot * 0.25 * params.specular_strength;
-    
-    // Razor-sharp 1.4px outer meniscus boundary stroke (authentic polished bevel glint)
-    let rim_stroke = smoothstep(1.5, 0.25, inside);
-    let border_crest = rim_stroke * (rim_top * 0.65 + 0.35) * 0.95 * params.specular_strength;
-    
+
+    let crest_top = pow(edge, 2.5) * rim_top * 0.30 * params.specular_strength;
+    let crest_bot = pow(edge, 3.0) * rim_bot * 0.12 * params.specular_strength;
+
+    // Razor-sharp 1.2px outer meniscus boundary stroke (authentic polished bevel glint)
+    let rim_stroke = smoothstep(1.2, 0.20, inside);
+    let border_crest = rim_stroke * (rim_top * 0.45 + 0.25) * 0.55 * params.specular_strength;
+
     // 3D Specular Sunlight Gleam
     let V = vec3<f32>(0.0, 0.0, 1.0);
     let L1 = normalize(vec3<f32>(-0.45, -0.70, 0.65));
     let H1 = normalize(L1 + V);
-    let spec1 = pow(max(dot(N, H1), 0.0), 64.0) * 0.40 * params.specular_strength;
-    
+    let spec1 = pow(max(dot(N, H1), 0.0), 48.0) * 0.25 * params.specular_strength;
+
     // ════════════════════════════════════════════
-    // 8. MACOS / VISIONOS DYNAMIC LIQUID EDGE HOVER (Side-Approach Flare)
+    // 8. DYNAMIC LIQUID EDGE HOVER (Side-Approach Flare)
     // ════════════════════════════════════════════
-    // When hovering from any side towards the component:
-    // The curved boundary bevel facing the cursor lights up with a focused, radiant liquid flare
-    // that glides around the rounded edge contour, strictly confined to the perimeter (zero flat interior spot).
     var side_bevel_flare = 0.0;
     var side_rim_flare = 0.0;
     if params.pointer_pos.x >= 0.0 {
@@ -1333,38 +1329,36 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let to_cur = cur_px - local_px;
         let dist_to_cur = length(to_cur);
         let dir_to_cur = to_cur / max(dist_to_cur, 0.001);
-        
+
         // Outward normal of the molded glass edge facing the cursor
         let bevel_facing = max(dot(N_2d, dir_to_cur), 0.0);
-        
-        // Dynamic reach: responds as cursor approaches within 130px of the edge
-        let prox = clamp(1.0 - (dist_to_cur / 130.0), 0.0, 1.0);
+
+        // Dynamic reach: responds as cursor approaches within 100px of the edge
+        let prox = clamp(1.0 - (dist_to_cur / 100.0), 0.0, 1.0);
         let prox_curve = prox * prox;
-        
-        // Concentrated along the curved bevel (pow(edge, 1.4) strictly vanishes inside the box)
-        side_bevel_flare = pow(edge, 1.4) * pow(bevel_facing, 2.8) * prox_curve * 1.50 * params.specular_strength;
-        // Polished 1px glass perimeter glint
-        side_rim_flare = rim_stroke * pow(bevel_facing, 2.0) * prox * 1.70 * params.specular_strength;
+
+        // Subtle, elegant edge response
+        side_bevel_flare = pow(edge, 1.6) * pow(bevel_facing, 3.0) * prox_curve * 0.55 * params.specular_strength;
+        side_rim_flare = rim_stroke * pow(bevel_facing, 2.2) * prox * 0.70 * params.specular_strength;
     }
 
     // ════════════════════════════════════════════
     // 9. CONTROLS, FLUID EMISSION & GLYPHS
     // ════════════════════════════════════════════
     let app = render_element_appearance(local_px, half_size, params.padding2.x, params.padding2.y, params.time, params.tint);
-    
+
     // ════════════════════════════════════════════
     // 10. MASTER COMPOSITE
     // ════════════════════════════════════════════
     var fin = col;
     fin += vec3<f32>(border_crest + crest_top + crest_bot + spec1);
-    
-    // macOS edge prismatic glint
+
     let flare_mag = side_bevel_flare + side_rim_flare;
-    let flare_rgb = vec3<f32>(flare_mag * 1.04, flare_mag * 0.98, flare_mag * 1.08);
+    let flare_rgb = vec3<f32>(flare_mag * 1.02, flare_mag * 0.99, flare_mag * 1.04);
     fin += flare_rgb;
-    
+
     fin += app.fluid_color * app.fluid_glow;
     fin = mix(fin, app.glyph_color, app.glyph_mask);
-    
+
     return vec4<f32>(fin * mask, mask);
 }
