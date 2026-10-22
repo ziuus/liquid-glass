@@ -445,19 +445,42 @@ impl ProvidesRegistryState for AppData {
 }
 
 fn init_wallpaper_1080p() -> Option<Arc<Vec<u8>>> {
-    let path = std::process::Command::new("awww")
+    let queried = std::process::Command::new("awww")
         .arg("query")
         .output()
         .ok()
         .and_then(|out| {
             let s = String::from_utf8_lossy(&out.stdout);
             s.split("image: ").nth(1).map(|p| p.trim().to_string())
-        })
-        .unwrap_or_else(|| "/home/zius/Pictures/wallpaper/Fantasy-Landscape3.png".to_string());
+        });
 
-    let img = image::open(&path).ok()?.to_rgba8();
-    let resized = image::imageops::resize(&img, 1920, 1080, image::imageops::FilterType::Triangle);
-    Some(Arc::new(resized.into_raw()))
+    let candidates = [
+        queried.as_deref(),
+        Some("/home/zius/Pictures/wallpaper/IMG_20220815_123133_260.jpg"),
+        Some("/home/zius/Pictures/wallpaper/Fantasy-Landscape3.png"),
+    ];
+
+    for candidate in candidates.into_iter().flatten() {
+        if let Ok(img) = image::open(candidate) {
+            let rgba = img.to_rgba8();
+            let resized = image::imageops::resize(&rgba, 1920, 1080, image::imageops::FilterType::Triangle);
+            return Some(Arc::new(resized.into_raw()));
+        }
+    }
+
+    // High-quality dark forest / slate fallback gradient if no wallpaper file is accessible
+    let mut fallback = vec![0u8; 1920 * 1080 * 4];
+    for y in 0..1080 {
+        for x in 0..1920 {
+            let i = (y * 1920 + x) * 4;
+            let gy = y as f32 / 1080.0;
+            fallback[i] = (18.0 + gy * 10.0) as u8;
+            fallback[i + 1] = (34.0 + gy * 16.0) as u8;
+            fallback[i + 2] = (16.0 + gy * 8.0) as u8;
+            fallback[i + 3] = 255;
+        }
+    }
+    Some(Arc::new(fallback))
 }
 
 fn get_wallpaper_crop(cache: &[u8], x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {

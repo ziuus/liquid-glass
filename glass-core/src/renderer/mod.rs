@@ -156,10 +156,11 @@ impl GlassRenderer {
         for y in 0..512 {
             for x in 0..512 {
                 let i = (y * 512 + x) * 4;
-                let checker = (((x / 64) % 2) ^ ((y / 64) % 2)) as u8 * 255;
-                bg_data[i] = (x as f32 / 512.0 * 255.0) as u8;
-                bg_data[i+1] = checker;
-                bg_data[i+2] = (y as f32 / 512.0 * 255.0) as u8;
+                // Clean neutral dark obsidian / slate glass backdrop
+                let v = 22.0 + (y as f32 / 512.0) * 12.0;
+                bg_data[i] = v as u8;
+                bg_data[i+1] = (v * 1.05) as u8;
+                bg_data[i+2] = (v * 1.15) as u8;
                 bg_data[i+3] = 255;
             }
         }
