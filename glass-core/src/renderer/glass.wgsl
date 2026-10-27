@@ -122,23 +122,28 @@ fn droplet_height(p: vec2<f32>, b: vec2<f32>, r: f32, z_radius: f32, cur_px: vec
 }
 
 // ── 16-tap Golden Spiral Frosted Dispersion Blur ──
-fn blurred_sample(uv: vec2<f32>, radius: f32) -> vec3<f32> {
+fn blurred_sample_ca(uv_r: vec2<f32>, uv_g: vec2<f32>, uv_b: vec2<f32>, radius: f32) -> vec3<f32> {
     if radius <= 0.5 {
-        return textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
+        let r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
+        let g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
+        let b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
+        return vec3<f32>(r, g, b);
     }
-    
+
     var color = vec3<f32>(0.0);
     let samples = 16.0;
     let golden_angle = 2.39996323;
-    
+
     for (var i = 0.0; i < samples; i += 1.0) {
         let r = sqrt((i + 0.5) / samples);
         let theta = i * golden_angle;
-        let offset = vec2<f32>(r * cos(theta), r * sin(theta)) * radius;
-        let sample_uv = clamp(uv + offset / params.surface_size, vec2<f32>(0.001), vec2<f32>(0.999));
-        color += textureSampleLevel(background_texture, background_sampler, sample_uv, 0.0).rgb;
+        let offset = vec2<f32>(r * cos(theta), r * sin(theta)) * radius / params.surface_size;
+        let sr = textureSampleLevel(background_texture, background_sampler, clamp(uv_r + offset, vec2<f32>(0.001), vec2<f32>(0.999)), 0.0).r;
+        let sg = textureSampleLevel(background_texture, background_sampler, clamp(uv_g + offset, vec2<f32>(0.001), vec2<f32>(0.999)), 0.0).g;
+        let sb = textureSampleLevel(background_texture, background_sampler, clamp(uv_b + offset, vec2<f32>(0.001), vec2<f32>(0.999)), 0.0).b;
+        color += vec3<f32>(sr, sg, sb);
     }
-    
+
     return color / samples;
 }
 
@@ -474,10 +479,10 @@ fn draw_clock_letter(p: vec2<f32>, ch: u32, scale: f32) -> f32 {
 }
 
 // ── Serene Liquid Glass Clock Appearance ──
-fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, progress: f32, time: f32, tint: vec4<f32>) -> ElementAppearance {
+fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, progress: f32, time: f32, tint: vec4<f32>, is_light: f32) -> ElementAppearance {
     var app: ElementAppearance;
     app.glyph_mask = 0.0;
-    app.glyph_color = vec3<f32>(1.0, 1.0, 1.0);
+    app.glyph_color = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.11, 0.14, 0.18), is_light);
     app.fluid_color = vec3<f32>(1.0, 1.0, 1.0);
     app.fluid_glow = 0.0;
     
@@ -675,9 +680,9 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let mask_bnum = (1.0 - smoothstep(-0.35, 0.35, d_bnum)) * 0.85;
         
         let white_elems = max(max(mask_digits, mask_colon), max(mask_date, max(mask_housing, mask_bnum)));
-        let gold = vec3<f32>(0.86, 0.97, 0.26);
-        let white = vec3<f32>(0.98, 0.99, 1.0);
-        
+        let gold = mix(vec3<f32>(0.86, 0.97, 0.26), vec3<f32>(0.14, 0.52, 0.26), is_light);
+        let white = mix(vec3<f32>(0.98, 0.99, 1.0), vec3<f32>(0.11, 0.14, 0.18), is_light);
+
         // Proper layering: battery gold fill + housing + crisp white typography
         if mask_fill > 0.05 {
             app.glyph_mask = max(mask_fill, white_elems);
@@ -853,8 +858,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         }
         
         // Colors & Composite
-        let gold = vec3<f32>(0.86, 0.97, 0.26);
-        let white = vec3<f32>(0.98, 0.99, 1.0);
+        let gold = mix(vec3<f32>(0.86, 0.97, 0.26), vec3<f32>(0.14, 0.52, 0.26), is_light);
+        let white = mix(vec3<f32>(0.98, 0.99, 1.0), vec3<f32>(0.11, 0.14, 0.18), is_light);
         
         let white_components = max(
             max(max(dial_ticks, mask_h), max(mask_m, mask_pin)),
@@ -924,7 +929,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             mask_icon = 1.0 - smoothstep(-0.4, 0.4, d_play);
         }
 
-        let white = vec3<f32>(0.98, 0.99, 1.0);
+        let white = mix(vec3<f32>(0.98, 0.99, 1.0), vec3<f32>(0.11, 0.14, 0.18), is_light);
 
         // Pure crisp icon mask (no opaque white blob filling the button)
         app.glyph_mask = mask_icon;
@@ -933,7 +938,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         // Button glass surface specular glint and ethereal hover liquid glow
         let btn_spec = btn_rim * 0.65 + btn_fill * 0.15;
         app.fluid_color = mix(white, vec3<f32>(0.40, 0.82, 1.0), hover_amt);
-        app.fluid_glow = btn_spec + exp(-max(d_btn, 0.0) * 0.16) * hover_amt * 0.35;
+        app.fluid_glow = btn_spec + exp(-max(d_btn, 0.0) * 0.16) * hover_amt * 0.35 * (1.0 - is_light * 0.5);
 
         return app;
     }
@@ -1118,42 +1123,50 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         }
         let mask_sound = max(mask_speaker, mask_wave) * 0.85;
         
-        // ── 8. Colors & Master Composite ──
-        let gold = vec3<f32>(0.86, 0.97, 0.26);
-        let cyan = vec3<f32>(0.38, 0.85, 1.0);
-        let white = vec3<f32>(0.98, 0.99, 1.0);
-        
-        let white_elems = max(
+        // ── 8. Adaptive Contrast Colors & Master Composite ──
+        let primary_glyph = mix(vec3<f32>(0.96, 0.98, 1.0), vec3<f32>(0.11, 0.14, 0.18), is_light);
+        let secondary_glyph = mix(vec3<f32>(0.82, 0.86, 0.90), vec3<f32>(0.28, 0.32, 0.38), is_light);
+        let gold = mix(vec3<f32>(0.86, 0.97, 0.26), vec3<f32>(0.14, 0.52, 0.26), is_light);
+        let cyan = mix(vec3<f32>(0.38, 0.85, 1.0), vec3<f32>(0.06, 0.44, 0.88), is_light);
+
+        let primary_elems = max(
             max(max(mask_prev, mask_next), max(mask_play_icon, mask_time_text)),
-            max(max(mask_disc_edge, mask_disc_fill), max(mask_label, max(mask_rail, max(mask_sep, mask_sound))))
+            max(mask_speaker, max(mask_wave, mask_disc_edge))
         );
-        
+        let secondary_elems = max(
+            max(mask_rail, mask_sep),
+            max(mask_disc_fill, max(mask_label, max(grooves, btn_fill * 0.3)))
+        );
+
         if eq_mask > 0.05 {
-            app.glyph_mask = max(eq_mask, white_elems);
-            app.glyph_color = mix(gold, white, clamp((white_elems - eq_mask) * 2.0, 0.0, 1.0));
+            app.glyph_mask = max(eq_mask, max(primary_elems, secondary_elems));
+            app.glyph_color = mix(gold, primary_glyph, clamp((primary_elems - eq_mask) * 2.0, 0.0, 1.0));
             app.fluid_color = gold;
-            app.fluid_glow = exp(-abs(local_p.y + 4.0) * 0.25) * 0.35;
+            app.fluid_glow = exp(-abs(local_p.y + 4.0) * 0.25) * 0.35 * (1.0 - is_light * 0.5);
         } else if mask_fill > 0.05 || mask_knob > 0.05 {
             let active_fill = max(mask_fill, mask_knob);
-            app.glyph_mask = max(active_fill, white_elems);
-            app.glyph_color = mix(cyan, white, clamp((white_elems - active_fill) * 2.0, 0.0, 1.0));
+            app.glyph_mask = max(active_fill, max(primary_elems, secondary_elems));
+            app.glyph_color = mix(cyan, primary_glyph, clamp((primary_elems - active_fill) * 2.0, 0.0, 1.0));
             app.fluid_color = cyan;
-            app.fluid_glow = exp(-max(d_knob, 0.0) * 0.4) * 0.45;
+            app.fluid_glow = exp(-max(d_knob, 0.0) * 0.4) * 0.45 * (1.0 - is_light * 0.5);
         } else if mask_note > 0.05 {
-            app.glyph_mask = max(mask_note, white_elems);
+            app.glyph_mask = max(mask_note, max(primary_elems, secondary_elems));
             app.glyph_color = gold;
             app.fluid_color = gold;
-            app.fluid_glow = exp(-max(d_note, 0.0) * 0.6) * 0.30;
+            app.fluid_glow = exp(-max(d_note, 0.0) * 0.6) * 0.30 * (1.0 - is_light * 0.5);
+        } else if primary_elems > 0.02 {
+            app.glyph_mask = primary_elems;
+            app.glyph_color = primary_glyph;
         } else {
-            app.glyph_mask = max(white_elems, grooves);
-            app.glyph_color = white;
+            app.glyph_mask = secondary_elems;
+            app.glyph_color = secondary_glyph;
         }
-        
+
         // Tactile button glow on hover
         if hover_play > 0.01 {
-            let glow_col = vec3<f32>(0.40, 0.85, 1.0);
+            let glow_col = mix(vec3<f32>(0.40, 0.85, 1.0), vec3<f32>(0.06, 0.44, 0.88), is_light);
             app.fluid_color = mix(app.fluid_color, glow_col, hover_play);
-            app.fluid_glow = max(app.fluid_glow, exp(-max(d_btn, 0.0) * 0.16) * hover_play * 0.40);
+            app.fluid_glow = max(app.fluid_glow, exp(-max(d_btn, 0.0) * 0.16) * hover_play * 0.35 * (1.0 - is_light * 0.5));
         }
         
         return app;
@@ -1204,10 +1217,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     // 1. SOFT PHYSICAL CONTACT DROP SHADOW
     // ════════════════════════════════════════════
-    // Note: On Wayland transparent layer shells, emitting dark RGB with non-zero alpha
-    // causes compositor dark fringes against wallpapers. Zero outside SDF.
     if sdf > 0.0 {
-        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+        let shadow = exp(-sdf * 0.35) * 0.18;
+        return vec4<f32>(0.0, 0.0, 0.0, shadow);
     }
     
     // ════════════════════════════════════════════
@@ -1280,21 +1292,37 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if blur <= 0.5 {
         col = sharp;
     } else {
-        // Liquid glass: center core is crystal-clear; delicate frost only towards boundary
-        let blurred = blurred_sample(uv_g, blur);
-        let frost_amount = smoothstep(0.90, 0.30, edge) * min(blur / 28.0, 0.38);
-        col = mix(sharp, blurred, frost_amount);
+        // True macOS frosted glassmorphism: full diffuse background blur with optical dispersion
+        let blurred = blurred_sample_ca(uv_r, uv_g, uv_b, blur);
+        col = blurred;
     }
 
-    // Crystal liquid water transmission: pristine clarity, no murky darkness
-    let water_sheen = vec3<f32>(0.008, 0.012, 0.016) * (1.0 - uv.y * 0.10);
-    col = col * 1.008 + water_sheen;
+    // Measure local background luminance for adaptive light/dark contrast
+    let bg_luma = dot(col, vec3<f32>(0.299, 0.587, 0.114));
+    let is_light = smoothstep(0.40, 0.70, bg_luma);
+
+    // Directional ambient light gradient (subtle top highlight)
+    let top_light = clamp(1.0 - (local_px.y + half_size.y) / (half_size.y * 2.0), 0.0, 1.0);
+
+    // Adaptive frosted glass material:
+    // On dark wallpapers: luminous white frost sheen + slight brightness boost
+    // On light/white wallpapers: subtle cool-slate tint + slight darkening
+    // so the capsule reads as a physical frosted glass lens instead of blowing out to 100% white
+    let dark_frost = vec3<f32>(1.00, 1.00, 1.00);
+    let light_tint = vec3<f32>(0.84, 0.87, 0.90);
+
+    let frost_color = mix(dark_frost, light_tint, is_light);
+    let frost_amount = mix(0.20 + 0.06 * top_light, 0.15, is_light);
+    col = mix(col, frost_color, frost_amount);
+
+    let luma_mult = mix(1.10 + 0.08 * top_light, 0.90 - 0.04 * (1.0 - top_light), is_light);
+    col = col * luma_mult;
 
     // ════════════════════════════════════════════
     // 6. FRESNEL TOTAL INTERNAL REFLECTION
     // ════════════════════════════════════════════
     let fresnel = pow(1.0 - max(N.z, 0.0), 3.8);
-    let fresnel_gleam = fresnel * pow(edge, 2.0) * vec3<f32>(1.0, 1.0, 1.0) * 0.22;
+    let fresnel_gleam = fresnel * pow(edge, 2.0) * vec3<f32>(1.0, 1.0, 1.0) * mix(0.22, 0.06, is_light);
     col += fresnel_gleam;
 
     // ════════════════════════════════════════════
@@ -1306,18 +1334,32 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let rim_top = max(dot(N_2d, L_top), 0.0);
     let rim_bot = max(dot(N_2d, L_bot), 0.0);
 
-    let crest_top = pow(edge, 2.5) * rim_top * 0.30 * params.specular_strength;
-    let crest_bot = pow(edge, 3.0) * rim_bot * 0.12 * params.specular_strength;
+    let crest_top = pow(edge, 2.5) * rim_top * 0.55 * params.specular_strength;
+    let crest_bot = pow(edge, 3.0) * rim_bot * 0.20 * params.specular_strength;
 
     // Razor-sharp 1.2px outer meniscus boundary stroke (authentic polished bevel glint)
     let rim_stroke = smoothstep(1.2, 0.20, inside);
-    let border_crest = rim_stroke * (rim_top * 0.45 + 0.25) * 0.55 * params.specular_strength;
+    let border_crest = rim_stroke * (rim_top * 0.55 + 0.35) * 0.80 * params.specular_strength;
 
     // 3D Specular Sunlight Gleam
     let V = vec3<f32>(0.0, 0.0, 1.0);
     let L1 = normalize(vec3<f32>(-0.45, -0.70, 0.65));
     let H1 = normalize(L1 + V);
     let spec1 = pow(max(dot(N, H1), 0.0), 48.0) * 0.25 * params.specular_strength;
+
+    // Attenuate white specular blowout on light backgrounds
+    let spec_factor = mix(1.0, 0.25, is_light);
+    let spec_combined = (border_crest + crest_top + crest_bot + spec1) * spec_factor;
+
+    // Refractive meniscus edge extinction on light backgrounds
+    let edge_extinction = pow(edge, 1.8) * is_light * 0.16;
+    col = max(col - vec3<f32>(edge_extinction), vec3<f32>(0.0));
+
+    // Crisp 1.2px boundary stroke
+    let boundary_line = smoothstep(1.4, 0.2, inside);
+    let boundary_color = mix(vec3<f32>(1.0), vec3<f32>(0.12, 0.15, 0.20), is_light);
+    let boundary_alpha = mix(0.35, 0.30, is_light);
+    col = mix(col, boundary_color, boundary_line * boundary_alpha);
 
     // ════════════════════════════════════════════
     // 8. DYNAMIC LIQUID EDGE HOVER (Side-Approach Flare)
@@ -1345,20 +1387,23 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     // 9. CONTROLS, FLUID EMISSION & GLYPHS
     // ════════════════════════════════════════════
-    let app = render_element_appearance(local_px, half_size, params.padding2.x, params.padding2.y, params.time, params.tint);
+    let app = render_element_appearance(local_px, half_size, params.padding2.x, params.padding2.y, params.time, params.tint, is_light);
 
     // ════════════════════════════════════════════
     // 10. MASTER COMPOSITE
     // ════════════════════════════════════════════
     var fin = col;
-    fin += vec3<f32>(border_crest + crest_top + crest_bot + spec1);
+    fin += vec3<f32>(spec_combined);
 
-    let flare_mag = side_bevel_flare + side_rim_flare;
+    let flare_mag = (side_bevel_flare + side_rim_flare) * mix(1.0, 0.25, is_light);
     let flare_rgb = vec3<f32>(flare_mag * 1.02, flare_mag * 0.99, flare_mag * 1.04);
     fin += flare_rgb;
 
-    fin += app.fluid_color * app.fluid_glow;
+    fin += app.fluid_color * (app.fluid_glow * mix(1.0, 0.35, is_light));
     fin = mix(fin, app.glyph_color, app.glyph_mask);
 
-    return vec4<f32>(fin * mask, mask);
+    let aa = 1.0 - smoothstep(-1.0, 0.0, sdf);
+    let shadow = exp(-max(sdf, 0.0) * 0.35) * 0.18;
+    let total_alpha = mix(shadow, 1.0, aa);
+    return vec4<f32>(fin * aa, total_alpha);
 }

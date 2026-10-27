@@ -70,6 +70,11 @@ struct AppData {
     frame_counter: u32,
     animating: bool,
     wallpaper_cache: Option<Arc<Vec<u8>>>,
+    // Cached wl_output for screencopy (set on first new_output callback)
+    primary_output: Option<wl_output::WlOutput>,
+    // Frame counter for throttled screencopy (every N frames)
+    #[allow(dead_code)]
+    screencopy_ticker: u32,
 }
 
 struct WaylandWindow {
@@ -129,7 +134,11 @@ impl OutputHandler for AppData {
     fn output_state(&mut self) -> &mut OutputState {
         &mut self.output_state
     }
-    fn new_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: wl_output::WlOutput) {}
+    fn new_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, output: wl_output::WlOutput) {
+        if self.primary_output.is_none() {
+            self.primary_output = Some(output);
+        }
+    }
     fn update_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: wl_output::WlOutput) {}
     fn output_destroyed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: wl_output::WlOutput) {}
 }
@@ -401,8 +410,8 @@ impl AppData {
                 .curvature(0.05)
                 .bevel(8.0)
                 .refraction(0.55)
-                .dispersion(0.015)
-                .blur(4.0)
+                .dispersion(0.02)
+                .blur(22.0)
                 .tint(play_flag, self.track_progress, self.hover_play_pos, self.elapsed_sec)
                 .specular(0.80)
                 .fresnel(0.55)
@@ -451,7 +460,10 @@ fn init_wallpaper_1080p() -> Option<Arc<Vec<u8>>> {
         .ok()
         .and_then(|out| {
             let s = String::from_utf8_lossy(&out.stdout);
-            s.split("image: ").nth(1).map(|p| p.trim().to_string())
+            s.lines()
+                .find(|line| line.contains("image:"))
+                .and_then(|line| line.split("image:").nth(1))
+                .map(|p| p.trim().to_string())
         });
 
     let candidates = [
@@ -462,6 +474,7 @@ fn init_wallpaper_1080p() -> Option<Arc<Vec<u8>>> {
 
     for candidate in candidates.into_iter().flatten() {
         if let Ok(img) = image::open(candidate) {
+            log::info!("Loaded wallpaper: {}", candidate);
             let rgba = img.to_rgba8();
             let resized = image::imageops::resize(&rgba, 1920, 1080, image::imageops::FilterType::Triangle);
             return Some(Arc::new(resized.into_raw()));
@@ -559,6 +572,8 @@ fn main() {
         frame_counter: 0,
         animating: true,
         wallpaper_cache,
+        primary_output: None,
+        screencopy_ticker: 0,
     };
 
     let surface = app_data.compositor_state.create_surface(&qh);

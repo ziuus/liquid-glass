@@ -1,197 +1,155 @@
 <div align="center">
 
-# 🪟 Liquid Glass
+# 🌊 Liquid Glass
 
-**Physical Liquid Glass & Optical Lensing Engine for Linux & Wayland**
+### Physical Optical Lensing & Glassmorphism UI Engine for Linux & Wayland
 
-[![CI](https://github.com/ziuus/liquid-glass/actions/workflows/ci.yml/badge.svg)](https://github.com/ziuus/liquid-glass/actions/workflows/ci.yml)
-[![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange?style=for-the-badge&logo=rust)](https://www.rust-lang.org)
-[![WGPU](https://img.shields.io/badge/WGPU-0.19-blue?style=for-the-badge&logo=webgpu)](https://wgpu.rs)
-[![Wayland](https://img.shields.io/badge/Wayland-Layer--Shell-green?style=for-the-badge&logo=linux)](https://wayland.freedesktop.org)
-[![WGSL](https://img.shields.io/badge/Shader-WGSL-purple?style=for-the-badge)](https://www.w3.org/TR/WGSL/)
-[![License](https://img.shields.io/badge/License-MIT-black?style=for-the-badge)](LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=for-the-badge)](CONTRIBUTING.md)
+[![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange?style=flat-square&logo=rust)](https://www.rust-lang.org)
+[![WGPU](https://img.shields.io/badge/WGPU-0.19-blue?style=flat-square&logo=webgpu)](https://wgpu.rs)
+[![Wayland](https://img.shields.io/badge/Wayland-Layer--Shell-2B3A42?style=flat-square&logo=linux)](https://wayland.freedesktop.org)
+[![WGSL](https://img.shields.io/badge/Shader-WGSL-694382?style=flat-square)](https://www.w3.org/TR/WGSL/)
+[![License](https://img.shields.io/badge/License-MIT-black?style=flat-square)](LICENSE)
 
 <br />
 
 <p align="center">
-  <img src="assets/media_island.gif" alt="Liquid Glass Media Island Live Demo" width="560" />
+  <img src="assets/hero.png" alt="Liquid Glass Floating Media Island" width="620" style="border-radius: 16px; box-shadow: 0 20px 50px rgba(0,0,0,0.5);" />
 </p>
 
-*Live capture: Physical plano-convex Snell refraction, chromatic dispersion, directional meniscus edge lighting, and fluid harmonic spring kinetics powering a serene floating Media Control Island on Wayland.*
+*Physical plano-convex Snell refraction, Cauchy chromatic dispersion (RGB edge separation), directional meniscus glints, and tactile spring kinetics running natively on Wayland.*
 
-<p align="center">
-  <a href="#-quickstart">Quickstart</a> •
-  <a href="#-showcase-demos">Showcase Demos</a> •
-  <a href="#-building-with-liquid-glass">Component API</a> •
-  <a href="#-contributing--getting-involved">Contribute</a> •
-  <a href="docs/USAGE_GUIDE.md">Docs & HIG</a>
-</p>
+<br />
+
+---
 
 </div>
 
----
+## 🌟 Why Liquid Glass?
 
-## 🌟 Highlights
+Most "glassmorphism" effects in modern web and desktop apps are superficial: they simply stack a flat 2D box-blur over a dimmed background. 
 
-- **💎 Authentic Optical Lensing**: Real-time Snell's Law refraction ($IOR = 1.33 - 1.52$), chromatic wavelength dispersion ($RGB$ edge separation), and dual-lobe specular highlights.
-- **🎨 High-Level Component Framework (`glass-ui`)**: Pre-built, interactive `GlassCard`, `GlassButton`, `GlassToggle`, and `GlassSlider` with spring-driven tactile states.
-- **⚡ Reactive Kinematics (`glass-core::animation`)**: Sub-stepped Runge-Kutta (RK4) spring physics and fluid velocity deformation for tactile interactions.
-- **🖥️ Dual Deployment Targets**:
-  - **Windowed Desktop Apps**: Cross-platform desktop windows via `winit` and `wgpu`.
-  - **Wayland Desktop Widgets**: Seamless floating surfaces via `zwlr_layer_shell_v1` with real-time wallpaper sampling and **0.0% CPU idle**.
-- **🎧 Dynamic Media Control Island**: Interactive audio widget with rotating vinyl grooves, reactive equalizer bars, scrubber timeline, and MPRIS integration.
+**Real optical glass interacts dynamically with light and geometry.** Liquid Glass models real physical optics directly in custom WGSL shaders:
 
----
+| Optical Property | Standard Glassmorphism | Liquid Glass Engine |
+| :--- | :--- | :--- |
+| **Refraction** | ❌ None (Flat blur) | ✅ **Snell's Law ray-bending** through plano-convex lens domes |
+| **Dispersion** | ❌ None | ✅ **Cauchy chromatic aberration** (RGB wavelength splitting at bevels) |
+| **Fresnel Response** | ❌ Constant opacity | ✅ **Schlick's approximation** (grazing angles gleam with total internal reflection) |
+| **Meniscus Edges** | ❌ Simple border stroke | ✅ **Directional sunlight highlights** + polished 1.2px rim glints |
+| **Idle Overhead** | ⚠️ Constant redraws / CPU burn | ✅ **0.0% CPU Idle** via event-driven kernel `epoll_wait` |
+| **Fragment Cost** | ⚠️ Fullscreen canvas redraws | ✅ **Tight bounded quads** — zero background overdraw |
 
-## 📸 Showcase Demos
+<br />
 
-| Live Media Island Widget (`glass-panel`) | Desktop Component Demo (`simple-window`) |
-|:---:|:---:|
-| <img src="assets/preview_media_island.png" width="400" alt="Wayland Media Island" /> | <img src="assets/preview.png" width="340" alt="Liquid Glass Clock & App Window" /> |
-| *Floating Wayland layer-shell widget with live equalizer & MPRIS control* | *Interactive windowed UI components (Buttons, Toggles, Sliders)* |
+## 📦 Architecture
 
----
-
-## 📦 Workspace Architecture
+The workspace is organized into modular, purpose-built crates:
 
 ```
 liquid-glass/
-├── glass-core/        # Optical rendering pipeline, WGSL shaders, materials, spring physics
-├── glass-ui/          # High-level components (Buttons, Toggles, Sliders, Cards, Islands)
-├── glass-platform/    # Platform capabilities and Wayland / compositor bindings
-├── examples/
-│   ├── glass-panel/   # Wayland layer-shell floating Media Control Island widget
-│   ├── simple-window/ # Windowed desktop app showcasing glass-ui components
-│   ├── simple-demo/   # CLI animation & material physics demo
-│   └── sdl-widget/    # SDL2 surface integration demo
-└── docs/              # Research papers, material guides, and architectural notes
+├── glass-core/        # Hardware-accelerated rendering engine (WGPU + WGSL)
+│   ├── renderer/      # Bounded pipeline, dynamic uniform offsets, optical shaders
+│   ├── material/      # Physical material profiles (LiquidGlass, Frosted, Acrylic)
+│   ├── animation/     # Sub-stepped Runge-Kutta 4 (RK4) spring physics
+│   └── geometry/      # Procedural shapes (Capsule, RoundedRect, Circle)
+├── glass-ui/          # High-level declarative UI components
+│   └── GlassWidget, GlassCard, GlassButton, GlassToggle, GlassSlider
+└── examples/
+    ├── glass-panel/   # Wayland layer-shell floating media control island
+    └── simple-window/ # Cross-platform desktop window playground (winit + wgpu)
 ```
 
----
+<br />
 
-## 🚀 Quickstart
+## ⚡ Quickstart
 
-### Prerequisites
+Add `glass-core` and `glass-ui` to your `Cargo.toml`:
 
-Ensure you have Vulkan drivers and Wayland development packages:
-
-```bash
-# Arch Linux
-sudo pacman -S rust vulkan-radeon vulkan-intel wayland grim
-
-# Ubuntu / Debian
-sudo apt install cargo libvulkan-dev libwayland-dev libxkbcommon-dev
+```toml
+[dependencies]
+glass-core = { git = "https://github.com/ziuus/liquid-glass" }
+glass-ui   = { git = "https://github.com/ziuus/liquid-glass" }
 ```
 
-### Run Examples
-
-```bash
-# 1. Run the interactive Wayland Media Island Widget (floating desktop pill)
-cargo run -p glass-panel --release
-
-# 2. Run the Windowed Desktop Component Demo (winit + glass-ui)
-cargo run -p simple-window
-
-# 3. Run the Materials & Physics Terminal Showcase
-cargo run -p simple-demo
-```
-
----
-
-## 🧩 Building with Liquid Glass
-
-### 1. Building UI Components (`glass-ui`)
-
-Assembling a liquid glass UI with interactive buttons, toggles, and sliders:
+### Building a Tactile Glass Interface
 
 ```rust
 use glass_ui::{GlassWidget, GlassCard, GlassButton, GlassToggle, GlassSlider};
+use glass_core::geometry::Shape;
 
-// 1. Initialize widget container
 let mut widget = GlassWidget::new();
 
-// 2. Add floating background card / island
-widget.add_card(GlassCard::island(0.1, 0.1, 0.8, 0.8).blur(32.0).specular(1.0));
+// 1. Floating Glass Container Island
+widget.add_card(
+    GlassCard::new(0.1, 0.1, 0.8, 0.6)
+        .shape(Shape::Capsule)
+        .blur(24.0)
+        .refraction(0.55)
+        .dispersion(0.02)
+        .bevel(8.0)
+);
 
-// 3. Add interactive components with tactile spring physics
-widget.add_button(GlassButton::new(0.15, 0.25, 0.30, 0.10, "Play"));
-widget.add_toggle(GlassToggle::new(0.50, 0.25, 0.15, 0.08, true));
-widget.add_slider(GlassSlider::new(0.15, 0.50, 0.70, 0.05, 0.65));
+// 2. Interactive Tactile Controls
+widget.add_button(GlassButton::new(0.20, 0.30, 0.25, 0.12, "Play"));
+widget.add_toggle(GlassToggle::new(0.55, 0.30, 0.15, 0.08, true));
+widget.add_slider(GlassSlider::new(0.20, 0.50, 0.60, 0.05, 0.45));
 
-// 4. In your event loop:
+// 3. Event Loop Interaction & Single-Pass Render
 widget.on_pointer_move(cursor_x, cursor_y);
-if mouse_pressed {
-    widget.on_pointer_down(cursor_x, cursor_y);
-}
 widget.update(delta_time);
 
-// 5. Collect render surfaces for WGPU
 let surfaces = widget.collect_surfaces();
 renderer.render(&surfaces)?;
 ```
 
-### 2. Building a Desktop App Window (`winit` + `glass-core`)
+<br />
 
-```rust
-use glass_core::{GlassRenderer, GlassSurface, Material, geometry::Shape};
-use winit::window::WindowBuilder;
+## 🚀 Running the Demos
 
-let window = Arc::new(WindowBuilder::new()
-    .with_title("Glass App")
-    .with_transparent(true)
-    .build(&event_loop)?);
+### 1. Floating Desktop Media Island (Wayland)
+Spawns a floating desktop island on Hyprland, Sway, or any `wlr-layer-shell` compositor:
 
-let mut renderer = GlassRenderer::new(window.clone(), width, height).await?;
-
-let surfaces = vec![
-    GlassSurface::new()
-        .material(Material::LiquidGlass)
-        .shape(Shape::Capsule)
-        .bounds(0.1, 0.1, 0.8, 0.8)
-        .refraction(0.70)
-        .dispersion(0.04)
-        .specular(1.0)
-];
-
-renderer.render(&surfaces)?;
+```bash
+cargo run --release -p glass-panel
 ```
 
-### 3. Calibrated Vibrancy Materials
+*Features rotating vinyl grooves, audio wave visualizers, interactive timeline scrubbing, play/pause toggles, and cursor-proximity edge flares.*
 
-```rust
-use glass_core::{GlassMaterial, MaterialType};
+### 2. Standalone Window Playground
+Cross-platform desktop window running on standard WGPU:
 
-// Pre-calibrated materials matching modern desktop vibrancy:
-let sidebar = GlassMaterial::new(MaterialType::Sidebar);
-let hud     = GlassMaterial::new(MaterialType::HUD);
-let menu    = GlassMaterial::menu().with_corner_radius(12.0);
+```bash
+cargo run --release -p simple-window
 ```
 
----
+<br />
 
-## 🤝 Contributing & Getting Involved
+## 🔬 Under the Hood
 
-We welcome contributors of all levels! Here's how you can help:
+### 1. Plano-Convex Lens Refraction & Dispersion
+Surface normals $N$ are computed procedurally in screen-space from heightfield gradients:
 
-- **Add New Widgets**: Help build `GlassTextInput`, `GlassTooltip`, `GlassContextMenu` in `glass-ui`.
-- **Compositor Extensions**: Enhance `glass-platform` for Hyprland, Sway, KDE, and COSMIC blur protocols.
-- **Shader Optimization**: Further refine WGSL optical dispersion and fluid meniscus curves.
-- **Showcase Apps**: Build new desktop widgets (e.g. Weather, Clock, System Monitor) and share screenshots!
+$$N = \text{normalize}\begin{pmatrix} -\nabla h_x \\ -\nabla h_y \\ 1 \end{pmatrix}$$
 
-Check out our [**Contributing Guide**](CONTRIBUTING.md) to get started.
+Refraction rays bend the background texture coordinates across separate color wavelengths (red, green, blue) according to Cauchy's dispersion formula:
 
----
+$$\vec{uv}_{\text{color}} = \vec{uv} + (N_{xy} \cdot \eta_{\text{base}}) \pm \vec{\Delta}_{\text{dispersion}}$$
 
-## 📚 Documentation & Research
+### 2. Zero-Overdraw Bounded Quads
+Rather than blitting full-screen post-processing passes over the desktop, `GlassRenderer` rasterizes **tight clipped bounding quads** fitted to each individual glass surface with dynamic uniform buffer offsets (`has_dynamic_offset: true`). Fragment shaders execute exclusively inside the bounding footprint of the glass lens.
 
-- [**Usage & Material Guide**](docs/USAGE_GUIDE.md): Deep dive into materials, blend modes, and layering.
-- [**physical Design System Analysis**](docs/LIQUID_GLASS_ANALYSIS.md): Analysis of macOS/visionOS blur, vibrancy, and optical thickness.
-- [**Fluid Dynamics Research**](docs/FLUID_DYNAMICS_RESEARCH.md): Physical equations for surface tension, contact angle, and viscous damping.
-- [**Transformation Summary**](docs/TRANSFORMATION_SUMMARY.md): Evolution of the engine architecture.
+### 3. Sub-Stepped Spring Physics
+Buttons and sliders use Runge-Kutta 4 (RK4) integration with configurable damping and stiffness presets (`snappy`, `smooth`, `bouncy`), delivering tactile compression and fluid recovery upon click or release.
 
----
+<br />
 
-## 📜 License
+## 🤝 Contributing
 
-Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for details.
+Contributions, bug reports, and component proposals are warmly welcome! 
+Check out [CONTRIBUTING.md](CONTRIBUTING.md) to get started with development and architectural guidelines.
+
+<br />
+
+## 📄 License
+
+Licensed under the [MIT License](LICENSE).
