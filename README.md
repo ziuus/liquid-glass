@@ -9,6 +9,7 @@
 [![Wayland](https://img.shields.io/badge/Wayland-Layer--Shell-2B3A42?style=flat-square&logo=linux)](https://wayland.freedesktop.org)
 [![WGSL](https://img.shields.io/badge/Shader-WGSL-694382?style=flat-square)](https://www.w3.org/TR/WGSL/)
 [![License](https://img.shields.io/badge/License-MIT-black?style=flat-square)](LICENSE)
+[![DevHunt](https://img.shields.io/badge/DevHunt-Featured-f97316?style=flat-square)](https://devhunt.org/tool/liquid-glass)
 
 <br />
 
