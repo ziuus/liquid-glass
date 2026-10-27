@@ -1,6 +1,6 @@
+use glass_core::animation::{Spring, SpringParams};
 use glass_core::geometry::{GlassSurface, Shape};
 use glass_core::material::Material;
-use glass_core::animation::{Spring, SpringParams};
 
 /// A high-level glass container (window, card, HUD panel, or floating island).
 #[derive(Debug, Clone)]
@@ -34,7 +34,10 @@ impl GlassCard {
     }
 
     pub fn island(x: f32, y: f32, w: f32, h: f32) -> Self {
-        Self::new(x, y, w, h).shape(Shape::Capsule).bevel(8.0).specular(0.85)
+        Self::new(x, y, w, h)
+            .shape(Shape::Capsule)
+            .bevel(8.0)
+            .specular(0.85)
     }
 
     pub fn shape(mut self, shape: Shape) -> Self {
@@ -81,7 +84,12 @@ impl GlassCard {
         GlassSurface::new()
             .material(self.material)
             .shape(self.shape)
-            .bounds(self.bounds[0], self.bounds[1], self.bounds[2], self.bounds[3])
+            .bounds(
+                self.bounds[0],
+                self.bounds[1],
+                self.bounds[2],
+                self.bounds[3],
+            )
             .blur(self.blur_radius)
             .refraction(self.refraction)
             .dispersion(self.dispersion)
@@ -123,8 +131,10 @@ impl GlassButton {
     }
 
     pub fn contains(&self, px: f32, py: f32) -> bool {
-        px >= self.bounds[0] && px <= self.bounds[0] + self.bounds[2] &&
-        py >= self.bounds[1] && py <= self.bounds[1] + self.bounds[3]
+        px >= self.bounds[0]
+            && px <= self.bounds[0] + self.bounds[2]
+            && py >= self.bounds[1]
+            && py <= self.bounds[1] + self.bounds[3]
     }
 
     pub fn on_pointer_move(&mut self, px: f32, py: f32) {
@@ -152,7 +162,8 @@ impl GlassButton {
     pub fn on_pointer_up(&mut self, px: f32, py: f32) -> bool {
         let was_pressed = self.is_pressed;
         self.is_pressed = false;
-        self.scale_spring.set_target(if self.is_hovered { 1.04 } else { 1.0 });
+        self.scale_spring
+            .set_target(if self.is_hovered { 1.04 } else { 1.0 });
         was_pressed && self.contains(px, py) // Return true on successful click trigger
     }
 
@@ -203,13 +214,16 @@ impl GlassToggle {
 
     pub fn toggle(&mut self) -> bool {
         self.is_on = !self.is_on;
-        self.knob_spring.set_target(if self.is_on { 1.0 } else { 0.0 });
+        self.knob_spring
+            .set_target(if self.is_on { 1.0 } else { 0.0 });
         self.is_on
     }
 
     pub fn contains(&self, px: f32, py: f32) -> bool {
-        px >= self.bounds[0] && px <= self.bounds[0] + self.bounds[2] &&
-        py >= self.bounds[1] && py <= self.bounds[1] + self.bounds[3]
+        px >= self.bounds[0]
+            && px <= self.bounds[0] + self.bounds[2]
+            && py >= self.bounds[1]
+            && py <= self.bounds[1] + self.bounds[3]
     }
 
     pub fn on_pointer_down(&mut self, px: f32, py: f32) -> bool {
@@ -227,7 +241,7 @@ impl GlassToggle {
 
     pub fn to_surfaces(&self) -> Vec<GlassSurface> {
         let t = self.knob_spring.value.clamp(0.0, 1.0);
-        
+
         // Background track (capsule)
         let track_tint = [
             0.2 + t * 0.66, // cyan/gold accent when active
@@ -238,7 +252,12 @@ impl GlassToggle {
         let track = GlassSurface::new()
             .material(Material::FrostedGlass)
             .shape(Shape::Capsule)
-            .bounds(self.bounds[0], self.bounds[1], self.bounds[2], self.bounds[3])
+            .bounds(
+                self.bounds[0],
+                self.bounds[1],
+                self.bounds[2],
+                self.bounds[3],
+            )
             .blur(20.0)
             .tint(track_tint[0], track_tint[1], track_tint[2], track_tint[3]);
 
@@ -281,8 +300,10 @@ impl GlassSlider {
 
     pub fn contains(&self, px: f32, py: f32) -> bool {
         let pad = 8.0;
-        px >= self.bounds[0] - pad && px <= self.bounds[0] + self.bounds[2] + pad &&
-        py >= self.bounds[1] - pad && py <= self.bounds[1] + self.bounds[3] + pad
+        px >= self.bounds[0] - pad
+            && px <= self.bounds[0] + self.bounds[2] + pad
+            && py >= self.bounds[1] - pad
+            && py <= self.bounds[1] + self.bounds[3] + pad
     }
 
     pub fn on_pointer_down(&mut self, px: f32, py: f32) -> bool {
@@ -315,7 +336,12 @@ impl GlassSlider {
         let rail = GlassSurface::new()
             .material(Material::FrostedGlass)
             .shape(Shape::Capsule)
-            .bounds(self.bounds[0], self.bounds[1], self.bounds[2], self.bounds[3])
+            .bounds(
+                self.bounds[0],
+                self.bounds[1],
+                self.bounds[2],
+                self.bounds[3],
+            )
             .blur(16.0)
             .tint(1.0, 1.0, 1.0, 0.12);
 
@@ -324,7 +350,12 @@ impl GlassSlider {
         let fill = GlassSurface::new()
             .material(Material::LiquidGlass)
             .shape(Shape::Capsule)
-            .bounds(self.bounds[0], self.bounds[1], fill_w.max(self.bounds[3]), self.bounds[3])
+            .bounds(
+                self.bounds[0],
+                self.bounds[1],
+                fill_w.max(self.bounds[3]),
+                self.bounds[3],
+            )
             .refraction(0.60)
             .tint(0.38, 0.85, 1.0, 0.35);
 
@@ -461,7 +492,7 @@ mod tests {
     fn test_glass_button_interaction() {
         let mut btn = GlassButton::new(10.0, 10.0, 100.0, 40.0, "Play");
         assert!(!btn.is_hovered);
-        
+
         btn.on_pointer_move(50.0, 20.0);
         assert!(btn.is_hovered);
 
@@ -478,7 +509,7 @@ mod tests {
     fn test_glass_toggle() {
         let mut tg = GlassToggle::new(10.0, 10.0, 60.0, 30.0, false);
         assert!(!tg.is_on);
-        
+
         let state = tg.toggle();
         assert!(state);
         assert!(tg.is_on);

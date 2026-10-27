@@ -1,8 +1,7 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Apple-style material types matching NSVisualEffectView materials
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MaterialType {
     /// Ultra-thin glass for main window backgrounds
     WindowBackground,
@@ -27,8 +26,7 @@ pub enum MaterialType {
 }
 
 /// Blend mode for light/dark appearance
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum BlendMode {
     /// Behind window content shows through
     BehindWindow,
@@ -37,8 +35,7 @@ pub enum BlendMode {
 }
 
 /// Core vibrancy material matching Apple's implementation
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct VibrancyMaterial {
     /// Gaussian blur radius in pixels
     pub blur_radius: f32,
@@ -229,8 +226,7 @@ impl VibrancyMaterial {
 }
 
 /// Legacy material enum for backward compatibility
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[allow(deprecated)]
 pub enum Material {
     ClearGlass,
@@ -270,8 +266,7 @@ impl Material {
 }
 
 /// Legacy material parameters
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[allow(deprecated)]
 pub struct MaterialParams {
     pub ior: f32,
@@ -304,8 +299,7 @@ impl Default for MaterialParams {
 }
 
 /// Glass material combining type and parameters
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct GlassMaterial {
     pub material_type: MaterialType,
     pub vibrancy: VibrancyMaterial,

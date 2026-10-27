@@ -1,14 +1,14 @@
-/// Multi-pass Gaussian blur pipeline for Apple-quality liquid glass
-///
-/// This implements the blur system used in macOS with:
-/// - Separable Gaussian blur (horizontal + vertical passes)
-/// - Saturation boost on blurred content
-/// - Efficient downsampling and upsampling
-/// - Proper alpha handling
+//! Multi-pass Gaussian blur pipeline for Apple-quality liquid glass
+//!
+//! This implements the blur system used in macOS with:
+//! - Separable Gaussian blur (horizontal + vertical passes)
+//! - Saturation boost on blurred content
+//! - Efficient downsampling and upsampling
+//! - Proper alpha handling
 
+use bytemuck::{Pod, Zeroable};
 use wgpu;
 use wgpu::util::DeviceExt;
-use bytemuck::{Pod, Zeroable};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
@@ -77,8 +77,7 @@ impl BlurPipeline {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba16Float, // High precision for quality
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         };
 
@@ -86,7 +85,8 @@ impl BlurPipeline {
         let blur_texture_a = device.create_texture(&texture_desc);
         let blur_texture_b = device.create_texture(&texture_desc);
 
-        let downsample_view = downsample_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let downsample_view =
+            downsample_texture.create_view(&wgpu::TextureViewDescriptor::default());
         let blur_view_a = blur_texture_a.create_view(&wgpu::TextureViewDescriptor::default());
         let blur_view_b = blur_texture_b.create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -139,11 +139,12 @@ impl BlurPipeline {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let saturation_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Saturation Uniforms"),
-            contents: bytemuck::cast_slice(&[saturation_uniforms]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
+        let saturation_uniform_buffer =
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Saturation Uniforms"),
+                contents: bytemuck::cast_slice(&[saturation_uniforms]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
 
         // Load shaders
         let blur_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {

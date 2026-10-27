@@ -1,8 +1,7 @@
-use serde::{Serialize, Deserialize};
 use crate::material::{Material, MaterialParams};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Shape {
     RoundedRectangle { radius: f32 },
     Capsule,
@@ -11,8 +10,7 @@ pub enum Shape {
     CustomSdf,
 }
 
-#[derive(Debug, Clone)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlassSurface {
     pub shape: Shape,
     pub bounds: [f32; 4], // x, y, w, h (normalized for now)
@@ -56,7 +54,7 @@ impl GlassSurface {
         self.bounds = [x, y, w, h];
         self
     }
-    
+
     fn get_mut_params(&mut self) -> &mut MaterialParams {
         if self.custom_params.is_none() {
             self.custom_params = Some(self.material.default_params());
@@ -93,17 +91,17 @@ impl GlassSurface {
         self.get_mut_params().specular_strength = strength;
         self
     }
-    
+
     pub fn roughness(mut self, amount: f32) -> Self {
         self.get_mut_params().roughness = amount;
         self
     }
-    
+
     pub fn tint(mut self, r: f32, g: f32, b: f32, a: f32) -> Self {
         self.get_mut_params().tint = [r, g, b, a];
         self
     }
-    
+
     pub fn curvature(mut self, curvature: f32) -> Self {
         self.curvature = curvature;
         self
@@ -118,7 +116,7 @@ impl GlassSurface {
         self.pointer_pos = [x, y];
         self
     }
-    
+
     pub fn pointer_velocity(mut self, vx: f32, vy: f32) -> Self {
         self.pointer_velocity = [vx, vy];
         self
@@ -134,6 +132,13 @@ impl GlassSurface {
         self
     }
 }
+
+impl Default for GlassSurface {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub mod overlap;
 
 pub fn load_from_json(json: &str) -> Result<Vec<GlassSurface>, serde_json::Error> {

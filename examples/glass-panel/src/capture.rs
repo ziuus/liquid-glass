@@ -1,15 +1,14 @@
 // I will keep capture module for Screencopy specific struct and delegation.
 use smithay_client_toolkit::{
     registry::RegistryState,
-    shm::{Shm, slot::SlotPool},
+    shm::{slot::SlotPool, Shm},
 };
-use wayland_client::{
-    protocol::wl_output::WlOutput,
-    Connection, QueueHandle, Dispatch,
-};
+use wayland_client::{protocol::wl_output::WlOutput, Connection, Dispatch, QueueHandle};
 use wayland_protocols_wlr::screencopy::v1::client::{
+    zwlr_screencopy_frame_v1::{
+        Event as FrameEvent, ZwlrScreencopyFrameV1, ZwlrScreencopyFrameV1 as Frame,
+    },
     zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1,
-    zwlr_screencopy_frame_v1::{ZwlrScreencopyFrameV1, Event as FrameEvent, ZwlrScreencopyFrameV1 as Frame},
 };
 
 #[allow(dead_code)]
@@ -29,7 +28,9 @@ pub struct ScreencopyState {
 
 impl ScreencopyState {
     pub fn new(registry: &RegistryState, qh: &QueueHandle<super::AppData>, shm: &Shm) -> Self {
-        let manager = registry.bind_one::<ZwlrScreencopyManagerV1, _, _>(qh, 1..=3, ()).ok();
+        let manager = registry
+            .bind_one::<ZwlrScreencopyManagerV1, _, _>(qh, 1..=3, ())
+            .ok();
         let pool = SlotPool::new(1024 * 1024 * 4, shm).expect("Failed to create Shm SlotPool");
         Self {
             manager,
@@ -47,7 +48,15 @@ impl ScreencopyState {
     }
 
     #[allow(dead_code)]
-    pub fn capture(&mut self, output: &WlOutput, x: i32, y: i32, width: i32, height: i32, qh: &QueueHandle<super::AppData>) {
+    pub fn capture(
+        &mut self,
+        output: &WlOutput,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+        qh: &QueueHandle<super::AppData>,
+    ) {
         if self.is_capturing {
             return;
         }
@@ -55,7 +64,8 @@ impl ScreencopyState {
             self.done = false;
             self.data = None;
             self.is_capturing = true;
-            self.frame = Some(manager.capture_output_region(0, output, x, y, width, height, qh, ()));
+            self.frame =
+                Some(manager.capture_output_region(0, output, x, y, width, height, qh, ()));
         }
     }
 }
@@ -68,7 +78,8 @@ impl Dispatch<ZwlrScreencopyManagerV1, ()> for super::AppData {
         _data: &(),
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
-    ) {}
+    ) {
+    }
 }
 
 impl Dispatch<ZwlrScreencopyFrameV1, ()> for super::AppData {
@@ -81,24 +92,31 @@ impl Dispatch<ZwlrScreencopyFrameV1, ()> for super::AppData {
         _qh: &QueueHandle<Self>,
     ) {
         match event {
-            FrameEvent::Buffer { format, width, height, stride } => {
-                let actual_format = format.into_result().unwrap_or(wayland_client::protocol::wl_shm::Format::Argb8888);
+            FrameEvent::Buffer {
+                format,
+                width,
+                height,
+                stride,
+            } => {
+                let actual_format = format
+                    .into_result()
+                    .unwrap_or(wayland_client::protocol::wl_shm::Format::Argb8888);
                 state.screencopy.width = width;
                 state.screencopy.height = height;
                 state.screencopy.stride = stride;
                 state.screencopy.format = actual_format as u32;
-                
+
                 if state.screencopy.buffer.is_none() {
                     if let Ok((buffer, _canvas)) = state.screencopy.pool.create_buffer(
                         width as i32,
                         height as i32,
                         stride as i32,
-                        actual_format
+                        actual_format,
                     ) {
                         state.screencopy.buffer = Some(buffer);
                     }
                 }
-                
+
                 if let Some(buffer) = &state.screencopy.buffer {
                     frame.copy(buffer.wl_buffer());
                 }
@@ -115,11 +133,11 @@ impl Dispatch<ZwlrScreencopyFrameV1, ()> for super::AppData {
                         let width = state.screencopy.width as usize;
                         let height = state.screencopy.height as usize;
                         let stride = state.screencopy.stride as usize;
-                        
+
                         let mut rgba = Vec::with_capacity(width * height * 4);
                         for y in 0..height {
                             let row = &canvas[(y * stride)..(y * stride + width * 4)];
-                            for chunk in row.chunks_exact(4) {
+                            for chunk in row.as_chunks::<4>().0 {
                                 // BGRA -> RGBA (typical for wl_shm ARGB8888/XRGB8888 in little endian)
                                 rgba.push(chunk[2]);
                                 rgba.push(chunk[1]);

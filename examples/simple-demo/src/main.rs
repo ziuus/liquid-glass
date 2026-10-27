@@ -1,5 +1,5 @@
 // Simple animation demo - no GUI required
-use glass_core::{GlassMaterial, MaterialType, GlassTransition, Spring, SpringParams};
+use glass_core::{GlassMaterial, GlassTransition, MaterialType, Spring, SpringParams};
 use std::thread;
 use std::time::Duration;
 
@@ -30,7 +30,10 @@ fn demo_materials() {
     println!("   ─────────────────────\n");
 
     let materials = [
-        ("WindowBackground", GlassMaterial::new(MaterialType::WindowBackground)),
+        (
+            "WindowBackground",
+            GlassMaterial::new(MaterialType::WindowBackground),
+        ),
         ("Sidebar", GlassMaterial::new(MaterialType::Sidebar)),
         ("Menu", GlassMaterial::menu()),
         ("Popover", GlassMaterial::new(MaterialType::Popover)),
@@ -38,11 +41,10 @@ fn demo_materials() {
     ];
 
     for (name, mat) in &materials {
-        println!("   {:18} │ blur:{:3.0}px │ sat:{:.1}x │ opacity:{:.2}",
-            name,
-            mat.vibrancy.blur_radius,
-            mat.vibrancy.saturation_boost,
-            mat.vibrancy.opacity);
+        println!(
+            "   {:18} │ blur:{:3.0}px │ sat:{:.1}x │ opacity:{:.2}",
+            name, mat.vibrancy.blur_radius, mat.vibrancy.saturation_boost, mat.vibrancy.opacity
+        );
     }
     println!();
 }
@@ -60,8 +62,10 @@ fn demo_spring() {
             opacity.update(1.0 / 60.0);
         }
         print_progress_bar(frame, 60);
-        println!(" Frame {:2}: opacity={:.3} velocity={:.3}",
-            frame, opacity.value, opacity.velocity);
+        println!(
+            " Frame {:2}: opacity={:.3} velocity={:.3}",
+            frame, opacity.value, opacity.velocity
+        );
         thread::sleep(Duration::from_millis(100));
     }
     println!("\n   ✅ Settled at {:.3}\n", opacity.value);
@@ -81,17 +85,17 @@ fn demo_transition() {
         }
 
         print_progress_bar(frame, 60);
-        println!(" blur:{:4.1}px │ opacity:{:.2} │ scale:{:.3}",
-            transition.blur_radius.value,
-            transition.opacity.value,
-            transition.scale.value);
+        println!(
+            " blur:{:4.1}px │ opacity:{:.2} │ scale:{:.3}",
+            transition.blur_radius.value, transition.opacity.value, transition.scale.value
+        );
         thread::sleep(Duration::from_millis(100));
     }
 
-    println!("\n   ✅ Final: blur={:.1}px, opacity={:.2}, scale={:.3}\n",
-        transition.blur_radius.value,
-        transition.opacity.value,
-        transition.scale.value);
+    println!(
+        "\n   ✅ Final: blur={:.1}px, opacity={:.2}, scale={:.3}\n",
+        transition.blur_radius.value, transition.opacity.value, transition.scale.value
+    );
 }
 
 fn demo_presets() {
@@ -118,8 +122,14 @@ fn demo_presets() {
         let bar_len = (frames as f32 / 300.0 * 20.0) as usize;
         let bar: String = "█".repeat(bar_len) + &"░".repeat(20 - bar_len);
 
-        println!("   {} {:8} │ {} │ {} frames ({:.1}s)",
-            emoji, name, bar, frames, frames as f32 / 60.0);
+        println!(
+            "   {} {:8} │ {} │ {} frames ({:.1}s)",
+            emoji,
+            name,
+            bar,
+            frames,
+            frames as f32 / 60.0
+        );
     }
     println!();
 }

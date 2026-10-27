@@ -1,26 +1,26 @@
-use winit::{
-    event::*,
-    event_loop::EventLoop,
-    window::WindowBuilder,
-};
 use glass_core::GlassRenderer;
-use glass_ui::{GlassWidget, GlassCard, GlassButton, GlassToggle, GlassSlider};
+use glass_ui::{GlassButton, GlassCard, GlassSlider, GlassToggle, GlassWidget};
 use std::sync::Arc;
 use std::time::Instant;
+use winit::{event::*, event_loop::EventLoop, window::WindowBuilder};
 
 async fn run() {
     env_logger::init();
-    
+
     let event_loop = EventLoop::new().unwrap();
-    let window = Arc::new(WindowBuilder::new()
-        .with_title("Liquid Glass UI Components")
-        .with_inner_size(winit::dpi::LogicalSize::new(900.0, 640.0))
-        .with_transparent(true)
-        .build(&event_loop)
-        .unwrap());
+    let window = Arc::new(
+        WindowBuilder::new()
+            .with_title("Liquid Glass UI Components")
+            .with_inner_size(winit::dpi::LogicalSize::new(900.0, 640.0))
+            .with_transparent(true)
+            .build(&event_loop)
+            .unwrap(),
+    );
 
     let size = window.inner_size();
-    let mut renderer = GlassRenderer::new(window.clone(), size.width, size.height).await.unwrap();
+    let mut renderer = GlassRenderer::new(window.clone(), size.width, size.height)
+        .await
+        .unwrap();
 
     let mut cursor_pos = [0.5, 0.5];
     let mut cursor_velocity = [0.0, 0.0];
@@ -29,7 +29,11 @@ async fn run() {
     let mut widget = GlassWidget::new();
 
     // 1. Background Island
-    widget.add_card(GlassCard::island(0.08, 0.08, 0.84, 0.84).blur(32.0).specular(1.0));
+    widget.add_card(
+        GlassCard::island(0.08, 0.08, 0.84, 0.84)
+            .blur(32.0)
+            .specular(1.0),
+    );
 
     // 2. Interactive Glass Buttons
     widget.add_button(GlassButton::new(0.14, 0.22, 0.20, 0.10, "Play"));

@@ -1,17 +1,16 @@
-/// Spring-based animation system for liquid glass motion
-///
-/// Implements damped spring physics matching Apple's animation feel:
-/// - Natural acceleration and deceleration
-/// - Proper settling behavior
-/// - Configurable stiffness and damping
-///
-/// Based on the spring-damper system used in Core Animation
+//! Spring-based animation system for liquid glass motion
+//!
+//! Implements damped spring physics matching Apple's animation feel:
+//! - Natural acceleration and deceleration
+//! - Proper settling behavior
+//! - Configurable stiffness and damping
+//!
+//! Based on the spring-damper system used in Core Animation
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Spring animation parameters matching Apple's CASpringAnimation
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SpringParams {
     /// Spring stiffness (200-300 is typical for UI)
     pub stiffness: f32,
@@ -153,7 +152,11 @@ impl Spring {
         // where k is stiffness, c is damping coefficient, x is displacement, v is velocity
 
         let spring_force = -self.params.stiffness * displacement;
-        let c = if self.params.damping < 5.0 { 2.0 * self.params.damping * (self.params.stiffness * self.params.mass).sqrt() } else { self.params.damping };
+        let c = if self.params.damping < 5.0 {
+            2.0 * self.params.damping * (self.params.stiffness * self.params.mass).sqrt()
+        } else {
+            self.params.damping
+        };
         let damping_force = -c * self.velocity;
 
         let acceleration = (spring_force + damping_force) / self.params.mass;
@@ -311,8 +314,7 @@ impl SpringVec4 {
     }
 
     pub fn is_at_rest(&self) -> bool {
-        self.x.is_at_rest() && self.y.is_at_rest() &&
-        self.z.is_at_rest() && self.w.is_at_rest()
+        self.x.is_at_rest() && self.y.is_at_rest() && self.z.is_at_rest() && self.w.is_at_rest()
     }
 }
 
@@ -370,9 +372,7 @@ impl GlassTransition {
     }
 
     pub fn is_at_rest(&self) -> bool {
-        self.blur_radius.is_at_rest() &&
-        self.opacity.is_at_rest() &&
-        self.scale.is_at_rest()
+        self.blur_radius.is_at_rest() && self.opacity.is_at_rest() && self.scale.is_at_rest()
     }
 }
 

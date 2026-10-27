@@ -7,7 +7,7 @@ pub fn find_non_overlapping_layers(surfaces: &[GlassSurface]) -> Vec<Vec<usize>>
     for (i, surface) in surfaces.iter().enumerate() {
         let [x, y, w, h] = surface.bounds;
         let mut overlaps_current = false;
-        
+
         for &j in current_layer.iter() {
             let [ox, oy, ow, oh] = surfaces[j].bounds;
             if x < ox + ow && x + w > ox && y < oy + oh && y + h > oy {
@@ -15,7 +15,7 @@ pub fn find_non_overlapping_layers(surfaces: &[GlassSurface]) -> Vec<Vec<usize>>
                 break;
             }
         }
-        
+
         if overlaps_current {
             layers.push(current_layer);
             current_layer = vec![i];
@@ -23,10 +23,10 @@ pub fn find_non_overlapping_layers(surfaces: &[GlassSurface]) -> Vec<Vec<usize>>
             current_layer.push(i);
         }
     }
-    
+
     if !current_layer.is_empty() {
         layers.push(current_layer);
     }
-    
+
     layers
 }

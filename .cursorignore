@@ -1,0 +1,7 @@
+target/
+.git/
+assets/*.jpg
+assets/*.png
+assets/*.gif
+docs/screenshots/
+*.log

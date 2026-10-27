@@ -11,13 +11,13 @@ env:
 
 jobs:
   check-and-test:
-    name: Check & Test Workspace
+    name: Check, Test & Lint Workspace
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libvulkan-dev libwayland-dev libxkbcommon-dev libasound2-dev libsdl2-dev
@@ -30,8 +30,23 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
+      - name: Check Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (Lint)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
       - name: Cargo Check
         run: cargo check --workspace --all-targets
 
       - name: Cargo Test
         run: cargo test --workspace
+
+      - name: Validate AGENTS.md exists and is non-empty
+        run: |
+          test -s AGENTS.md || (echo "AGENTS.md is missing or empty" && exit 1)
+          lines=$(wc -l < AGENTS.md)
+          if [ "$lines" -gt 150 ]; then
+            echo "AGENTS.md exceeds 150 lines ($lines lines)"
+            exit 1
+          fi

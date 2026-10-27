@@ -1,28 +1,28 @@
-use winit::{
-    event::*,
-    event_loop::EventLoop,
-    window::WindowBuilder,
-};
-use glass_core::{GlassRenderer, GlassSurface, Material, geometry::Shape};
+use glass_core::{geometry::Shape, GlassRenderer, GlassSurface, Material};
 use std::sync::Arc;
 use std::time::Instant;
+use winit::{event::*, event_loop::EventLoop, window::WindowBuilder};
 
 async fn run() {
     env_logger::init();
-    
+
     let event_loop = EventLoop::new().unwrap();
-    let window = Arc::new(WindowBuilder::new()
-        .with_title("Liquid Glass Benchmark")
-        .with_inner_size(winit::dpi::LogicalSize::new(1024.0, 768.0))
-        .build(&event_loop)
-        .unwrap());
+    let window = Arc::new(
+        WindowBuilder::new()
+            .with_title("Liquid Glass Benchmark")
+            .with_inner_size(winit::dpi::LogicalSize::new(1024.0, 768.0))
+            .build(&event_loop)
+            .unwrap(),
+    );
 
     let size = window.inner_size();
-    let mut renderer = GlassRenderer::new(window.clone(), size.width, size.height).await.unwrap();
+    let mut renderer = GlassRenderer::new(window.clone(), size.width, size.height)
+        .await
+        .unwrap();
 
     let counts = [1, 5, 10, 25, 50, 100];
     let mut current_count_idx = 0;
-    
+
     let generate_surfaces = |count: usize| {
         let mut surfaces = Vec::with_capacity(count);
         for i in 0..count {
@@ -32,19 +32,22 @@ async fn run() {
                 GlassSurface::new()
                     .material(Material::LiquidGlass)
                     .shape(Shape::RoundedRectangle { radius: 10.0 })
-                    .bounds(x, y, 0.08, 0.08) // 8% of screen size each
+                    .bounds(x, y, 0.08, 0.08), // 8% of screen size each
             );
         }
         surfaces
     };
 
     let mut surfaces = generate_surfaces(counts[current_count_idx]);
-    
+
     let mut frames = 0;
     let mut last_log = Instant::now();
     let start_time = Instant::now();
-    
-    println!("Starting benchmark. Surfaces: {}", counts[current_count_idx]);
+
+    println!(
+        "Starting benchmark. Surfaces: {}",
+        counts[current_count_idx]
+    );
 
     event_loop.run(move |event, elwt| {
         match event {
@@ -87,7 +90,7 @@ async fn run() {
                         frames = 0;
                         last_log = now;
                     }
-                    
+
                     match renderer.render(&surfaces) {
                         Ok(_) => {}
                         Err(wgpu::SurfaceError::Lost) => renderer.resize(window.inner_size().width, window.inner_size().height),
@@ -99,7 +102,7 @@ async fn run() {
             },
             Event::AboutToWait => {
                 window.request_redraw();
-                
+
                 // Auto advance benchmark every 5 seconds for automated testing
                 if start_time.elapsed().as_secs() > ((current_count_idx + 1) * 5) as u64 && current_count_idx < counts.len() - 1 {
                     current_count_idx += 1;

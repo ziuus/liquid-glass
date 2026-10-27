@@ -7,7 +7,9 @@ pub mod metrics;
 pub mod optical;
 pub mod renderer;
 
-pub use renderer::{GlassRenderer, BlurPipeline};
-pub use material::{Material, GlassMaterial, MaterialParams, MaterialType, VibrancyMaterial, BlendMode};
+pub use animation::{GlassTransition, Spring, SpringParams, SpringVec2, SpringVec3, SpringVec4};
 pub use geometry::GlassSurface;
-pub use animation::{Spring, SpringVec2, SpringVec3, SpringVec4, SpringParams, GlassTransition};
+pub use material::{
+    BlendMode, GlassMaterial, Material, MaterialParams, MaterialType, VibrancyMaterial,
+};
+pub use renderer::{BlurPipeline, GlassRenderer};

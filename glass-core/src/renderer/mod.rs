@@ -1,9 +1,9 @@
 mod blur;
 
-use raw_window_handle::{HasWindowHandle, HasDisplayHandle};
+use bytemuck::{Pod, Zeroable};
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::sync::Arc;
 use std::time::Instant;
-use bytemuck::{Pod, Zeroable};
 
 pub use blur::BlurPipeline;
 
@@ -50,7 +50,11 @@ pub struct GlassRenderer {
 }
 
 impl GlassRenderer {
-    pub async fn new<W>(window: Arc<W>, width: u32, height: u32) -> Result<Self, Box<dyn std::error::Error>>
+    pub async fn new<W>(
+        window: Arc<W>,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, Box<dyn std::error::Error>>
     where
         W: HasWindowHandle + HasDisplayHandle + Send + Sync + 'static,
     {
@@ -61,23 +65,30 @@ impl GlassRenderer {
 
         let surface = instance.create_surface(window.clone())?;
 
-        let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: Some(&surface),
-            force_fallback_adapter: false,
-        }).await.ok_or("Failed to find suitable GPU adapter")?;
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+            })
+            .await
+            .ok_or("Failed to find suitable GPU adapter")?;
 
-        let (device, queue) = adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("Liquid Glass Device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-            },
-            None,
-        ).await?;
+        let (device, queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: Some("Liquid Glass Device"),
+                    required_features: wgpu::Features::empty(),
+                    required_limits: wgpu::Limits::default(),
+                },
+                None,
+            )
+            .await?;
 
         let surface_caps = surface.get_capabilities(&adapter);
-        let surface_format = surface_caps.formats.iter()
+        let surface_format = surface_caps
+            .formats
+            .iter()
             .copied()
             .find(|f| f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
@@ -88,9 +99,15 @@ impl GlassRenderer {
             width,
             height,
             present_mode: wgpu::PresentMode::AutoNoVsync,
-            alpha_mode: if surface_caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::PreMultiplied) {
+            alpha_mode: if surface_caps
+                .alpha_modes
+                .contains(&wgpu::CompositeAlphaMode::PreMultiplied)
+            {
                 wgpu::CompositeAlphaMode::PreMultiplied
-            } else if surface_caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::PostMultiplied) {
+            } else if surface_caps
+                .alpha_modes
+                .contains(&wgpu::CompositeAlphaMode::PostMultiplied)
+            {
                 wgpu::CompositeAlphaMode::PostMultiplied
             } else {
                 surface_caps.alpha_modes[0]
@@ -106,8 +123,10 @@ impl GlassRenderer {
         });
 
         let alignment = device.limits().min_uniform_buffer_offset_alignment as wgpu::BufferAddress;
-        let padded_size = (std::mem::size_of::<GlassUniforms>() as wgpu::BufferAddress + alignment - 1) & !(alignment - 1);
-        
+        let padded_size = (std::mem::size_of::<GlassUniforms>() as wgpu::BufferAddress + alignment
+            - 1)
+            & !(alignment - 1);
+
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Glass Uniform Buffer"),
             size: padded_size * 1024, // Support up to 1024 surfaces
@@ -117,33 +136,35 @@ impl GlassRenderer {
 
         let params_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Params Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: true,
-                        min_binding_size: Some(std::num::NonZeroU64::new(std::mem::size_of::<GlassUniforms>() as _).unwrap()),
-                    },
-                    count: None,
-                }
-            ],
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: true,
+                    min_binding_size: Some(
+                        std::num::NonZeroU64::new(std::mem::size_of::<GlassUniforms>() as _)
+                            .unwrap(),
+                    ),
+                },
+                count: None,
+            }],
         });
 
         let params_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Params Bind Group"),
             layout: &params_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &uniform_buffer,
-                        offset: 0,
-                        size: Some(std::num::NonZeroU64::new(std::mem::size_of::<GlassUniforms>() as _).unwrap()),
-                    }),
-                }
-            ],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &uniform_buffer,
+                    offset: 0,
+                    size: Some(
+                        std::num::NonZeroU64::new(std::mem::size_of::<GlassUniforms>() as _)
+                            .unwrap(),
+                    ),
+                }),
+            }],
         });
 
         let bg_texture_size = wgpu::Extent3d {
@@ -151,7 +172,7 @@ impl GlassRenderer {
             height: 512,
             depth_or_array_layers: 1,
         };
-        
+
         let mut bg_data = vec![0u8; 512 * 512 * 4];
         for y in 0..512 {
             for x in 0..512 {
@@ -159,13 +180,11 @@ impl GlassRenderer {
                 // Clean neutral dark obsidian / slate glass backdrop
                 let v = 22.0 + (y as f32 / 512.0) * 12.0;
                 bg_data[i] = v as u8;
-                bg_data[i+1] = (v * 1.05) as u8;
-                bg_data[i+2] = (v * 1.15) as u8;
-                bg_data[i+3] = 255;
+                bg_data[i + 1] = (v * 1.05) as u8;
+                bg_data[i + 2] = (v * 1.15) as u8;
+                bg_data[i + 3] = 255;
             }
         }
-
-        
 
         let base_bg_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Base Background Texture"),
@@ -174,10 +193,12 @@ impl GlassRenderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: surface_format,
-            usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
-        
+
         let bg_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Background Texture"),
             size: bg_texture_size,
@@ -185,7 +206,9 @@ impl GlassRenderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: surface_format,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
 
@@ -204,8 +227,6 @@ impl GlassRenderer {
             },
             bg_texture_size,
         );
-
-        
 
         let bg_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Background Sampler"),
@@ -236,11 +257,9 @@ impl GlassRenderer {
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
-                }
+                },
             ],
         });
-
-
 
         let bg_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Background Bind Group"),
@@ -248,12 +267,14 @@ impl GlassRenderer {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&bg_texture.create_view(&wgpu::TextureViewDescriptor::default())),
+                    resource: wgpu::BindingResource::TextureView(
+                        &bg_texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                    ),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&bg_sampler),
-                }
+                },
             ],
         });
 
@@ -308,14 +329,14 @@ impl GlassRenderer {
                 ty: wgpu::QueryType::Timestamp,
                 count: 2,
             }));
-            
+
             query_resolve_buffer = Some(device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Query Resolve Buffer"),
                 size: 16, // 2 u64s
                 usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
                 mapped_at_creation: false,
             }));
-            
+
             query_destination_buffer = Some(device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Query Destination Buffer"),
                 size: 16,
@@ -349,14 +370,14 @@ impl GlassRenderer {
             self.surface_config.width = width;
             self.surface_config.height = height;
             self.surface.configure(&self.device, &self.surface_config);
-            
+
             // Recreate background textures to match the new size
             let size = wgpu::Extent3d {
                 width,
                 height,
                 depth_or_array_layers: 1,
             };
-            
+
             self.base_bg_texture = self.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("Base Background Texture"),
                 size,
@@ -364,7 +385,9 @@ impl GlassRenderer {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: self.surface_config.format,
-                usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+                usage: wgpu::TextureUsages::COPY_SRC
+                    | wgpu::TextureUsages::COPY_DST
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             });
 
@@ -375,67 +398,93 @@ impl GlassRenderer {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: self.surface_config.format,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_DST
+                    | wgpu::TextureUsages::COPY_SRC,
                 view_formats: &[],
             });
-            
-            let bg_layout = self.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Background Layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    }
-                ],
-            });
-            
+
+            let bg_layout =
+                self.device
+                    .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                        label: Some("Background Layout"),
+                        entries: &[
+                            wgpu::BindGroupLayoutEntry {
+                                binding: 0,
+                                visibility: wgpu::ShaderStages::FRAGMENT,
+                                ty: wgpu::BindingType::Texture {
+                                    sample_type: wgpu::TextureSampleType::Float {
+                                        filterable: true,
+                                    },
+                                    view_dimension: wgpu::TextureViewDimension::D2,
+                                    multisampled: false,
+                                },
+                                count: None,
+                            },
+                            wgpu::BindGroupLayoutEntry {
+                                binding: 1,
+                                visibility: wgpu::ShaderStages::FRAGMENT,
+                                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                                count: None,
+                            },
+                        ],
+                    });
+
             self.bg_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("Background Bind Group"),
                 layout: &bg_layout,
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&self.bg_texture.create_view(&wgpu::TextureViewDescriptor::default())),
+                        resource: wgpu::BindingResource::TextureView(
+                            &self
+                                .bg_texture
+                                .create_view(&wgpu::TextureViewDescriptor::default()),
+                        ),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
                         resource: wgpu::BindingResource::Sampler(&self.bg_sampler),
-                    }
+                    },
                 ],
             });
         }
     }
 
-    pub fn render(&mut self, surfaces: &[crate::geometry::GlassSurface]) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(
+        &mut self,
+        surfaces: &[crate::geometry::GlassSurface],
+    ) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
         let time = self.start_time.elapsed().as_secs_f32();
 
-        let alignment = self.device.limits().min_uniform_buffer_offset_alignment as wgpu::BufferAddress;
-        let padded_size = (std::mem::size_of::<GlassUniforms>() as wgpu::BufferAddress + alignment - 1) & !(alignment - 1);
+        let alignment =
+            self.device.limits().min_uniform_buffer_offset_alignment as wgpu::BufferAddress;
+        let padded_size = (std::mem::size_of::<GlassUniforms>() as wgpu::BufferAddress + alignment
+            - 1)
+            & !(alignment - 1);
 
         let mut uniform_data = Vec::with_capacity(surfaces.len() * padded_size as usize);
         let mut offsets = Vec::with_capacity(surfaces.len());
 
         for (i, glass) in surfaces.iter().enumerate() {
-            let params = glass.custom_params.unwrap_or_else(|| glass.material.default_params());
+            let params = glass
+                .custom_params
+                .unwrap_or_else(|| glass.material.default_params());
             let corner_radius = match glass.shape {
                 crate::geometry::Shape::RoundedRectangle { radius } => radius,
-                crate::geometry::Shape::Capsule => (glass.bounds[2] * self.surface_config.width as f32).min(glass.bounds[3] * self.surface_config.height as f32) * 0.5,
-                crate::geometry::Shape::Circle => (glass.bounds[2] * self.surface_config.width as f32) * 0.5,
+                crate::geometry::Shape::Capsule => {
+                    (glass.bounds[2] * self.surface_config.width as f32)
+                        .min(glass.bounds[3] * self.surface_config.height as f32)
+                        * 0.5
+                }
+                crate::geometry::Shape::Circle => {
+                    (glass.bounds[2] * self.surface_config.width as f32) * 0.5
+                }
                 _ => 16.0,
             };
 
@@ -452,17 +501,24 @@ impl GlassRenderer {
                 curvature: glass.curvature,
                 bevel: glass.bevel,
                 time,
-                deformation: if let crate::material::Material::LiquidGlass = glass.material { 0.02 } else { 0.0 },
+                deformation: if let crate::material::Material::LiquidGlass = glass.material {
+                    0.02
+                } else {
+                    0.0
+                },
                 corner_radius,
                 pointer_pos: glass.pointer_pos,
                 pointer_velocity: glass.pointer_velocity,
-                surface_size: [self.surface_config.width as f32, self.surface_config.height as f32],
+                surface_size: [
+                    self.surface_config.width as f32,
+                    self.surface_config.height as f32,
+                ],
                 padding2: [glass.element_type, glass.progress],
             };
-            
+
             let offset = i as u32 * padded_size as u32;
             offsets.push(offset);
-            
+
             let bytes = bytemuck::bytes_of(&uniforms);
             uniform_data.extend_from_slice(bytes);
             // Pad to alignment
@@ -470,12 +526,15 @@ impl GlassRenderer {
         }
 
         if !uniform_data.is_empty() {
-            self.queue.write_buffer(&self.uniform_buffer, 0, &uniform_data);
+            self.queue
+                .write_buffer(&self.uniform_buffer, 0, &uniform_data);
         }
 
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Render Encoder"),
-        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
 
         encoder.copy_texture_to_texture(
             wgpu::ImageCopyTexture {
@@ -494,7 +553,7 @@ impl GlassRenderer {
                 width: self.bg_texture.width(),
                 height: self.bg_texture.height(),
                 depth_or_array_layers: 1,
-            }
+            },
         );
 
         let layers = crate::geometry::overlap::find_non_overlapping_layers(surfaces);
@@ -518,18 +577,19 @@ impl GlassRenderer {
                         width: self.surface_config.width,
                         height: self.surface_config.height,
                         depth_or_array_layers: 1,
-                    }
+                    },
                 );
             }
 
-            
             // Note: we only measure the first pass if there are multiple layers for simplicity
-            let timestamp_writes = if layer_idx == 0 && self.query_set.is_some() {
-                Some(wgpu::RenderPassTimestampWrites {
-                    query_set: self.query_set.as_ref().unwrap(),
-                    beginning_of_pass_write_index: Some(0),
-                    end_of_pass_write_index: Some(1),
-                })
+            let timestamp_writes = if layer_idx == 0 {
+                self.query_set
+                    .as_ref()
+                    .map(|qs| wgpu::RenderPassTimestampWrites {
+                        query_set: qs,
+                        beginning_of_pass_write_index: Some(0),
+                        end_of_pass_write_index: Some(1),
+                    })
             } else {
                 None
             };
@@ -560,7 +620,7 @@ impl GlassRenderer {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(1, &self.bg_bind_group, &[]);
-            
+
             for &surface_idx in layer.iter() {
                 let offset = offsets[surface_idx];
                 render_pass.set_bind_group(0, &self.params_bind_group, &[offset]);
@@ -583,7 +643,7 @@ impl GlassRenderer {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(1);
             if self.frame_count + 1 >= target_frame {
-                let _ = std::env::remove_var("GLASS_SNAPSHOT");
+                std::env::remove_var("GLASS_SNAPSHOT");
                 Some(path)
             } else {
                 None
@@ -595,7 +655,7 @@ impl GlassRenderer {
         let capture_info = if let Some(path) = should_capture {
             let unpadded = self.surface_config.width * 4;
             let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-            let padded = ((unpadded + align - 1) / align) * align;
+            let padded = unpadded.div_ceil(align) * align;
             let size = (padded * self.surface_config.height) as u64;
             let cap_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Frame Capture Buffer"),
@@ -628,7 +688,7 @@ impl GlassRenderer {
         } else {
             None
         };
-        
+
         self.queue.submit(std::iter::once(encoder.finish()));
         self.frame_count += 1;
 
@@ -639,15 +699,20 @@ impl GlassRenderer {
             self.device.poll(wgpu::Maintain::Wait);
             if rx.recv().unwrap().is_ok() {
                 let mapped = slice.get_mapped_range();
-                let mut rgba = Vec::with_capacity((self.surface_config.width * self.surface_config.height * 4) as usize);
+                let mut rgba = Vec::with_capacity(
+                    (self.surface_config.width * self.surface_config.height * 4) as usize,
+                );
                 for chunk in mapped.chunks(padded as usize) {
                     rgba.extend_from_slice(&chunk[..unpadded as usize]);
                 }
                 drop(mapped);
                 cap_buf.unmap();
 
-                if matches!(self.surface_config.format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb) {
-                    for pixel in rgba.chunks_exact_mut(4) {
+                if matches!(
+                    self.surface_config.format,
+                    wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb
+                ) {
+                    for pixel in rgba.as_chunks_mut::<4>().0 {
                         pixel.swap(0, 2);
                     }
                 }
@@ -661,14 +726,14 @@ impl GlassRenderer {
                 println!("Saved liquid glass snapshot to {}", path);
             }
         }
-        
-        if self.frame_count % 60 == 0 && std::env::var("GLASS_BENCHMARK").is_ok() {
+
+        if self.frame_count.is_multiple_of(60) && std::env::var("GLASS_BENCHMARK").is_ok() {
             if let Some(destination_buffer) = &self.query_destination_buffer {
                 let buffer_slice = destination_buffer.slice(..);
                 let (tx, rx) = std::sync::mpsc::channel();
                 buffer_slice.map_async(wgpu::MapMode::Read, move |v| tx.send(v).unwrap());
                 self.device.poll(wgpu::Maintain::Wait);
-                
+
                 if rx.recv().unwrap().is_ok() {
                     let data = buffer_slice.get_mapped_range();
                     let timestamps: &[u64] = bytemuck::cast_slice(&data);
@@ -694,18 +759,19 @@ impl GlassRenderer {
             height,
             depth_or_array_layers: 1,
         };
-        
+
         let mut final_data = rgba_data.to_vec();
         // If the surface format is BGRA, we must swap the R and B channels
         // because the user provided RGBA data.
-        if matches!(self.surface_config.format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb) {
-            for chunk in final_data.chunks_exact_mut(4) {
-                let r = chunk[0];
-                chunk[0] = chunk[2];
-                chunk[2] = r;
+        if matches!(
+            self.surface_config.format,
+            wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb
+        ) {
+            for chunk in final_data.as_chunks_mut::<4>().0 {
+                chunk.swap(0, 2);
             }
         }
-        
+
         if self.base_bg_texture.width() != width || self.base_bg_texture.height() != height {
             self.base_bg_texture = self.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("Base Background Texture"),
@@ -728,47 +794,55 @@ impl GlassRenderer {
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             });
-            
+
             // Assuming we recreate the bind group layout... wait, we need the layout!
             // Let's just create a new layout identical to the original one.
-            let bg_layout = self.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Background Layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    }
-                ],
-            });
-            
+            let bg_layout =
+                self.device
+                    .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                        label: Some("Background Layout"),
+                        entries: &[
+                            wgpu::BindGroupLayoutEntry {
+                                binding: 0,
+                                visibility: wgpu::ShaderStages::FRAGMENT,
+                                ty: wgpu::BindingType::Texture {
+                                    sample_type: wgpu::TextureSampleType::Float {
+                                        filterable: true,
+                                    },
+                                    view_dimension: wgpu::TextureViewDimension::D2,
+                                    multisampled: false,
+                                },
+                                count: None,
+                            },
+                            wgpu::BindGroupLayoutEntry {
+                                binding: 1,
+                                visibility: wgpu::ShaderStages::FRAGMENT,
+                                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                                count: None,
+                            },
+                        ],
+                    });
+
             self.bg_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("Background Bind Group"),
                 layout: &bg_layout,
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&self.bg_texture.create_view(&wgpu::TextureViewDescriptor::default())),
+                        resource: wgpu::BindingResource::TextureView(
+                            &self
+                                .bg_texture
+                                .create_view(&wgpu::TextureViewDescriptor::default()),
+                        ),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
                         resource: wgpu::BindingResource::Sampler(&self.bg_sampler),
-                    }
+                    },
                 ],
             });
         }
-        
+
         self.queue.write_texture(
             wgpu::ImageCopyTexture {
                 texture: &self.base_bg_texture,

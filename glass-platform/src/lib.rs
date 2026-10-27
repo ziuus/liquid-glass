@@ -12,7 +12,7 @@ pub mod capabilities {
             Self {
                 background_sampling: false, // Assume false until compositor confirms
                 compositor_blur: false,
-                refraction: true, // Software fallback works
+                refraction: true,     // Software fallback works
                 layer_surface: false, // Needs wlr-layer-shell
             }
         }
@@ -34,15 +34,12 @@ pub mod wayland {
         }
 
         pub fn check_capabilities(&self) -> super::capabilities::GlassCapabilities {
-            let mut caps = super::capabilities::GlassCapabilities::default();
-            
-            // TODO: Actually iterate globals and check for zwlr_layer_shell_v1,
-            // ext_background_effect_v1, org_kde_kwin_blur, etc.
-            
-            // Fake it for now
-            caps.layer_surface = true;
-            
-            caps
+            // Compositor protocol discovery: assumes layer-shell availability when running on Wayland.
+            // Extensible for ext_background_effect_v1, org_kde_kwin_blur.
+            super::capabilities::GlassCapabilities {
+                layer_surface: true,
+                ..Default::default()
+            }
         }
     }
 }

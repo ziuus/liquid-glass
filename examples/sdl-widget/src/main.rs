@@ -1,4 +1,4 @@
-use glass_core::{GlassMaterial, MaterialType, GlassTransition};
+use glass_core::{GlassMaterial, GlassTransition, MaterialType};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
@@ -18,14 +18,18 @@ fn main() -> Result<(), String> {
     let button_mat = GlassMaterial::menu();
 
     println!("📦 Materials Created:");
-    println!("   Background (HUD): blur={}px, sat={}x, opacity={}",
+    println!(
+        "   Background (HUD): blur={}px, sat={}x, opacity={}",
         background.vibrancy.blur_radius,
         background.vibrancy.saturation_boost,
-        background.vibrancy.opacity);
-    println!("   Button (Menu): blur={}px, sat={}x, opacity={}",
+        background.vibrancy.opacity
+    );
+    println!(
+        "   Button (Menu): blur={}px, sat={}x, opacity={}",
         button_mat.vibrancy.blur_radius,
         button_mat.vibrancy.saturation_boost,
-        button_mat.vibrancy.opacity);
+        button_mat.vibrancy.opacity
+    );
 
     let mut button_transition = GlassTransition::new();
 
@@ -122,7 +126,12 @@ fn main() -> Result<(), String> {
 
         // Button color changes with opacity (simulating vibrancy)
         let brightness = (opacity * 180.0) as u8;
-        canvas.set_draw_color(Color::RGBA(brightness, brightness, brightness + 50, (opacity * 255.0) as u8));
+        canvas.set_draw_color(Color::RGBA(
+            brightness,
+            brightness,
+            brightness + 50,
+            (opacity * 255.0) as u8,
+        ));
         canvas.fill_rect(scaled_button)?;
 
         // Button border
@@ -148,7 +157,7 @@ fn main() -> Result<(), String> {
         draw_text_simple(&mut canvas, "Spring Physics: Natural Motion", 100, 500)?;
 
         // Draw FPS
-        if frame_count % 60 == 0 {
+        if frame_count.is_multiple_of(60) {
             canvas.set_draw_color(Color::RGB(100, 100, 100));
             draw_text_simple(&mut canvas, &format!("Frame: {}", frame_count), 380, 30)?;
         }
@@ -163,7 +172,12 @@ fn main() -> Result<(), String> {
     Ok(())
 }
 
-fn draw_text_simple(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>, text: &str, x: i32, y: i32) -> Result<(), String> {
+fn draw_text_simple(
+    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
+    text: &str,
+    x: i32,
+    y: i32,
+) -> Result<(), String> {
     // Draw simple rectangles as "text" (SDL2 text rendering needs TTF which adds complexity)
     // For a real widget, you'd use SDL2_ttf
     for (i, _ch) in text.chars().enumerate() {

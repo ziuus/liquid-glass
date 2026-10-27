@@ -1,34 +1,35 @@
-use glass_core::{GlassRenderer, GlassSurface, Material, geometry::Shape};
+use glass_core::{geometry::Shape, GlassRenderer, GlassSurface, Material};
 mod capture;
 use raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle,
     RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle, WindowHandle,
 };
+use smithay_client_toolkit::delegate_shm;
+use smithay_client_toolkit::shm::{Shm, ShmHandler};
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
-    delegate_compositor, delegate_layer, delegate_output, delegate_registry,
+    delegate_compositor, delegate_layer, delegate_output, delegate_pointer, delegate_registry,
+    delegate_seat,
     output::{OutputHandler, OutputState},
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
-    shell::{
-        WaylandSurface,
-        wlr_layer::{
-            Anchor, Layer, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure, KeyboardInteractivity,
-        },
-    },
     seat::{
         pointer::{PointerEvent, PointerEventKind, PointerHandler},
-        SeatHandler, SeatState, Capability,
+        Capability, SeatHandler, SeatState,
     },
-    delegate_seat, delegate_pointer,
+    shell::{
+        wlr_layer::{
+            Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface,
+            LayerSurfaceConfigure,
+        },
+        WaylandSurface,
+    },
 };
 use std::sync::Arc;
 use wayland_client::{
-    protocol::{wl_output, wl_surface, wl_seat, wl_pointer},
-    Connection, QueueHandle, Proxy,
+    protocol::{wl_output, wl_pointer, wl_seat, wl_surface},
+    Connection, Proxy, QueueHandle,
 };
-use smithay_client_toolkit::shm::{Shm, ShmHandler};
-use smithay_client_toolkit::delegate_shm;
 
 struct AppData {
     registry_state: RegistryState,
@@ -38,11 +39,11 @@ struct AppData {
     shm: Shm,
     screencopy: capture::ScreencopyState,
     seat_state: SeatState,
-    
+
     layer_surface: Option<LayerSurface>,
     renderer: Option<GlassRenderer>,
     window_wrapper: Option<Arc<WaylandWindow>>,
-    
+
     pointer: Option<wl_pointer::WlPointer>,
     cursor_pos: [f32; 2],
     cursor_velocity: [f32; 2],
@@ -50,17 +51,17 @@ struct AppData {
     is_dragging: bool,
     drag_start_pos: [i32; 2],
     drag_grab_offset: [i32; 2],
-    
+
     // Media Playback State
     is_playing: bool,
     track_progress: f32,
     elapsed_sec: f32,
     total_duration_sec: f32,
     current_track_idx: usize,
-    
+
     hover_play_pos: f32,
     hover_play_vel: f32,
-    
+
     pos_x: i32,
     pos_y: i32,
     width: u32,
@@ -112,7 +113,8 @@ impl CompositorHandler for AppData {
         _qh: &QueueHandle<Self>,
         _surface: &wl_surface::WlSurface,
         _new_factor: i32,
-    ) {}
+    ) {
+    }
     fn frame(
         &mut self,
         _conn: &Connection,
@@ -127,20 +129,38 @@ impl CompositorHandler for AppData {
         _qh: &QueueHandle<Self>,
         _surface: &wl_surface::WlSurface,
         _new_transform: wayland_client::protocol::wl_output::Transform,
-    ) {}
+    ) {
+    }
 }
 
 impl OutputHandler for AppData {
     fn output_state(&mut self) -> &mut OutputState {
         &mut self.output_state
     }
-    fn new_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, output: wl_output::WlOutput) {
+    fn new_output(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        output: wl_output::WlOutput,
+    ) {
         if self.primary_output.is_none() {
             self.primary_output = Some(output);
         }
     }
-    fn update_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: wl_output::WlOutput) {}
-    fn output_destroyed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: wl_output::WlOutput) {}
+    fn update_output(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _output: wl_output::WlOutput,
+    ) {
+    }
+    fn output_destroyed(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _output: wl_output::WlOutput,
+    ) {
+    }
 }
 
 impl LayerShellHandler for AppData {
@@ -188,7 +208,10 @@ impl SeatHandler for AppData {
         capability: Capability,
     ) {
         if capability == Capability::Pointer && self.pointer.is_none() {
-            let pointer = self.seat_state.get_pointer(qh, &seat).expect("Failed to create pointer");
+            let pointer = self
+                .seat_state
+                .get_pointer(qh, &seat)
+                .expect("Failed to create pointer");
             self.pointer = Some(pointer);
         }
     }
@@ -249,8 +272,10 @@ impl PointerHandler for AppData {
 
                     if self.is_dragging {
                         let new_pos = if let Some((gx, gy)) = get_hyprland_cursor_pos() {
-                            let tx = (gx - self.drag_grab_offset[0]).clamp(0, 1920 - self.width as i32);
-                            let ty = (gy - self.drag_grab_offset[1]).clamp(0, 1080 - self.height as i32);
+                            let tx =
+                                (gx - self.drag_grab_offset[0]).clamp(0, 1920 - self.width as i32);
+                            let ty =
+                                (gy - self.drag_grab_offset[1]).clamp(0, 1080 - self.height as i32);
                             Some((tx, ty))
                         } else {
                             let dx = event.position.0 as i32 - self.drag_grab_offset[0];
@@ -271,8 +296,16 @@ impl PointerHandler for AppData {
                                 if let Some(w) = &self.window_wrapper {
                                     w.surface.commit();
                                 }
-                                if let (Some(cache), Some(renderer)) = (&self.wallpaper_cache, &mut self.renderer) {
-                                    let crop = get_wallpaper_crop(cache, self.pos_x as u32, self.pos_y as u32, self.width, self.height);
+                                if let (Some(cache), Some(renderer)) =
+                                    (&self.wallpaper_cache, &mut self.renderer)
+                                {
+                                    let crop = get_wallpaper_crop(
+                                        cache,
+                                        self.pos_x as u32,
+                                        self.pos_y as u32,
+                                        self.width,
+                                        self.height,
+                                    );
                                     renderer.update_background(self.width, self.height, &crop);
                                 }
                             }
@@ -292,12 +325,12 @@ impl PointerHandler for AppData {
                     self.is_pressed = true;
                     let sx = event.position.0 as i32;
                     let sy = event.position.1 as i32;
-                    
+
                     let cx = self.width as f32 * 0.5;
                     let cy = self.height as f32 * 0.5;
                     let lx = sx as f32 - cx;
                     let ly = sy as f32 - cy;
-                    
+
                     // Hit Test: Hero Play/Pause Button (center at x = 48.0, y = -10.0, r = 24.0)
                     let d_play = ((lx - 48.0).powi(2) + (ly - (-10.0)).powi(2)).sqrt();
                     // Hit Test: Next Button (center at x = 92.0, y = -10.0, r = 18.0)
@@ -307,26 +340,39 @@ impl PointerHandler for AppData {
                     // Hit Test: Vinyl Album Disc (center at x = -135.0, y = -4.0, r = 30.0)
                     let d_vinyl = ((lx - (-135.0)).powi(2) + (ly - (-4.0)).powi(2)).sqrt();
                     // Hit Test: Timeline Scrubber (y around 22.0, x from -20.0 to 140.0)
-                    let on_scrubber = ly >= 12.0 && ly <= 32.0 && lx >= -20.0 && lx <= 140.0;
-                    
+                    let on_scrubber = (12.0..=32.0).contains(&ly) && (-20.0..=140.0).contains(&lx);
+
                     if d_play <= 24.0 {
                         self.is_playing = !self.is_playing;
-                        std::process::Command::new("playerctl").arg("play-pause").spawn().ok();
+                        std::process::Command::new("playerctl")
+                            .arg("play-pause")
+                            .spawn()
+                            .ok();
                     } else if d_next <= 18.0 || d_vinyl <= 30.0 {
                         self.current_track_idx = (self.current_track_idx + 1) % 4;
                         self.elapsed_sec = 0.0;
                         self.track_progress = 0.0;
-                        std::process::Command::new("playerctl").arg("next").spawn().ok();
+                        std::process::Command::new("playerctl")
+                            .arg("next")
+                            .spawn()
+                            .ok();
                     } else if d_prev <= 18.0 {
                         if self.elapsed_sec > 3.0 {
                             self.elapsed_sec = 0.0;
                             self.track_progress = 0.0;
                         } else {
-                            self.current_track_idx = if self.current_track_idx == 0 { 3 } else { self.current_track_idx - 1 };
+                            self.current_track_idx = if self.current_track_idx == 0 {
+                                3
+                            } else {
+                                self.current_track_idx - 1
+                            };
                             self.elapsed_sec = 0.0;
                             self.track_progress = 0.0;
                         }
-                        std::process::Command::new("playerctl").arg("previous").spawn().ok();
+                        std::process::Command::new("playerctl")
+                            .arg("previous")
+                            .spawn()
+                            .ok();
                     } else if on_scrubber {
                         self.track_progress = ((lx - (-15.0)) / 150.0).clamp(0.0, 1.0);
                         self.elapsed_sec = self.track_progress * self.total_duration_sec;
@@ -363,7 +409,7 @@ impl AppData {
             let vy = self.cursor_velocity[1];
 
             let dt = 1.0f32 / 60.0f32;
-            
+
             // Advance track playback when active
             if self.is_playing {
                 self.elapsed_sec += dt;
@@ -387,19 +433,31 @@ impl AppData {
             let ly = py * self.height as f32 - cy;
             let d_btn = ((lx - 48.0).powi(2) + (ly - (-10.0)).powi(2)).sqrt();
             let target_play = if d_btn <= 24.0 { 1.0f32 } else { 0.0f32 };
-            
-            let force = -spring_k * (self.hover_play_pos - target_play) - damping * self.hover_play_vel;
+
+            let force =
+                -spring_k * (self.hover_play_pos - target_play) - damping * self.hover_play_vel;
             self.hover_play_vel += force * dt;
             self.hover_play_pos += self.hover_play_vel * dt;
 
-            let in_box = px >= spec[0] - spec[2] * 0.5 && px <= spec[0] + spec[2] * 0.5 && py >= spec[1] - spec[3] * 0.5 && py <= spec[1] + spec[3] * 0.5;
+            let in_box = px >= spec[0] - spec[2] * 0.5
+                && px <= spec[0] + spec[2] * 0.5
+                && py >= spec[1] - spec[3] * 0.5
+                && py <= spec[1] + spec[3] * 0.5;
 
             // Active rendering while playing music, dragging, cursor moving, or spring settling
-            let spring_moving = (self.hover_play_pos - target_play).abs() > 0.003 || self.hover_play_vel.abs() > 0.003;
-            let cursor_moving = self.cursor_velocity[0].abs() > 0.0005 || self.cursor_velocity[1].abs() > 0.0005;
-            let active = self.is_playing || self.is_dragging || in_box || spring_moving || cursor_moving;
+            let spring_moving = (self.hover_play_pos - target_play).abs() > 0.003
+                || self.hover_play_vel.abs() > 0.003;
+            let cursor_moving =
+                self.cursor_velocity[0].abs() > 0.0005 || self.cursor_velocity[1].abs() > 0.0005;
+            let active =
+                self.is_playing || self.is_dragging || in_box || spring_moving || cursor_moving;
 
-            let b0 = [spec[0] - spec[2] * 0.5, spec[1] - spec[3] * 0.5, spec[2], spec[3]];
+            let b0 = [
+                spec[0] - spec[2] * 0.5,
+                spec[1] - spec[3] * 0.5,
+                spec[2],
+                spec[3],
+            ];
             let play_flag = if self.is_playing { 1.0f32 } else { 0.0f32 };
 
             // Liquid Glass Media Control Island
@@ -412,7 +470,12 @@ impl AppData {
                 .refraction(0.55)
                 .dispersion(0.02)
                 .blur(22.0)
-                .tint(play_flag, self.track_progress, self.hover_play_pos, self.elapsed_sec)
+                .tint(
+                    play_flag,
+                    self.track_progress,
+                    self.hover_play_pos,
+                    self.elapsed_sec,
+                )
                 .specular(0.80)
                 .fresnel(0.55)
                 .element_type(35.0)
@@ -476,7 +539,8 @@ fn init_wallpaper_1080p() -> Option<Arc<Vec<u8>>> {
         if let Ok(img) = image::open(candidate) {
             log::info!("Loaded wallpaper: {}", candidate);
             let rgba = img.to_rgba8();
-            let resized = image::imageops::resize(&rgba, 1920, 1080, image::imageops::FilterType::Triangle);
+            let resized =
+                image::imageops::resize(&rgba, 1920, 1080, image::imageops::FilterType::Triangle);
             return Some(Arc::new(resized.into_raw()));
         }
     }
@@ -511,14 +575,15 @@ fn get_wallpaper_crop(cache: &[u8], x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {
 
 fn main() {
     env_logger::init();
-    
+
     let conn = Connection::connect_to_env().unwrap();
     let display = conn.display();
     let display_ptr = display.id().as_ptr() as *mut std::ffi::c_void;
-    
-    let (globals, mut event_queue) = wayland_client::globals::registry_queue_init::<AppData>(&conn).unwrap();
+
+    let (globals, mut event_queue) =
+        wayland_client::globals::registry_queue_init::<AppData>(&conn).unwrap();
     let qh = event_queue.handle();
-    
+
     let registry_state = RegistryState::new(&globals);
     let shm = Shm::bind(&globals, &qh).expect("wl_shm missing");
     let screencopy = capture::ScreencopyState::new(&registry_state, &qh, &shm);
@@ -541,11 +606,11 @@ fn main() {
         shm,
         screencopy,
         seat_state,
-        
+
         layer_surface: None,
         renderer: None,
         window_wrapper: None,
-        
+
         pointer: None,
         cursor_pos: [-10.0, -10.0],
         cursor_velocity: [0.0, 0.0],
@@ -553,16 +618,16 @@ fn main() {
         is_dragging: false,
         drag_start_pos: [pos_x, pos_y],
         drag_grab_offset: [0, 0],
-        
+
         is_playing: true,
         track_progress: 0.38,
-        elapsed_sec: 84.0, // 1:24
+        elapsed_sec: 84.0,         // 1:24
         total_duration_sec: 225.0, // 3:45
         current_track_idx: 0,
-        
+
         hover_play_pos: 0.0,
         hover_play_vel: 0.0,
-        
+
         pos_x,
         pos_y,
         width,
@@ -577,7 +642,7 @@ fn main() {
     };
 
     let surface = app_data.compositor_state.create_surface(&qh);
-    
+
     let layer_surface = app_data.layer_shell.create_layer_surface(
         &qh,
         surface.clone(),
@@ -585,27 +650,27 @@ fn main() {
         Some("glass_panel"),
         None,
     );
-    
+
     layer_surface.set_anchor(Anchor::TOP | Anchor::LEFT);
     layer_surface.set_size(app_data.width, app_data.height);
     layer_surface.set_margin(app_data.pos_y, 0, 0, app_data.pos_x);
     layer_surface.set_exclusive_zone(0);
     layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
     layer_surface.commit();
-    
+
     app_data.layer_surface = Some(layer_surface);
-    
+
     let window_wrapper = Arc::new(WaylandWindow {
         surface: surface.clone(),
         display: display_ptr,
     });
     app_data.window_wrapper = Some(window_wrapper.clone());
-    
+
     // Pump events to get initial configure
     while app_data.first_configure {
         event_queue.blocking_dispatch(&mut app_data).unwrap();
     }
-    
+
     // Explicitly bind pointer if not already bound
     if app_data.pointer.is_none() {
         for seat in app_data.seat_state.seats() {
@@ -615,24 +680,31 @@ fn main() {
             }
         }
     }
-    
+
     // Initialize WGPU renderer
     let mut renderer = pollster::block_on(GlassRenderer::new(
         window_wrapper,
         app_data.width,
-        app_data.height
-    )).expect("Failed to init WGPU");
-    
+        app_data.height,
+    ))
+    .expect("Failed to init WGPU");
+
     // Upload initial background crop from pre-cached 1080p wallpaper buffer (sub-millisecond)
     if let Some(cache) = &app_data.wallpaper_cache {
-        let crop = get_wallpaper_crop(cache, app_data.pos_x as u32, app_data.pos_y as u32, app_data.width, app_data.height);
+        let crop = get_wallpaper_crop(
+            cache,
+            app_data.pos_x as u32,
+            app_data.pos_y as u32,
+            app_data.width,
+            app_data.height,
+        );
         renderer.update_background(app_data.width, app_data.height, &crop);
     }
-    
+
     app_data.renderer = Some(renderer);
-    
+
     app_data.draw();
-    
+
     let target_frame_time = std::time::Duration::from_millis(16);
     let mut last_frame = std::time::Instant::now();
 

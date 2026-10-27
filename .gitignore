@@ -1,11 +1,27 @@
 target/
-
-# Patches and scratch
+**/*.rs.bk
+*.orig
 *.patch
 *.diff
-*.orig
-/scratch/
 
-# Intermediate / experimentation shaders
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# IDE & editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary & build scratch
+/scratch/
+/tmp/
+*.log
+
+# Experimental shaders
 glass-core/src/renderer/glass_liquid.wgsl
 glass-core/src/renderer/glass_ui.wgsl
