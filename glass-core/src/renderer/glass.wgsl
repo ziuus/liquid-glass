@@ -1714,78 +1714,70 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     
     // ════════════════════════════════════════════
-    // 2. ANTI-ALIASED SILKY MASK
+    // 2. ANTI-ALIASED SILKY MASK & ANALYTICAL NORMAL
     // ════════════════════════════════════════════
     let mask = 1.0 - smoothstep(-1.0, 0.1, sdf);
     let inside = max(-sdf, 0.0);
-    // Bevel proximity metric: tight, refined boundary slope (8-14px)
-    let bevel_w = clamp(params.bevel * 1.1, 4.0, 14.0);
-    let edge = 1.0 - clamp(inside / bevel_w, 0.0, 1.0);
 
-    // ════════════════════════════════════════════
-    // 3. CONTINUOUS LIQUID DOME & SURFACE NORMAL
-    // ════════════════════════════════════════════
-    let min_dim = min(half_size.x, half_size.y);
-    let z_radius = min(max(params.bevel * 0.75, 4.0), min_dim * 0.50);
-    let eps = 1.0;
+    // Thick, sculpted liquid glass bevel (16px to 32px matching reference mockups)
+    let bevel_w = clamp(params.bevel, 14.0, 32.0);
+    let t = clamp(inside / bevel_w, 0.0, 1.0); // 0 at outer edge, 1 at interior flat face
+    let edge = 1.0 - t; // 1 at outer edge, 0 at interior flat face
 
-    let h_c = droplet_height(local_px, half_size, r, z_radius, cur_local, params.pointer_velocity, params.time, cur_active);
-    let h_r = droplet_height(local_px + vec2<f32>(eps, 0.0), half_size, r, z_radius, cur_local, params.pointer_velocity, params.time, cur_active);
-    let h_l = droplet_height(local_px - vec2<f32>(eps, 0.0), half_size, r, z_radius, cur_local, params.pointer_velocity, params.time, cur_active);
-    let h_u = droplet_height(local_px + vec2<f32>(0.0, eps), half_size, r, z_radius, cur_local, params.pointer_velocity, params.time, cur_active);
-    let h_d = droplet_height(local_px - vec2<f32>(0.0, eps), half_size, r, z_radius, cur_local, params.pointer_velocity, params.time, cur_active);
+    // Exact analytical 2D outward unit normal of the rounded rectangle
+    let eps_sdf = 0.5;
+    let d_dx = rr_sdf(local_px + vec2<f32>(eps_sdf, 0.0), half_size, r) - rr_sdf(local_px - vec2<f32>(eps_sdf, 0.0), half_size, r);
+    let d_dy = rr_sdf(local_px + vec2<f32>(0.0, eps_sdf), half_size, r) - rr_sdf(local_px - vec2<f32>(0.0, eps_sdf), half_size, r);
+    let grad_2d = normalize(vec2<f32>(d_dx, d_dy));
 
-    let h_grad = vec2<f32>(h_r - h_l, h_u - h_d) / (2.0 * eps);
-
-    let N = normalize(vec3<f32>(-(h_grad * params.curvature * 2.0), 1.0));
+    // Continuous 3D surface normal: quarter-cylinder meniscus bevel profile
+    let theta = edge * 1.5707963; // 0 at interior flat face, pi/2 at outer vertical perimeter
+    let sin_th = sin(theta);
+    let cos_th = cos(theta);
+    let N = normalize(vec3<f32>(grad_2d * sin_th, cos_th));
     let N_2d = N.xy;
 
     // ════════════════════════════════════════════
-    // 4. APPLE PLANAR LENS WITH PERIMETER MENISCUS REFRACTION (Snell's Law)
+    // 3. PHYSICAL SNELL'S LAW REFRACTION & PRISMATIC CAUSTICS
     // ════════════════════════════════════════════
-    // The interior face of the glass is planar: rays pass through orthogonally with ZERO geometric warping!
-    // Refraction and prismatic dispersion happen STRICTLY at the curved meniscus bevel (edge > 0.0):
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
-    let ior = 1.52; // Optical crown glass / liquid resin
-    let refr_pow = 1.0 - 1.0 / ior;
 
-    // Physical meniscus curvature and deflection
-    let bevel_curve = pow(edge, 1.5);
-    let refr_scale = 26.0 * params.refraction_strength * bevel_curve;
-    let refr_ray = N_2d * refr_pow * refr_scale * px_to_uv;
+    // Significant physical optical deflection (up to 52px) along the meniscus
+    let refr_dist = 52.0 * params.refraction_strength * sin_th;
+    let refr_ray = -grad_2d * refr_dist * px_to_uv;
 
-    // Physical prismatic spectral rainbow dispersion strictly along the meniscus edge
-    let ca_scale = 4.2 * pow(edge, 1.4);
-    let ca_offset = N_2d * ca_scale * px_to_uv;
+    // Prismatic spectral rainbow dispersion along the curved glass meniscus
+    let ca_dist = 14.0 * (params.dispersion * 45.0) * pow(edge, 1.3);
+    let ca_offset = -grad_2d * ca_dist * px_to_uv;
 
-    let uv_r = clamp(uv + refr_ray + ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
+    let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
     let uv_g = clamp(uv + refr_ray, vec2<f32>(0.001), vec2<f32>(0.999));
-    let uv_b = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
+    let uv_b = clamp(uv + refr_ray + ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
 
     // ════════════════════════════════════════════
-    // 5. BACKGROUND SAMPLING & APPLE VIBRANCY MATERIAL
+    // 4. VARIABLE BLUR: CRYSTAL-CLEAR RIM + FROSTED CENTER
     // ════════════════════════════════════════════
-    let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
-    let sharp_g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
-    let sharp_b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
-    let sharp = vec3<f32>(sharp_r, sharp_g, sharp_b);
+    // Outer meniscus rim is 100% CLEAR LIQUID GLASS (refracted & dispersed background is sharp!)
+    // Frost smoothly transitions into the interior flat face:
+    let frost = smoothstep(0.12, 0.88, t);
+    let local_blur = params.blur_radius * frost;
 
     var col: vec3<f32>;
-    let blur = params.blur_radius;
-    if blur <= 0.5 {
-        col = sharp;
+    if local_blur <= 0.5 {
+        let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
+        let sharp_g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
+        let sharp_b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
+        col = vec3<f32>(sharp_r, sharp_g, sharp_b);
     } else {
-        // Multi-sample Gaussian diffuse blur with optical dispersion
-        let blurred = blurred_sample_ca(uv_r, uv_g, uv_b, blur);
-        col = blurred;
+        col = blurred_sample_ca(uv_r, uv_g, uv_b, local_blur);
     }
 
-    // Measure local background luminance for adaptive light/dark contrast
+    // Measure local background luminance for adaptive contrast
     let bg_luma = dot(col, vec3<f32>(0.299, 0.587, 0.114));
     let is_light = smoothstep(0.38, 0.65, bg_luma);
 
     // Apple Vibrancy: boost saturation in blurred layer so wallpaper colors glow warmly
-    let sat_col = mix(vec3<f32>(bg_luma), col, 1.25);
+    let sat_col = mix(vec3<f32>(bg_luma), col, 1.30);
     col = sat_col;
 
     // Apple Smoked Quartz Adaptation on light wallpapers:
@@ -1793,46 +1785,56 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let smoked_depth = vec3<f32>(0.07, 0.09, 0.13);
     col = mix(col, mix(col * 0.70, smoked_depth, 0.28), is_light);
 
-    // Directional ambient light gradient (subtle top highlight)
-    let top_light = clamp(1.0 - (local_px.y + half_size.y) / (half_size.y * 2.0), 0.0, 1.0);
-    let ambient_sheen = vec3<f32>(1.0, 1.0, 1.0) * (0.05 + 0.05 * top_light);
-    col += ambient_sheen;
+    // ════════════════════════════════════════════
+    // 5. PHYSICAL SPECULAR HIGHLIGHTS & INTERNAL HORIZON
+    // ════════════════════════════════════════════
+    let L_sun = normalize(vec3<f32>(-0.60, -0.80, 0.70));
+    let V = vec3<f32>(0.0, 0.0, 1.0);
+    let H_sun = normalize(L_sun + V);
+    let N_dot_H = max(dot(N, H_sun), 0.0);
 
-    // Physical caustic focus band where rays concentrate at the meniscus shoulder
-    let L_sun = normalize(vec2<f32>(-0.60, -0.80)); // Top-left primary daylight
-    let rim_sun = max(dot(N_2d, L_sun), 0.0);
+    // 1. Razor-sharp 1.2px hairline specular crest on illuminated outer bevel
+    let hairline = smoothstep(2.5, 0.2, inside);
+    let outer_glint = hairline * pow(N_dot_H, 16.0) * 2.2 * params.specular_strength;
 
-    let caustic_dist = inside - (bevel_w * 0.70);
-    let caustic = exp(-caustic_dist * caustic_dist * 0.35) * (rim_sun * 0.35 + 0.08) * params.specular_strength;
-    col += vec3<f32>(caustic * 1.05, caustic * 1.00, caustic * 0.95);
+    // 2. Inner caustic ridge (where curved meniscus meets flat face)
+    let d_shoulder = abs(inside - bevel_w * 0.85);
+    let shoulder_caustic = exp(-d_shoulder * d_shoulder * 0.30) * pow(max(dot(grad_2d, -L_sun.xy), 0.0), 1.4) * 0.75 * params.specular_strength;
+
+    // 3. Dark internal reflection horizon between outer and inner glints (gives physical volume)
+    let d_trough = abs(inside - bevel_w * 0.45);
+    let tir_dark = exp(-d_trough * d_trough * 0.25) * 0.26;
+    col = col * (1.0 - tir_dark);
+
+    // 4. Subtle ambient ground bounce on bottom counter-edge
+    let L_bot = normalize(vec3<f32>(0.60, 0.80, 0.30));
+    let bot_bounce = hairline * pow(max(dot(N, normalize(L_bot + V)), 0.0), 8.0) * 0.35 * params.specular_strength;
+
+    // 5. Fresnel edge gleam
+    let fresnel = pow(1.0 - max(N.z, 0.0), 3.0);
+    let fresnel_gleam = fresnel * vec3<f32>(1.0, 1.0, 1.0) * (0.12 + 0.20 * max(dot(grad_2d, -L_sun.xy), 0.0));
+
+    col += vec3<f32>(outer_glint + shoulder_caustic + bot_bounce) + fresnel_gleam;
 
     // ════════════════════════════════════════════
-    // 6. FRESNEL TOTAL INTERNAL REFLECTION
+    // 6. INSET FROSTED COMPLICATION PLATE (Image 3 Architecture)
     // ════════════════════════════════════════════
-    let fresnel = pow(1.0 - max(N.z, 0.0), 3.5);
-    let fresnel_gleam = fresnel * pow(edge, 2.0) * vec3<f32>(1.0, 1.0, 1.0) * (rim_sun * 0.20 + 0.05);
-    col += fresnel_gleam;
+    let plate_margin = 12.0;
+    let plate_half = half_size - vec2<f32>(plate_margin, plate_margin);
+    let plate_r = max(r - 8.0, 12.0);
+    let d_plate = rr_sdf(local_px, plate_half, plate_r);
 
-    // ════════════════════════════════════════════
-    // 7. APPLE SPECULAR RIM LIGHTING (Directional Sun Glint)
-    // ════════════════════════════════════════════
-    // Razor-sharp 1.0px hairline specular glint on the illuminated crest
-    let hairline = smoothstep(1.2, 0.1, inside);
-    let top_gleam = hairline * pow(rim_sun, 1.5) * 1.25 * params.specular_strength;
-
-    // Soft secondary meniscus shoulder highlight
-    let shoulder = pow(edge, 2.5) * pow(rim_sun, 1.2) * 0.35 * params.specular_strength;
-
-    // Ambient bottom counter-rim (subtle reflection of ground light)
-    let L_bot = normalize(vec2<f32>(0.60, 0.80));
-    let bot_rim = hairline * pow(max(dot(N_2d, L_bot), 0.0), 2.5) * 0.22 * params.specular_strength;
-
-    let spec_total = top_gleam + shoulder + bot_rim;
-    col += vec3<f32>(spec_total);
-
-    // ════════════════════════════════════════════
-    // 8. DYNAMIC LIQUID EDGE HOVER (Side-Approach Flare)
-    // ════════════════════════════════════════════
+    if d_plate > 0.0 {
+        // Contact ambient occlusion beneath the complication plate
+        let plate_sh = exp(-d_plate * 0.35) * 0.18;
+        col *= (1.0 - plate_sh);
+    } else {
+        // Frosted plate fill with delicate top specular glint
+        let plate_fill = mix(vec3<f32>(1.0), vec3<f32>(0.05), is_light * 0.40) * 0.06;
+        col += plate_fill;
+        let plate_glint = smoothstep(1.5, 0.0, -d_plate) * smoothstep(0.0, -14.0, local_px.y - (-plate_half.y)) * 0.25;
+        col += vec3<f32>(plate_glint);
+    }
     var side_bevel_flare = 0.0;
     var side_rim_flare = 0.0;
     if params.pointer_pos.x >= 0.0 {

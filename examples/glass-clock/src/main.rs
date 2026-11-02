@@ -344,17 +344,17 @@ impl AppData {
             // Glass Surface using shader element_type 25.0 (Clock Face)
             let clock_card = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::RoundedRectangle { radius: 24.0 })
+                .shape(Shape::RoundedRectangle { radius: 26.0 })
                 .bounds(0.0, 0.0, 1.0, 1.0)
-                .curvature(0.04)
-                .bevel(9.0)
-                .refraction(0.50)
-                .dispersion(0.018)
-                .blur(20.0)
+                .curvature(0.08)
+                .bevel(22.0)
+                .refraction(0.85)
+                .dispersion(0.024)
+                .blur(22.0)
                 .tint(accent[0], accent[1], accent[2], accent[3])
                 .roughness(self.battery_level)
-                .specular(0.85)
-                .fresnel(0.55)
+                .specular(1.0)
+                .fresnel(0.65)
                 .element_type(25.0)
                 .progress(time_val)
                 .deformation(date_val)
@@ -464,9 +464,13 @@ fn get_active_wallpaper_path() -> Option<String> {
 fn dirs_cache_awww() -> Option<String> {
     let home = std::env::var("HOME").ok()?;
     let dir = format!("{}/.cache/awww/0.12.1/eDP-1", home);
-    if let Ok(s) = std::fs::read_to_string(&dir) {
-        if let Some(last_tok) = s.split_whitespace().last() {
-            return Some(last_tok.to_string());
+    if let Ok(bytes) = std::fs::read(&dir) {
+        let s = String::from_utf8_lossy(&bytes);
+        for part in s.split(|c: char| c == '\0' || c.is_whitespace()) {
+            let trimmed = part.trim();
+            if trimmed.starts_with('/') && std::path::Path::new(trimmed).exists() {
+                return Some(trimmed.to_string());
+            }
         }
     }
     None
