@@ -88,6 +88,7 @@ struct AppData {
     last_todo_mtime: Option<std::time::SystemTime>,
     active_tab: u32,    // 0 = Tasks, 1 = Agenda
     active_filter: u32, // 0 = All, 1 = Active, 2 = Done
+    new_task_queue: Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 struct WaylandWindow {
@@ -387,26 +388,25 @@ impl PointerHandler for AppData {
 }
 
 impl AppData {
+    fn filtered_indices(&self) -> Vec<usize> {
+        self.todos
+            .tasks
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| match self.active_filter {
+                1 => !t.done,
+                2 => t.done,
+                _ => true,
+            })
+            .map(|(i, _)| i)
+            .collect()
+    }
+
     fn handle_click(&mut self, px: f32, py: f32) -> bool {
         let half_w = self.width as f32 * 0.5;
         let half_h = self.height as f32 * 0.5;
         let local_x = px - half_w;
         let local_y = py - half_h;
-
-        // Check task row checkboxes (y = -105 + i * 44, x = -135)
-        for i in 0..6 {
-            let row_y = -105.0 + (i as f32) * 44.0;
-            // Checkbox hit box: x within [-150, -115], y within [row_y - 16, row_y + 16]
-            if (-150.0..=-115.0).contains(&local_x)
-                && (local_y - row_y).abs() <= 16.0
-                && i < self.todos.tasks.len()
-            {
-                self.todos.tasks[i].done = !self.todos.tasks[i].done;
-                self.save_todos();
-                self.draw();
-                return true;
-            }
-        }
 
         // Check Tabs (y = -188, x = -76 or +76)
         if (local_y - (-188.0)).abs() <= 16.0 {
@@ -420,7 +420,7 @@ impl AppData {
         }
 
         // Check Filters (y = -148)
-        if (local_y - (-148.0)).abs() <= 14.0 {
+        if self.active_tab == 0 && (local_y - (-148.0)).abs() <= 14.0 {
             if (-126.0..=-66.0).contains(&local_x) {
                 self.active_filter = 0; // All
             } else if (-58.0..=10.0).contains(&local_x) {
@@ -432,12 +432,72 @@ impl AppData {
             return true;
         }
 
-        // Add task button (y = 185, x = 135)
-        if (local_y - 185.0).abs() <= 18.0 && (local_x - 135.0).abs() <= 18.0 {
+        // Check task row checkboxes (y = -105 + i * 44, x = -135)
+        if self.active_tab == 0 {
+            let visible_indices = self.filtered_indices();
+            for (display_row, &actual_idx) in visible_indices.iter().enumerate().take(6) {
+                let row_y = -105.0 + (display_row as f32) * 44.0;
+                // Checkbox hit box: x within [-150, -115], y within [row_y - 16, row_y + 16]
+                if (-150.0..=-115.0).contains(&local_x)
+                    && (local_y - row_y).abs() <= 16.0
+                    && actual_idx < self.todos.tasks.len()
+                {
+                    self.todos.tasks[actual_idx].done = !self.todos.tasks[actual_idx].done;
+                    self.save_todos();
+                    self.draw();
+                    return true;
+                }
+            }
+        }
+
+        // Add task button (y = 185)
+        if self.active_tab == 0 && (local_y - 185.0).abs() <= 18.0 {
+            let q_clone = self.new_task_queue.clone();
+            std::thread::spawn(move || {
+                let output = std::process::Command::new("zenity")
+                    .args([
+                        "--entry",
+                        "--title=Add Task",
+                        "--text=Enter task description:",
+                    ])
+                    .output();
+                if let Ok(out) = output {
+                    if out.status.success() {
+                        let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                        if !text.is_empty() {
+                            if let Ok(mut q) = q_clone.lock() {
+                                q.push(text);
+                            }
+                        }
+                    }
+                }
+            });
             return true;
         }
 
         false
+    }
+
+    fn check_new_tasks(&mut self) -> bool {
+        let mut added = false;
+        if let Ok(mut q) = self.new_task_queue.lock() {
+            if !q.is_empty() {
+                for new_task in q.drain(..) {
+                    self.todos.tasks.push(TodoItem {
+                        text: new_task,
+                        done: false,
+                        r#type: "daily".to_string(),
+                        lastCompletedDate: String::new(),
+                    });
+                    added = true;
+                }
+            }
+        }
+        if added {
+            self.save_todos();
+            self.draw();
+        }
+        added
     }
 
     fn save_todos(&self) {
@@ -462,6 +522,7 @@ impl AppData {
                     if let Ok(content) = std::fs::read_to_string(&path) {
                         if let Ok(st) = serde_json::from_str::<TodoState>(&content) {
                             self.todos = st;
+                            self.draw();
                         }
                     }
                 }
@@ -497,33 +558,33 @@ impl AppData {
 
     fn draw(&mut self) -> bool {
         self.check_wallpaper();
-        self.check_todos();
+        let _ = self.check_new_tasks();
+
+        let visible_indices = self.filtered_indices();
+        let mut bitmask = 0u32;
+        for (display_row, &actual_idx) in visible_indices.iter().enumerate().take(6) {
+            if actual_idx < self.todos.tasks.len() && self.todos.tasks[actual_idx].done {
+                bitmask |= 1 << display_row;
+            }
+        }
 
         if let Some(renderer) = &mut self.renderer {
-            // Pack task completion bitmask into progress
-            let mut bitmask = 0u32;
-            for (idx, task) in self.todos.tasks.iter().enumerate().take(6) {
-                if task.done {
-                    bitmask |= 1 << idx;
-                }
-            }
-
             let deformation_val = (self.active_tab as f32) * 10.0 + (self.active_filter as f32);
             let accent = get_theme_accent();
 
             let (px, py) = (self.cursor_pos[0], self.cursor_pos[1]);
             let (vx, vy) = (self.cursor_velocity[0], self.cursor_velocity[1]);
 
-            // Glass Surface using shader element_type 26.0 (Todo Widget)
+            // True Optical Liquid Glass Surface using shader element_type 26.0 (Todo Widget)
             let todo_card = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::RoundedRectangle { radius: 26.0 })
                 .bounds(0.0, 0.0, 1.0, 1.0)
                 .curvature(0.02)
-                .bevel(2.5)
-                .refraction(0.15)
+                .bevel(5.5)
+                .refraction(0.35)
                 .dispersion(0.0)
-                .blur(36.0)
+                .blur(16.0)
                 .tint(accent[0], accent[1], accent[2], accent[3])
                 .roughness(-1.0) // Hover row
                 .specular(1.0)
@@ -766,6 +827,7 @@ fn main() {
         last_todo_mtime: None,
         active_tab: 0,
         active_filter: 0,
+        new_task_queue: Arc::new(std::sync::Mutex::new(Vec::new())),
     };
 
     let surface = app_data.compositor_state.create_surface(&qh);
@@ -811,6 +873,7 @@ fn main() {
         let _ = conn.flush();
 
         // Check if external state changed every 500ms
+        let _ = app_data.check_new_tasks();
         app_data.check_todos();
         app_data.check_wallpaper();
 

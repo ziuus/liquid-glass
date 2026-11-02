@@ -625,6 +625,134 @@ fn eval_todo_row_text(p: vec2<f32>, row_idx: u32) -> f32 {
     return d;
 }
 
+// ── Evaluator for Agenda Schedule Row Typography ──
+fn eval_agenda_row_text(p: vec2<f32>, row_idx: u32) -> f32 {
+    let row_y = -105.0 + f32(row_idx) * 44.0;
+    let tm_start = -135.0;
+    let tm_sp = 6.8;
+    var d_time = 999.0;
+    
+    // Time badges: 09:00, 11:30, 14:00, 16:30, 18:00, 20:00
+    if row_idx == 0u {
+        // 09:00
+        let t0 = draw_digit(p - vec2<f32>(tm_start + 0.0 * tm_sp, row_y), 0u, 0.75);
+        let t1 = draw_digit(p - vec2<f32>(tm_start + 1.0 * tm_sp, row_y), 9u, 0.75);
+        let col = draw_colon(p - vec2<f32>(tm_start + 1.8 * tm_sp, row_y), 0.75);
+        let t2 = draw_digit(p - vec2<f32>(tm_start + 2.6 * tm_sp, row_y), 0u, 0.75);
+        let t3 = draw_digit(p - vec2<f32>(tm_start + 3.6 * tm_sp, row_y), 0u, 0.75);
+        d_time = min(min(min(t0, t1), col), min(t2, t3));
+    } else if row_idx == 1u {
+        // 11:30
+        let t0 = draw_digit(p - vec2<f32>(tm_start + 0.0 * tm_sp, row_y), 1u, 0.75);
+        let t1 = draw_digit(p - vec2<f32>(tm_start + 1.0 * tm_sp, row_y), 1u, 0.75);
+        let col = draw_colon(p - vec2<f32>(tm_start + 1.8 * tm_sp, row_y), 0.75);
+        let t2 = draw_digit(p - vec2<f32>(tm_start + 2.6 * tm_sp, row_y), 3u, 0.75);
+        let t3 = draw_digit(p - vec2<f32>(tm_start + 3.6 * tm_sp, row_y), 0u, 0.75);
+        d_time = min(min(min(t0, t1), col), min(t2, t3));
+    } else if row_idx == 2u {
+        // 14:00
+        let t0 = draw_digit(p - vec2<f32>(tm_start + 0.0 * tm_sp, row_y), 1u, 0.75);
+        let t1 = draw_digit(p - vec2<f32>(tm_start + 1.0 * tm_sp, row_y), 4u, 0.75);
+        let col = draw_colon(p - vec2<f32>(tm_start + 1.8 * tm_sp, row_y), 0.75);
+        let t2 = draw_digit(p - vec2<f32>(tm_start + 2.6 * tm_sp, row_y), 0u, 0.75);
+        let t3 = draw_digit(p - vec2<f32>(tm_start + 3.6 * tm_sp, row_y), 0u, 0.75);
+        d_time = min(min(min(t0, t1), col), min(t2, t3));
+    } else if row_idx == 3u {
+        // 16:30
+        let t0 = draw_digit(p - vec2<f32>(tm_start + 0.0 * tm_sp, row_y), 1u, 0.75);
+        let t1 = draw_digit(p - vec2<f32>(tm_start + 1.0 * tm_sp, row_y), 6u, 0.75);
+        let col = draw_colon(p - vec2<f32>(tm_start + 1.8 * tm_sp, row_y), 0.75);
+        let t2 = draw_digit(p - vec2<f32>(tm_start + 2.6 * tm_sp, row_y), 3u, 0.75);
+        let t3 = draw_digit(p - vec2<f32>(tm_start + 3.6 * tm_sp, row_y), 0u, 0.75);
+        d_time = min(min(min(t0, t1), col), min(t2, t3));
+    } else if row_idx == 4u {
+        // 18:00
+        let t0 = draw_digit(p - vec2<f32>(tm_start + 0.0 * tm_sp, row_y), 1u, 0.75);
+        let t1 = draw_digit(p - vec2<f32>(tm_start + 1.0 * tm_sp, row_y), 8u, 0.75);
+        let col = draw_colon(p - vec2<f32>(tm_start + 1.8 * tm_sp, row_y), 0.75);
+        let t2 = draw_digit(p - vec2<f32>(tm_start + 2.6 * tm_sp, row_y), 0u, 0.75);
+        let t3 = draw_digit(p - vec2<f32>(tm_start + 3.6 * tm_sp, row_y), 0u, 0.75);
+        d_time = min(min(min(t0, t1), col), min(t2, t3));
+    } else if row_idx == 5u {
+        // 20:00
+        let t0 = draw_digit(p - vec2<f32>(tm_start + 0.0 * tm_sp, row_y), 2u, 0.75);
+        let t1 = draw_digit(p - vec2<f32>(tm_start + 1.0 * tm_sp, row_y), 0u, 0.75);
+        let col = draw_colon(p - vec2<f32>(tm_start + 1.8 * tm_sp, row_y), 0.75);
+        let t2 = draw_digit(p - vec2<f32>(tm_start + 2.6 * tm_sp, row_y), 0u, 0.75);
+        let t3 = draw_digit(p - vec2<f32>(tm_start + 3.6 * tm_sp, row_y), 0u, 0.75);
+        d_time = min(min(min(t0, t1), col), min(t2, t3));
+    }
+
+    let ev_start = -92.0;
+    let ev_sp = 8.0;
+    let sc = 0.95;
+    var d_title = 999.0;
+    if row_idx == 0u {
+        // STANDUP
+        let c0 = draw_clock_letter(p - vec2<f32>(ev_start + 0.0 * ev_sp, row_y), 83u, sc);
+        let c1 = draw_clock_letter(p - vec2<f32>(ev_start + 1.0 * ev_sp, row_y), 84u, sc);
+        let c2 = draw_clock_letter(p - vec2<f32>(ev_start + 2.0 * ev_sp, row_y), 65u, sc);
+        let c3 = draw_clock_letter(p - vec2<f32>(ev_start + 3.0 * ev_sp, row_y), 78u, sc);
+        let c4 = draw_clock_letter(p - vec2<f32>(ev_start + 4.0 * ev_sp, row_y), 68u, sc);
+        let c5 = draw_clock_letter(p - vec2<f32>(ev_start + 5.0 * ev_sp, row_y), 85u, sc);
+        let c6 = draw_clock_letter(p - vec2<f32>(ev_start + 6.0 * ev_sp, row_y), 80u, sc);
+        d_title = min(min(min(c0, c1), min(c2, c3)), min(min(c4, c5), c6));
+    } else if row_idx == 1u {
+        // CODE REV
+        let c0 = draw_clock_letter(p - vec2<f32>(ev_start + 0.0 * ev_sp, row_y), 67u, sc);
+        let c1 = draw_clock_letter(p - vec2<f32>(ev_start + 1.0 * ev_sp, row_y), 79u, sc);
+        let c2 = draw_clock_letter(p - vec2<f32>(ev_start + 2.0 * ev_sp, row_y), 68u, sc);
+        let c3 = draw_clock_letter(p - vec2<f32>(ev_start + 3.0 * ev_sp, row_y), 69u, sc);
+        let c4 = draw_clock_letter(p - vec2<f32>(ev_start + 4.6 * ev_sp, row_y), 82u, sc);
+        let c5 = draw_clock_letter(p - vec2<f32>(ev_start + 5.6 * ev_sp, row_y), 69u, sc);
+        let c6 = draw_clock_letter(p - vec2<f32>(ev_start + 6.6 * ev_sp, row_y), 86u, sc);
+        d_title = min(min(min(c0, c1), min(c2, c3)), min(min(c4, c5), c6));
+    } else if row_idx == 2u {
+        // DEEP WORK
+        let c0 = draw_clock_letter(p - vec2<f32>(ev_start + 0.0 * ev_sp, row_y), 68u, sc);
+        let c1 = draw_clock_letter(p - vec2<f32>(ev_start + 1.0 * ev_sp, row_y), 69u, sc);
+        let c2 = draw_clock_letter(p - vec2<f32>(ev_start + 2.0 * ev_sp, row_y), 69u, sc);
+        let c3 = draw_clock_letter(p - vec2<f32>(ev_start + 3.0 * ev_sp, row_y), 80u, sc);
+        let c4 = draw_clock_letter(p - vec2<f32>(ev_start + 4.6 * ev_sp, row_y), 87u, sc);
+        let c5 = draw_clock_letter(p - vec2<f32>(ev_start + 5.6 * ev_sp, row_y), 79u, sc);
+        let c6 = draw_clock_letter(p - vec2<f32>(ev_start + 6.6 * ev_sp, row_y), 82u, sc);
+        let c7 = draw_clock_letter(p - vec2<f32>(ev_start + 7.6 * ev_sp, row_y), 75u, sc);
+        d_title = min(min(min(c0, c1), min(c2, c3)), min(min(c4, c5), min(c6, c7)));
+    } else if row_idx == 3u {
+        // PLANNING
+        let c0 = draw_clock_letter(p - vec2<f32>(ev_start + 0.0 * ev_sp, row_y), 80u, sc);
+        let c1 = draw_clock_letter(p - vec2<f32>(ev_start + 1.0 * ev_sp, row_y), 76u, sc);
+        let c2 = draw_clock_letter(p - vec2<f32>(ev_start + 2.0 * ev_sp, row_y), 65u, sc);
+        let c3 = draw_clock_letter(p - vec2<f32>(ev_start + 3.0 * ev_sp, row_y), 78u, sc);
+        let c4 = draw_clock_letter(p - vec2<f32>(ev_start + 4.0 * ev_sp, row_y), 78u, sc);
+        let c5 = draw_clock_letter(p - vec2<f32>(ev_start + 5.0 * ev_sp, row_y), 73u, sc);
+        let c6 = draw_clock_letter(p - vec2<f32>(ev_start + 6.0 * ev_sp, row_y), 78u, sc);
+        let c7 = draw_clock_letter(p - vec2<f32>(ev_start + 7.0 * ev_sp, row_y), 71u, sc);
+        d_title = min(min(min(c0, c1), min(c2, c3)), min(min(c4, c5), min(c6, c7)));
+    } else if row_idx == 4u {
+        // WRAP UP
+        let c0 = draw_clock_letter(p - vec2<f32>(ev_start + 0.0 * ev_sp, row_y), 87u, sc);
+        let c1 = draw_clock_letter(p - vec2<f32>(ev_start + 1.0 * ev_sp, row_y), 82u, sc);
+        let c2 = draw_clock_letter(p - vec2<f32>(ev_start + 2.0 * ev_sp, row_y), 65u, sc);
+        let c3 = draw_clock_letter(p - vec2<f32>(ev_start + 3.0 * ev_sp, row_y), 80u, sc);
+        let c4 = draw_clock_letter(p - vec2<f32>(ev_start + 4.6 * ev_sp, row_y), 85u, sc);
+        let c5 = draw_clock_letter(p - vec2<f32>(ev_start + 5.6 * ev_sp, row_y), 80u, sc);
+        d_title = min(min(min(c0, c1), min(c2, c3)), min(c4, c5));
+    } else if row_idx == 5u {
+        // WORKOUT
+        let c0 = draw_clock_letter(p - vec2<f32>(ev_start + 0.0 * ev_sp, row_y), 87u, sc);
+        let c1 = draw_clock_letter(p - vec2<f32>(ev_start + 1.0 * ev_sp, row_y), 79u, sc);
+        let c2 = draw_clock_letter(p - vec2<f32>(ev_start + 2.0 * ev_sp, row_y), 82u, sc);
+        let c3 = draw_clock_letter(p - vec2<f32>(ev_start + 3.0 * ev_sp, row_y), 75u, sc);
+        let c4 = draw_clock_letter(p - vec2<f32>(ev_start + 4.0 * ev_sp, row_y), 79u, sc);
+        let c5 = draw_clock_letter(p - vec2<f32>(ev_start + 5.0 * ev_sp, row_y), 85u, sc);
+        let c6 = draw_clock_letter(p - vec2<f32>(ev_start + 6.0 * ev_sp, row_y), 84u, sc);
+        d_title = min(min(min(c0, c1), min(c2, c3)), min(min(c4, c5), c6));
+    }
+
+    return min(d_time, d_title);
+}
+
 // ── Serene Liquid Glass Clock Appearance ──
 fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, progress: f32, time: f32, tint: vec4<f32>, is_light: f32) -> ElementAppearance {
     var app: ElementAppearance;
@@ -1125,6 +1253,9 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let pill_frost_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.0, 0.0, 0.0), is_light);
         let pill_rim_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.08, 0.10, 0.14), is_light);
 
+        let active_tab = u32(params.deformation / 10.0 + 0.05);
+        let active_filter = u32(params.deformation + 0.05) % 10u;
+
         let mask_done = u32(progress);
         let hover_row = params.roughness;
 
@@ -1137,11 +1268,12 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let mask_track_fill = (1.0 - smoothstep(-0.4, 0.4, d_track)) * 0.05;
         let mask_track_rim = smoothstep(1.0, 0.0, abs(d_track)) * 0.20;
 
-        // Tab 1: Tasks (cx = -76.0, half = 72.0x13.0, r = 13.0) - ACTIVE
+        // Tab 1: Tasks (cx = -76.0, half = 72.0x13.0, r = 13.0)
         let p_tab1 = local_p - vec2<f32>(-76.0, top_y);
         let d_tab1 = rr_sdf(p_tab1, vec2<f32>(72.0, 13.0), 13.0);
-        let mask_tab1_fill = (1.0 - smoothstep(-0.4, 0.4, d_tab1)) * 0.10;
-        let mask_tab1_rim = smoothstep(1.1, 0.0, abs(d_tab1)) * 0.28;
+        let is_tab1_act = (active_tab == 0u);
+        let mask_tab1_fill = (1.0 - smoothstep(-0.4, 0.4, d_tab1)) * select(0.0, 0.12, is_tab1_act);
+        let mask_tab1_rim = smoothstep(1.1, 0.0, abs(d_tab1)) * select(0.12, 0.32, is_tab1_act);
 
         // Tab 1 Text: TASKS (6)
         let t1_cx = -76.0;
@@ -1157,10 +1289,12 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let d_tab1_txt = min(min(min(dt0, dt1), min(dt2, dt3)), min(min(dt4, dt_p0), min(dt5, dt_p1))) - 0.70;
         let mask_tab1_txt = 1.0 - smoothstep(-0.35, 0.35, d_tab1_txt);
 
-        // Tab 2: Agenda (cx = 76.0, half = 72.0x13.0, r = 13.0) - INACTIVE
+        // Tab 2: Agenda (cx = 76.0, half = 72.0x13.0, r = 13.0)
         let p_tab2 = local_p - vec2<f32>(76.0, top_y);
         let d_tab2 = rr_sdf(p_tab2, vec2<f32>(72.0, 13.0), 13.0);
-        let mask_tab2_rim = smoothstep(1.0, 0.0, abs(d_tab2)) * mix(0.25, 0.15, is_light);
+        let is_tab2_act = (active_tab == 1u);
+        let mask_tab2_fill = (1.0 - smoothstep(-0.4, 0.4, d_tab2)) * select(0.0, 0.12, is_tab2_act);
+        let mask_tab2_rim = smoothstep(1.1, 0.0, abs(d_tab2)) * select(0.12, 0.32, is_tab2_act);
 
         // Tab 2 Text: AGENDA
         let t2_cx = 76.0;
@@ -1173,51 +1307,17 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let d_tab2_txt = min(min(min(da0, da1), min(da2, da3)), min(da4, da5)) - 0.65;
         let mask_tab2_txt = 1.0 - smoothstep(-0.35, 0.35, d_tab2_txt);
 
-        // ════════════════════════════════════════════
-        // 2. FILTER STRIP (y = -148.0)
-        // ════════════════════════════════════════════
-        let filt_y = -148.0;
-        // ALL Pill
-        let p_all = local_p - vec2<f32>(-96.0, filt_y);
-        let d_all = rr_sdf(p_all, vec2<f32>(30.0, 10.0), 10.0);
-        let mask_all_fill = (1.0 - smoothstep(-0.4, 0.4, d_all)) * 0.08;
-        let mask_all_rim = smoothstep(1.0, 0.0, abs(d_all)) * 0.22;
-        let dl0 = draw_clock_letter(p_all - vec2<f32>(-11.0, 0.0), 65u, 0.85); // A
-        let dl1 = draw_clock_letter(p_all - vec2<f32>(0.0, 0.0), 76u, 0.85);  // L
-        let dl2 = draw_clock_letter(p_all - vec2<f32>(11.0, 0.0), 76u, 0.85); // L
-        let mask_all_txt = 1.0 - smoothstep(-0.35, 0.35, min(min(dl0, dl1), dl2) - 0.65);
+        var mask_all_fill = 0.0;
+        var mask_all_rim = 0.0;
+        var mask_all_txt = 0.0;
+        var mask_act_fill = 0.0;
+        var mask_act_rim = 0.0;
+        var mask_act_txt = 0.0;
+        var mask_don_fill = 0.0;
+        var mask_don_rim = 0.0;
+        var mask_don_txt = 0.0;
+        var mask_ref = 0.0;
 
-        // ACTIVE Pill
-        let p_act = local_p - vec2<f32>(-24.0, filt_y);
-        let d_act = rr_sdf(p_act, vec2<f32>(34.0, 10.0), 10.0);
-        let mask_act_rim = smoothstep(1.0, 0.0, abs(d_act)) * 0.16;
-        let dc0 = draw_clock_letter(p_act - vec2<f32>(-16.0, 0.0), 65u, 0.80);
-        let dc1 = draw_clock_letter(p_act - vec2<f32>(-6.0, 0.0), 67u, 0.80);
-        let dc2 = draw_clock_letter(p_act - vec2<f32>(4.0, 0.0), 84u, 0.80);
-        let dc3 = draw_clock_letter(p_act - vec2<f32>(14.0, 0.0), 86u, 0.80);
-        let mask_act_txt = 1.0 - smoothstep(-0.35, 0.35, min(min(dc0, dc1), min(dc2, dc3)) - 0.60);
-
-        // DONE Pill
-        let p_don = local_p - vec2<f32>(48.0, filt_y);
-        let d_don = rr_sdf(p_don, vec2<f32>(30.0, 10.0), 10.0);
-        let mask_don_rim = smoothstep(1.0, 0.0, abs(d_don)) * 0.16;
-        let dd0 = draw_clock_letter(p_don - vec2<f32>(-11.0, 0.0), 68u, 0.80);
-        let dd1 = draw_clock_letter(p_don - vec2<f32>(0.0, 0.0), 79u, 0.80);
-        let dd2 = draw_clock_letter(p_don - vec2<f32>(11.0, 0.0), 78u, 0.80);
-        let mask_don_txt = 1.0 - smoothstep(-0.35, 0.35, min(min(dd0, dd1), dd2) - 0.60);
-
-        // Refresh Icon ↻
-        let p_ref = local_p - vec2<f32>(120.0, filt_y);
-        let r_ref = length(p_ref);
-        let d_ref_arc = abs(r_ref - 5.5) - 0.65;
-        let ang_ref = atan2(p_ref.y, p_ref.x);
-        let mask_ref_arc = select(1.0 - smoothstep(-0.35, 0.35, d_ref_arc), 0.0, ang_ref > 1.2 && ang_ref < 2.0);
-        let d_ref_arr = dist_segment(p_ref, vec2<f32>(3.5, 3.5), vec2<f32>(7.5, 3.5));
-        let mask_ref = max(mask_ref_arc, 1.0 - smoothstep(-0.35, 0.35, d_ref_arr - 0.65));
-
-        // ════════════════════════════════════════════
-        // 3. TASK ROWS (6 Rows, y = -105.0 to +115.0)
-        // ════════════════════════════════════════════
         var rows_fill = 0.0;
         var rows_rim = 0.0;
         var check_fills = 0.0;
@@ -1231,97 +1331,224 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         var task_txt_shadow = 0.0;
         var task_txt_dimmed = 0.0;
 
-        for (var i = 0u; i < 6u; i += 1u) {
-            let row_y = -105.0 + f32(i) * 44.0;
-            let p_row = local_p - vec2<f32>(0.0, row_y);
-            let d_row = rr_sdf(p_row, vec2<f32>(156.0, 18.0), 10.0);
+        var mask_add_fill = 0.0;
+        var mask_add_rim = 0.0;
+        var mask_plus_fill = 0.0;
+        var mask_plus_icon = 0.0;
+        var mask_add_txt = 0.0;
 
-            let is_row_hover = (hover_row >= f32(i) - 0.1 && hover_row <= f32(i) + 0.1);
-            let hover_boost = select(0.0, 0.12, is_row_hover);
+        if active_tab == 0u {
+            // ════════════════════════════════════════════
+            // 2. FILTER STRIP (y = -148.0) - TASKS VIEW
+            // ════════════════════════════════════════════
+            let filt_y = -148.0;
 
-            let fill = (1.0 - smoothstep(-0.4, 0.4, d_row)) * (0.06 + hover_boost);
-            let rim = smoothstep(1.0, 0.0, abs(d_row)) * (0.18 + hover_boost);
-            rows_fill = max(rows_fill, fill);
-            rows_rim = max(rows_rim, rim);
+            // ALL Pill (active when active_filter == 0)
+            let is_f_all = (active_filter == 0u);
+            let p_all = local_p - vec2<f32>(-96.0, filt_y);
+            let d_all = rr_sdf(p_all, vec2<f32>(30.0, 10.0), 10.0);
+            mask_all_fill = (1.0 - smoothstep(-0.4, 0.4, d_all)) * select(0.0, 0.10, is_f_all);
+            mask_all_rim = smoothstep(1.0, 0.0, abs(d_all)) * select(0.14, 0.30, is_f_all);
+            let dl0 = draw_clock_letter(p_all - vec2<f32>(-11.0, 0.0), 65u, 0.85); // A
+            let dl1 = draw_clock_letter(p_all - vec2<f32>(0.0, 0.0), 76u, 0.85);  // L
+            let dl2 = draw_clock_letter(p_all - vec2<f32>(11.0, 0.0), 76u, 0.85); // L
+            mask_all_txt = 1.0 - smoothstep(-0.35, 0.35, min(min(dl0, dl1), dl2) - 0.65);
 
-            let is_item_done = ((mask_done & (1u << i)) != 0u);
+            // ACTIVE Pill (active when active_filter == 1)
+            let is_f_act = (active_filter == 1u);
+            let p_act = local_p - vec2<f32>(-24.0, filt_y);
+            let d_act = rr_sdf(p_act, vec2<f32>(34.0, 10.0), 10.0);
+            mask_act_fill = (1.0 - smoothstep(-0.4, 0.4, d_act)) * select(0.0, 0.10, is_f_act);
+            mask_act_rim = smoothstep(1.0, 0.0, abs(d_act)) * select(0.14, 0.30, is_f_act);
+            let dc0 = draw_clock_letter(p_act - vec2<f32>(-16.0, 0.0), 65u, 0.80);
+            let dc1 = draw_clock_letter(p_act - vec2<f32>(-6.0, 0.0), 67u, 0.80);
+            let dc2 = draw_clock_letter(p_act - vec2<f32>(4.0, 0.0), 84u, 0.80);
+            let dc3 = draw_clock_letter(p_act - vec2<f32>(14.0, 0.0), 86u, 0.80);
+            mask_act_txt = 1.0 - smoothstep(-0.35, 0.35, min(min(dc0, dc1), min(dc2, dc3)) - 0.60);
 
-            // Checkbox (cx = -135.0, cy = row_y)
-            let p_box = local_p - vec2<f32>(-135.0, row_y);
-            let d_box = rr_sdf(p_box, vec2<f32>(8.5, 8.5), 4.5);
-            let c_rim = smoothstep(1.2, 0.0, abs(d_box)) * 0.32;
-            let c_bg = (1.0 - smoothstep(-0.4, 0.4, d_box)) * 0.08;
-            check_rims = max(check_rims, max(c_rim, c_bg));
+            // DONE Pill (active when active_filter == 2)
+            let is_f_don = (active_filter == 2u);
+            let p_don = local_p - vec2<f32>(48.0, filt_y);
+            let d_don = rr_sdf(p_don, vec2<f32>(30.0, 10.0), 10.0);
+            mask_don_fill = (1.0 - smoothstep(-0.4, 0.4, d_don)) * select(0.0, 0.10, is_f_don);
+            mask_don_rim = smoothstep(1.0, 0.0, abs(d_don)) * select(0.14, 0.30, is_f_don);
+            let dd0 = draw_clock_letter(p_don - vec2<f32>(-11.0, 0.0), 68u, 0.80);
+            let dd1 = draw_clock_letter(p_don - vec2<f32>(0.0, 0.0), 79u, 0.80);
+            let dd2 = draw_clock_letter(p_don - vec2<f32>(11.0, 0.0), 78u, 0.80);
+            mask_don_txt = 1.0 - smoothstep(-0.35, 0.35, min(min(dd0, dd1), dd2) - 0.60);
 
-            if is_item_done {
-                let c_fill = (1.0 - smoothstep(-0.4, 0.4, d_box));
-                check_fills = max(check_fills, c_fill);
-                let d_cm = draw_checkmark(p_box, 1.05);
-                check_marks = max(check_marks, 1.0 - smoothstep(-0.35, 0.35, d_cm));
+            // Refresh Icon ↻
+            let p_ref = local_p - vec2<f32>(120.0, filt_y);
+            let r_ref = length(p_ref);
+            let d_ref_arc = abs(r_ref - 5.5) - 0.65;
+            let ang_ref = atan2(p_ref.y, p_ref.x);
+            let mask_ref_arc = select(1.0 - smoothstep(-0.35, 0.35, d_ref_arc), 0.0, ang_ref > 1.2 && ang_ref < 2.0);
+            let d_ref_arr = dist_segment(p_ref, vec2<f32>(3.5, 3.5), vec2<f32>(7.5, 3.5));
+            mask_ref = max(mask_ref_arc, 1.0 - smoothstep(-0.35, 0.35, d_ref_arr - 0.65));
 
-                // Strikethrough horizontal line running through task title
-                let d_str = dist_segment(local_p, vec2<f32>(-116.0, row_y), vec2<f32>(60.0, row_y)) - 0.85;
-                strikes = max(strikes, 1.0 - smoothstep(-0.35, 0.35, d_str));
+            // ════════════════════════════════════════════
+            // 3. TASK ROWS (6 Rows, y = -105.0 to +115.0)
+            // ════════════════════════════════════════════
+            for (var i = 0u; i < 6u; i += 1u) {
+                let row_y = -105.0 + f32(i) * 44.0;
+                let p_row = local_p - vec2<f32>(0.0, row_y);
+                let d_row = rr_sdf(p_row, vec2<f32>(156.0, 18.0), 10.0);
+
+                let is_row_hover = (hover_row >= f32(i) - 0.1 && hover_row <= f32(i) + 0.1);
+                let hover_boost = select(0.0, 0.12, is_row_hover);
+
+                let fill = (1.0 - smoothstep(-0.4, 0.4, d_row)) * (0.06 + hover_boost);
+                let rim = smoothstep(1.0, 0.0, abs(d_row)) * (0.18 + hover_boost);
+                rows_fill = max(rows_fill, fill);
+                rows_rim = max(rows_rim, rim);
+
+                let is_item_done = ((mask_done & (1u << i)) != 0u);
+
+                // Checkbox (cx = -135.0, cy = row_y)
+                let p_box = local_p - vec2<f32>(-135.0, row_y);
+                let d_box = rr_sdf(p_box, vec2<f32>(8.5, 8.5), 4.5);
+                let c_rim = smoothstep(1.2, 0.0, abs(d_box)) * 0.32;
+                let c_bg = (1.0 - smoothstep(-0.4, 0.4, d_box)) * 0.08;
+                check_rims = max(check_rims, max(c_rim, c_bg));
+
+                if is_item_done {
+                    let c_fill = (1.0 - smoothstep(-0.4, 0.4, d_box));
+                    check_fills = max(check_fills, c_fill);
+                    let d_cm = draw_checkmark(p_box, 1.05);
+                    check_marks = max(check_marks, 1.0 - smoothstep(-0.35, 0.35, d_cm));
+
+                    // Strikethrough horizontal line running through task title
+                    let d_str = dist_segment(local_p, vec2<f32>(-116.0, row_y), vec2<f32>(60.0, row_y)) - 0.85;
+                    strikes = max(strikes, 1.0 - smoothstep(-0.35, 0.35, d_str));
+                }
+
+                // Daily Tag Badge (cx = 124.0, cy = row_y, half = 22.0x7.5, r = 7.5)
+                let p_dtag = local_p - vec2<f32>(124.0, row_y);
+                let d_dtag = rr_sdf(p_dtag, vec2<f32>(22.0, 7.5), 7.5);
+                daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * 0.06);
+                daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * 0.20);
+
+                let dy0 = draw_clock_letter(p_dtag - vec2<f32>(-12.0, 0.0), 68u, 0.65); // D
+                let dy1 = draw_clock_letter(p_dtag - vec2<f32>(-6.0, 0.0), 65u, 0.65);  // A
+                let dy2 = draw_clock_letter(p_dtag - vec2<f32>(0.0, 0.0), 73u, 0.65);   // I
+                let dy3 = draw_clock_letter(p_dtag - vec2<f32>(6.0, 0.0), 76u, 0.65);   // L
+                let dy4 = draw_clock_letter(p_dtag - vec2<f32>(12.0, 0.0), 89u, 0.65);  // Y
+                let d_dytxt = min(min(min(dy0, dy1), min(dy2, dy3)), dy4) - 0.48;
+                daily_txts = max(daily_txts, 1.0 - smoothstep(-0.35, 0.35, d_dytxt));
+
+                // Task Titles with crisp bold strokes and drop shadow:
+                let d_txt = eval_todo_row_text(local_p, i);
+                let d_txt_sh = eval_todo_row_text(local_p - vec2<f32>(0.0, 1.2), i);
+
+                let m_txt = 1.0 - smoothstep(-0.35, 0.35, d_txt - 0.78);
+                let m_txt_sh = (1.0 - smoothstep(-0.35, 0.75, d_txt_sh - 0.78)) * 0.55;
+
+                if is_item_done {
+                    task_txt_dimmed = max(task_txt_dimmed, m_txt);
+                } else {
+                    task_txt_primary = max(task_txt_primary, m_txt);
+                    task_txt_shadow = max(task_txt_shadow, m_txt_sh);
+                }
             }
 
-            // Daily Tag Badge (cx = 124.0, cy = row_y, half = 22.0x7.5, r = 7.5)
-            let p_dtag = local_p - vec2<f32>(124.0, row_y);
-            let d_dtag = rr_sdf(p_dtag, vec2<f32>(22.0, 7.5), 7.5);
-            daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * 0.06);
-            daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * 0.20);
+            // ════════════════════════════════════════════
+            // 4. BOTTOM ADD BAR (y = +185.0)
+            // ════════════════════════════════════════════
+            let bot_y = 185.0;
+            let p_add_bar = local_p - vec2<f32>(0.0, bot_y);
+            let d_add_bar = rr_sdf(p_add_bar, vec2<f32>(156.0, 17.0), 17.0);
+            mask_add_fill = (1.0 - smoothstep(-0.4, 0.4, d_add_bar)) * mix(0.12, 0.08, is_light);
+            mask_add_rim = smoothstep(1.1, 0.0, abs(d_add_bar)) * mix(0.35, 0.22, is_light);
 
-            let dy0 = draw_clock_letter(p_dtag - vec2<f32>(-12.0, 0.0), 68u, 0.65); // D
-            let dy1 = draw_clock_letter(p_dtag - vec2<f32>(-6.0, 0.0), 65u, 0.65);  // A
-            let dy2 = draw_clock_letter(p_dtag - vec2<f32>(0.0, 0.0), 73u, 0.65);   // I
-            let dy3 = draw_clock_letter(p_dtag - vec2<f32>(6.0, 0.0), 76u, 0.65);   // L
-            let dy4 = draw_clock_letter(p_dtag - vec2<f32>(12.0, 0.0), 89u, 0.65);  // Y
-            let d_dytxt = min(min(min(dy0, dy1), min(dy2, dy3)), dy4) - 0.48;
-            daily_txts = max(daily_txts, 1.0 - smoothstep(-0.35, 0.35, d_dytxt));
+            // Add Button '+' at cx = 135.0, cy = bot_y
+            let p_plus = local_p - vec2<f32>(135.0, bot_y);
+            let d_plus_bg = length(p_plus) - 11.0;
+            mask_plus_fill = 1.0 - smoothstep(-0.4, 0.4, d_plus_bg);
+            let d_plus_v = dist_segment(p_plus, vec2<f32>(0.0, -5.0), vec2<f32>(0.0, 5.0));
+            let d_plus_h = dist_segment(p_plus, vec2<f32>(-5.0, 0.0), vec2<f32>(5.0, 0.0));
+            mask_plus_icon = 1.0 - smoothstep(-0.35, 0.35, min(d_plus_v, d_plus_h) - 0.65);
 
-            // Task Titles with crisp bold strokes and drop shadow:
-            let d_txt = eval_todo_row_text(local_p, i);
-            let d_txt_sh = eval_todo_row_text(local_p - vec2<f32>(0.0, 1.2), i);
+            // Placeholder text: + ADD TASK...
+            let at_start = -135.0;
+            let at_sp = 7.5;
+            let ap0 = draw_clock_letter(local_p - vec2<f32>(at_start + 0.0 * at_sp, bot_y), 65u, 0.85); // A
+            let ap1 = draw_clock_letter(local_p - vec2<f32>(at_start + 1.0 * at_sp, bot_y), 68u, 0.85); // D
+            let ap2 = draw_clock_letter(local_p - vec2<f32>(at_start + 2.0 * at_sp, bot_y), 68u, 0.85); // D
+            let ap3 = draw_clock_letter(local_p - vec2<f32>(at_start + 3.8 * at_sp, bot_y), 84u, 0.85); // T
+            let ap4 = draw_clock_letter(local_p - vec2<f32>(at_start + 4.8 * at_sp, bot_y), 65u, 0.85); // A
+            let ap5 = draw_clock_letter(local_p - vec2<f32>(at_start + 5.8 * at_sp, bot_y), 83u, 0.85); // S
+            let ap6 = draw_clock_letter(local_p - vec2<f32>(at_start + 6.8 * at_sp, bot_y), 75u, 0.85); // K
+            let d_add_txt = min(min(min(ap0, ap1), ap2), min(min(ap3, ap4), min(ap5, ap6))) - 0.65;
+            mask_add_txt = 1.0 - smoothstep(-0.35, 0.35, d_add_txt);
+        } else {
+            // ════════════════════════════════════════════
+            // 2. AGENDA SCHEDULE VIEW (y = -135.0 to +135.0)
+            // ════════════════════════════════════════════
+            for (var i = 0u; i < 6u; i += 1u) {
+                let row_y = -105.0 + f32(i) * 44.0;
+                let p_row = local_p - vec2<f32>(0.0, row_y);
+                let d_row = rr_sdf(p_row, vec2<f32>(156.0, 18.0), 10.0);
 
-            let m_txt = 1.0 - smoothstep(-0.35, 0.35, d_txt - 0.78);
-            let m_txt_sh = (1.0 - smoothstep(-0.35, 0.75, d_txt_sh - 0.78)) * 0.55;
+                let is_row_hover = (hover_row >= f32(i) - 0.1 && hover_row <= f32(i) + 0.1);
+                let hover_boost = select(0.0, 0.12, is_row_hover);
 
-            if is_item_done {
-                task_txt_dimmed = max(task_txt_dimmed, m_txt);
-            } else {
-                task_txt_primary = max(task_txt_primary, m_txt);
-                task_txt_shadow = max(task_txt_shadow, m_txt_sh);
+                let fill = (1.0 - smoothstep(-0.4, 0.4, d_row)) * (0.06 + hover_boost);
+                let rim = smoothstep(1.0, 0.0, abs(d_row)) * (0.18 + hover_boost);
+                rows_fill = max(rows_fill, fill);
+                rows_rim = max(rows_rim, rim);
+
+                // Time Badge Capsule (cx = -120.0, cy = row_y)
+                let p_tbadge = local_p - vec2<f32>(-120.0, row_y);
+                let d_tbadge = rr_sdf(p_tbadge, vec2<f32>(24.0, 9.0), 6.0);
+                let tb_rim = smoothstep(1.0, 0.0, abs(d_tbadge)) * 0.25;
+                let tb_fill = (1.0 - smoothstep(-0.4, 0.4, d_tbadge)) * 0.10;
+                check_rims = max(check_rims, max(tb_rim, tb_fill));
+
+                // Right Status Badge: TODAY (cx = 124.0, cy = row_y)
+                let p_dtag = local_p - vec2<f32>(124.0, row_y);
+                let d_dtag = rr_sdf(p_dtag, vec2<f32>(22.0, 7.5), 7.5);
+                daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * 0.08);
+                daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * 0.22);
+
+                let dy0 = draw_clock_letter(p_dtag - vec2<f32>(-12.0, 0.0), 84u, 0.65); // T
+                let dy1 = draw_clock_letter(p_dtag - vec2<f32>(-6.0, 0.0), 79u, 0.65);  // O
+                let dy2 = draw_clock_letter(p_dtag - vec2<f32>(0.0, 0.0), 68u, 0.65);   // D
+                let dy3 = draw_clock_letter(p_dtag - vec2<f32>(6.0, 0.0), 65u, 0.65);   // A
+                let dy4 = draw_clock_letter(p_dtag - vec2<f32>(12.0, 0.0), 89u, 0.65);  // Y
+                let d_dytxt = min(min(min(dy0, dy1), min(dy2, dy3)), dy4) - 0.48;
+                daily_txts = max(daily_txts, 1.0 - smoothstep(-0.35, 0.35, d_dytxt));
+
+                // Agenda Times & Event Titles
+                let d_ag = eval_agenda_row_text(local_p, i);
+                let d_ag_sh = eval_agenda_row_text(local_p - vec2<f32>(0.0, 1.2), i);
+                let m_ag = 1.0 - smoothstep(-0.35, 0.35, d_ag - 0.78);
+                let m_ag_sh = (1.0 - smoothstep(-0.35, 0.75, d_ag_sh - 0.78)) * 0.55;
+
+                task_txt_primary = max(task_txt_primary, m_ag);
+                task_txt_shadow = max(task_txt_shadow, m_ag_sh);
             }
+
+            // Bottom Status Bar (y = +185.0): CALENDAR • 6 EVENTS
+            let bot_y = 185.0;
+            let p_add_bar = local_p - vec2<f32>(0.0, bot_y);
+            let d_add_bar = rr_sdf(p_add_bar, vec2<f32>(156.0, 17.0), 17.0);
+            mask_add_fill = (1.0 - smoothstep(-0.4, 0.4, d_add_bar)) * mix(0.12, 0.08, is_light);
+            mask_add_rim = smoothstep(1.1, 0.0, abs(d_add_bar)) * mix(0.35, 0.22, is_light);
+
+            // CALENDAR Text in bottom bar
+            let cal_start = -110.0;
+            let cal_sp = 7.5;
+            let cp0 = draw_clock_letter(local_p - vec2<f32>(cal_start + 0.0 * cal_sp, bot_y), 67u, 0.85); // C
+            let cp1 = draw_clock_letter(local_p - vec2<f32>(cal_start + 1.0 * cal_sp, bot_y), 65u, 0.85); // A
+            let cp2 = draw_clock_letter(local_p - vec2<f32>(cal_start + 2.0 * cal_sp, bot_y), 76u, 0.85); // L
+            let cp3 = draw_clock_letter(local_p - vec2<f32>(cal_start + 3.0 * cal_sp, bot_y), 69u, 0.85); // E
+            let cp4 = draw_clock_letter(local_p - vec2<f32>(cal_start + 4.0 * cal_sp, bot_y), 78u, 0.85); // N
+            let cp5 = draw_clock_letter(local_p - vec2<f32>(cal_start + 5.0 * cal_sp, bot_y), 68u, 0.85); // D
+            let cp6 = draw_clock_letter(local_p - vec2<f32>(cal_start + 6.0 * cal_sp, bot_y), 65u, 0.85); // A
+            let cp7 = draw_clock_letter(local_p - vec2<f32>(cal_start + 7.0 * cal_sp, bot_y), 82u, 0.85); // R
+            let d_cal_txt = min(min(min(cp0, cp1), min(cp2, cp3)), min(min(cp4, cp5), min(cp6, cp7))) - 0.65;
+            mask_add_txt = 1.0 - smoothstep(-0.35, 0.35, d_cal_txt);
         }
-
-        // ════════════════════════════════════════════
-        // 4. BOTTOM ADD BAR (y = +185.0)
-        // ════════════════════════════════════════════
-        let bot_y = 185.0;
-        let p_add_bar = local_p - vec2<f32>(0.0, bot_y);
-        let d_add_bar = rr_sdf(p_add_bar, vec2<f32>(156.0, 17.0), 17.0);
-        let mask_add_fill = (1.0 - smoothstep(-0.4, 0.4, d_add_bar)) * mix(0.12, 0.08, is_light);
-        let mask_add_rim = smoothstep(1.1, 0.0, abs(d_add_bar)) * mix(0.35, 0.22, is_light);
-
-        // Add Button '+' at cx = 135.0, cy = bot_y
-        let p_plus = local_p - vec2<f32>(135.0, bot_y);
-        let d_plus_bg = length(p_plus) - 11.0;
-        let mask_plus_fill = 1.0 - smoothstep(-0.4, 0.4, d_plus_bg);
-        let d_plus_v = dist_segment(p_plus, vec2<f32>(0.0, -5.0), vec2<f32>(0.0, 5.0));
-        let d_plus_h = dist_segment(p_plus, vec2<f32>(-5.0, 0.0), vec2<f32>(5.0, 0.0));
-        let mask_plus_icon = 1.0 - smoothstep(-0.35, 0.35, min(d_plus_v, d_plus_h) - 0.65);
-
-        // Placeholder text: + ADD TASK...
-        let at_start = -135.0;
-        let at_sp = 7.5;
-        let ap0 = draw_clock_letter(local_p - vec2<f32>(at_start + 0.0 * at_sp, bot_y), 65u, 0.85); // A
-        let ap1 = draw_clock_letter(local_p - vec2<f32>(at_start + 1.0 * at_sp, bot_y), 68u, 0.85); // D
-        let ap2 = draw_clock_letter(local_p - vec2<f32>(at_start + 2.0 * at_sp, bot_y), 68u, 0.85); // D
-        let ap3 = draw_clock_letter(local_p - vec2<f32>(at_start + 3.8 * at_sp, bot_y), 84u, 0.85); // T
-        let ap4 = draw_clock_letter(local_p - vec2<f32>(at_start + 4.8 * at_sp, bot_y), 65u, 0.85); // A
-        let ap5 = draw_clock_letter(local_p - vec2<f32>(at_start + 5.8 * at_sp, bot_y), 83u, 0.85); // S
-        let ap6 = draw_clock_letter(local_p - vec2<f32>(at_start + 6.8 * at_sp, bot_y), 75u, 0.85); // K
-        let d_add_txt = min(min(min(ap0, ap1), ap2), min(min(ap3, ap4), min(ap5, ap6))) - 0.65;
-        let mask_add_txt = 1.0 - smoothstep(-0.35, 0.35, d_add_txt);
 
         // ════════════════════════════════════════════
         // 5. MASTER COMPOSITE FOR TODO WIDGET
@@ -1724,12 +1951,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
 
-    // Subtle micro-optical deflection strictly at the 2px chamfer (zero interior warp!)
-    let refr_dist = 2.0 * params.refraction_strength * sin_th;
+    // True physical optical deflection along the molded glass meniscus bevel
+    let refr_dist = 6.5 * params.refraction_strength * sin_th;
     let refr_ray = -grad_2d * refr_dist * px_to_uv;
 
-    // Delicate sub-pixel optical crystal glimmer at the extreme outer edge
-    let ca_dist = clamp(params.dispersion * 15.0, 0.0, 0.8) * pow(edge, 3.0);
+    // Sub-pixel optical crystal dispersion at the outer bevel
+    let ca_dist = clamp(params.dispersion * 15.0, 0.0, 1.2) * pow(edge, 2.5);
     let ca_offset = -grad_2d * ca_dist * px_to_uv;
 
     let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1768,33 +1995,35 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // True Optical Liquid Glass:
     // Pure, crystal transmission of the real wallpaper underneath with silky frosted blur.
     // Zero muddy tints, zero colored sludge! The glass shows the true background.
-    // A delicate 7% pure white silica transmission lift gives physical crystal presence.
-    col = mix(col, vec3<f32>(1.0, 1.0, 1.0), 0.07);
+    // A delicate 6% pure white silica transmission lift gives physical crystal presence.
+    col = mix(col, vec3<f32>(1.0, 1.0, 1.0), 0.06);
 
     // ════════════════════════════════════════════
-    // 5. DIRECTIONAL APPLE SPECULAR & DOUBLE-LINE REFRACTION
+    // 5. 3D DIRECTIONAL LIQUID SPECULAR & BLINN-PHONG GLOSS
     // ════════════════════════════════════════════
     let top_facing = max(-grad_2d.y, 0.0);
     let left_facing = max(-grad_2d.x, 0.0);
     let bot_facing = max(grad_2d.y, 0.0);
 
+    // 3D Directional Key Light for Liquid Glass Gloss
+    let L = normalize(vec3<f32>(-0.35, -0.75, 0.55));
+    let H = normalize(L + vec3<f32>(0.0, 0.0, 1.0));
+    let gloss_spec = pow(max(dot(N, H), 0.0), 28.0) * edge * 0.85 * params.specular_strength;
+
     // 1. Outer 1px razor crest specular highlight (Top & Top-Left only)
     let hairline = smoothstep(1.5, 0.1, inside);
-    let top_spec = hairline * (pow(top_facing, 1.5) * 0.95 + left_facing * 0.35) * params.specular_strength;
+    let top_spec = hairline * (pow(top_facing, 1.4) * 0.95 + left_facing * 0.40) * params.specular_strength;
 
     // 2. Inner 1px chamfer refraction line (Iconic Apple double-line reflection)
-    let inner_line = smoothstep(2.6, 1.6, inside) * smoothstep(0.8, 1.8, inside);
-    let inner_spec = inner_line * pow(top_facing, 2.0) * 0.40 * params.specular_strength;
+    let inner_line = smoothstep(3.2, 1.8, inside) * smoothstep(0.8, 2.0, inside);
+    let inner_spec = inner_line * pow(top_facing, 1.8) * 0.35 * params.specular_strength;
 
     // 3. Bottom edge contact occlusion (grounds the card, NO white bottom stroke!)
-    let bot_occlusion = hairline * bot_facing * 0.35;
+    let bot_occlusion = hairline * bot_facing * 0.30;
     col = col * (1.0 - bot_occlusion);
 
-    // 4. Tactile micro-grain for authentic physical glass
-    let noise_seed = dot(local_px, vec2<f32>(12.9898, 78.233));
-    let micro_grain = (fract(sin(noise_seed) * 43758.5453) - 0.5) * 0.022;
-
-    col += vec3<f32>(top_spec + inner_spec + micro_grain);
+    // Master specular composition - ZERO NOISE / MICRO-GRAIN for crystal clarity!
+    col += vec3<f32>(top_spec + inner_spec + gloss_spec);
 
     var side_bevel_flare = 0.0;
     var side_rim_flare = 0.0;
