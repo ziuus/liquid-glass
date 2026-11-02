@@ -884,11 +884,11 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let neutral_accent = mix(vec3<f32>(0.96, 0.98, 1.0), vec3<f32>(0.11, 0.14, 0.18), is_light);
         let primary_accent = select(neutral_accent, accent_raw, has_accent);
         
-        // High-contrast pure crystalline diamond typography
-        let text_primary = vec3<f32>(0.98, 0.99, 1.0);
-        let text_secondary = vec3<f32>(0.84, 0.88, 0.94);
-        let pill_frost_col = vec3<f32>(1.0, 1.0, 1.0) * mix(0.12, 0.08, is_light);
-        let pill_rim_col = vec3<f32>(1.0, 1.0, 1.0) * mix(0.40, 0.25, is_light);
+        // High-contrast adaptive typography
+        let text_primary = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.08, 0.10, 0.14), is_light);
+        let text_secondary = mix(vec3<f32>(0.90, 0.93, 0.98), vec3<f32>(0.22, 0.25, 0.30), is_light);
+        let pill_frost_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.0, 0.0, 0.0), is_light);
+        let pill_rim_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.08, 0.10, 0.14), is_light);
 
         // ════════════════════════════════════════════
         // 1. TOP ROW (y = -56.0): Frosted Day Pill & Battery Pill
@@ -898,8 +898,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         // ── 1a. Left Day Pill (cx = -76.0, half = 52.0x13.0, r = 13.0) ──
         let p_day_pill = local_p - vec2<f32>(-76.0, top_y);
         let d_day_pill = rr_sdf(p_day_pill, vec2<f32>(52.0, 13.0), 13.0);
-        let mask_day_fill = (1.0 - smoothstep(-0.4, 0.4, d_day_pill)) * mix(0.20, 0.12, is_light);
-        let mask_day_rim = smoothstep(1.1, 0.0, abs(d_day_pill)) * mix(0.42, 0.28, is_light);
+        let mask_day_fill = (1.0 - smoothstep(-0.4, 0.4, d_day_pill)) * 0.08;
+        let mask_day_rim = smoothstep(1.1, 0.0, abs(d_day_pill)) * 0.25;
         
         // Status indicator dot (cx = -114.0, cy = top_y, r = 3.0)
         let p_dot = local_p - vec2<f32>(-114.0, top_y);
@@ -927,8 +927,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         // ── 1b. Right Battery Pill (cx = 76.0, half = 46.0x13.0, r = 13.0) ──
         let p_bat_pill = local_p - vec2<f32>(76.0, top_y);
         let d_bat_pill = rr_sdf(p_bat_pill, vec2<f32>(46.0, 13.0), 13.0);
-        let mask_bat_fill = (1.0 - smoothstep(-0.4, 0.4, d_bat_pill)) * mix(0.20, 0.12, is_light);
-        let mask_bat_rim = smoothstep(1.1, 0.0, abs(d_bat_pill)) * mix(0.42, 0.28, is_light);
+        let mask_bat_fill = (1.0 - smoothstep(-0.4, 0.4, d_bat_pill)) * 0.08;
+        let mask_bat_rim = smoothstep(1.1, 0.0, abs(d_bat_pill)) * 0.25;
         
         // Lightning Bolt Icon (cx = 48.0, cy = top_y)
         let p_bolt = local_p - vec2<f32>(48.0, top_y);
@@ -1007,8 +1007,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         // ── 3a. Left Date Pill (cx = -76.0, half = 52.0x13.0, r = 13.0) ──
         let p_date_pill = local_p - vec2<f32>(-76.0, bot_y);
         let d_date_pill = rr_sdf(p_date_pill, vec2<f32>(52.0, 13.0), 13.0);
-        let mask_date_fill = (1.0 - smoothstep(-0.4, 0.4, d_date_pill)) * mix(0.20, 0.12, is_light);
-        let mask_date_rim = smoothstep(1.1, 0.0, abs(d_date_pill)) * mix(0.42, 0.28, is_light);
+        let mask_date_fill = (1.0 - smoothstep(-0.4, 0.4, d_date_pill)) * 0.08;
+        let mask_date_rim = smoothstep(1.1, 0.0, abs(d_date_pill)) * 0.25;
         
         // Calendar Icon (cx = -114.0, cy = bot_y)
         let p_cal = local_p - vec2<f32>(-114.0, bot_y);
@@ -1050,8 +1050,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         // ── 3b. Right Battery Progress Track (cx = 76.0, half = 46.0x5.0, r = 5.0) ──
         let p_track = local_p - vec2<f32>(76.0, bot_y);
         let d_track = rr_sdf(p_track, vec2<f32>(46.0, 5.0), 5.0);
-        let mask_track_bg = (1.0 - smoothstep(-0.4, 0.4, d_track)) * mix(0.18, 0.10, is_light);
-        let mask_track_rim = smoothstep(1.0, 0.0, abs(d_track)) * mix(0.30, 0.20, is_light);
+        let mask_track_bg = (1.0 - smoothstep(-0.4, 0.4, d_track)) * 0.08;
+        let mask_track_rim = smoothstep(1.0, 0.0, abs(d_track)) * 0.25;
         
         let max_bar_w = 88.0;
         let bar_w = (bat_val / 100.0) * max_bar_w;
@@ -1119,11 +1119,11 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let neutral_accent = mix(vec3<f32>(0.96, 0.98, 1.0), vec3<f32>(0.11, 0.14, 0.18), is_light);
         let primary_accent = select(neutral_accent, accent_raw, has_accent);
 
-        let text_primary = vec3<f32>(0.98, 0.99, 1.0);
-        let text_dim = vec3<f32>(0.55, 0.58, 0.65);
-        let text_secondary = vec3<f32>(0.80, 0.84, 0.90);
-        let pill_frost_col = vec3<f32>(1.0, 1.0, 1.0) * mix(0.12, 0.08, is_light);
-        let pill_rim_col = vec3<f32>(1.0, 1.0, 1.0) * mix(0.40, 0.25, is_light);
+        let text_primary = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.08, 0.10, 0.14), is_light);
+        let text_dim = mix(vec3<f32>(0.65, 0.68, 0.75), vec3<f32>(0.45, 0.48, 0.52), is_light);
+        let text_secondary = mix(vec3<f32>(0.88, 0.91, 0.96), vec3<f32>(0.22, 0.25, 0.30), is_light);
+        let pill_frost_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.0, 0.0, 0.0), is_light);
+        let pill_rim_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.08, 0.10, 0.14), is_light);
 
         let mask_done = u32(progress);
         let hover_row = params.roughness;
@@ -1134,14 +1134,14 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let top_y = -188.0;
         let p_track = local_p - vec2<f32>(0.0, top_y);
         let d_track = rr_sdf(p_track, vec2<f32>(156.0, 16.0), 16.0);
-        let mask_track_fill = (1.0 - smoothstep(-0.4, 0.4, d_track)) * mix(0.08, 0.05, is_light);
-        let mask_track_rim = smoothstep(1.0, 0.0, abs(d_track)) * mix(0.28, 0.18, is_light);
+        let mask_track_fill = (1.0 - smoothstep(-0.4, 0.4, d_track)) * 0.05;
+        let mask_track_rim = smoothstep(1.0, 0.0, abs(d_track)) * 0.20;
 
         // Tab 1: Tasks (cx = -76.0, half = 72.0x13.0, r = 13.0) - ACTIVE
         let p_tab1 = local_p - vec2<f32>(-76.0, top_y);
         let d_tab1 = rr_sdf(p_tab1, vec2<f32>(72.0, 13.0), 13.0);
-        let mask_tab1_fill = (1.0 - smoothstep(-0.4, 0.4, d_tab1)) * mix(0.22, 0.16, is_light);
-        let mask_tab1_rim = smoothstep(1.1, 0.0, abs(d_tab1)) * mix(0.45, 0.30, is_light);
+        let mask_tab1_fill = (1.0 - smoothstep(-0.4, 0.4, d_tab1)) * 0.10;
+        let mask_tab1_rim = smoothstep(1.1, 0.0, abs(d_tab1)) * 0.28;
 
         // Tab 1 Text: TASKS (6)
         let t1_cx = -76.0;
@@ -1180,8 +1180,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         // ALL Pill
         let p_all = local_p - vec2<f32>(-96.0, filt_y);
         let d_all = rr_sdf(p_all, vec2<f32>(30.0, 10.0), 10.0);
-        let mask_all_fill = (1.0 - smoothstep(-0.4, 0.4, d_all)) * mix(0.24, 0.16, is_light);
-        let mask_all_rim = smoothstep(1.0, 0.0, abs(d_all)) * mix(0.42, 0.26, is_light);
+        let mask_all_fill = (1.0 - smoothstep(-0.4, 0.4, d_all)) * 0.08;
+        let mask_all_rim = smoothstep(1.0, 0.0, abs(d_all)) * 0.22;
         let dl0 = draw_clock_letter(p_all - vec2<f32>(-11.0, 0.0), 65u, 0.85); // A
         let dl1 = draw_clock_letter(p_all - vec2<f32>(0.0, 0.0), 76u, 0.85);  // L
         let dl2 = draw_clock_letter(p_all - vec2<f32>(11.0, 0.0), 76u, 0.85); // L
@@ -1190,7 +1190,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         // ACTIVE Pill
         let p_act = local_p - vec2<f32>(-24.0, filt_y);
         let d_act = rr_sdf(p_act, vec2<f32>(34.0, 10.0), 10.0);
-        let mask_act_rim = smoothstep(1.0, 0.0, abs(d_act)) * mix(0.28, 0.18, is_light);
+        let mask_act_rim = smoothstep(1.0, 0.0, abs(d_act)) * 0.16;
         let dc0 = draw_clock_letter(p_act - vec2<f32>(-16.0, 0.0), 65u, 0.80);
         let dc1 = draw_clock_letter(p_act - vec2<f32>(-6.0, 0.0), 67u, 0.80);
         let dc2 = draw_clock_letter(p_act - vec2<f32>(4.0, 0.0), 84u, 0.80);
@@ -1200,7 +1200,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         // DONE Pill
         let p_don = local_p - vec2<f32>(48.0, filt_y);
         let d_don = rr_sdf(p_don, vec2<f32>(30.0, 10.0), 10.0);
-        let mask_don_rim = smoothstep(1.0, 0.0, abs(d_don)) * mix(0.28, 0.18, is_light);
+        let mask_don_rim = smoothstep(1.0, 0.0, abs(d_don)) * 0.16;
         let dd0 = draw_clock_letter(p_don - vec2<f32>(-11.0, 0.0), 68u, 0.80);
         let dd1 = draw_clock_letter(p_don - vec2<f32>(0.0, 0.0), 79u, 0.80);
         let dd2 = draw_clock_letter(p_don - vec2<f32>(11.0, 0.0), 78u, 0.80);
@@ -1239,8 +1239,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             let is_row_hover = (hover_row >= f32(i) - 0.1 && hover_row <= f32(i) + 0.1);
             let hover_boost = select(0.0, 0.12, is_row_hover);
 
-            let fill = (1.0 - smoothstep(-0.4, 0.4, d_row)) * (mix(0.24, 0.16, is_light) + hover_boost);
-            let rim = smoothstep(1.0, 0.0, abs(d_row)) * (mix(0.42, 0.26, is_light) + hover_boost);
+            let fill = (1.0 - smoothstep(-0.4, 0.4, d_row)) * (0.06 + hover_boost);
+            let rim = smoothstep(1.0, 0.0, abs(d_row)) * (0.18 + hover_boost);
             rows_fill = max(rows_fill, fill);
             rows_rim = max(rows_rim, rim);
 
@@ -1249,8 +1249,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             // Checkbox (cx = -135.0, cy = row_y)
             let p_box = local_p - vec2<f32>(-135.0, row_y);
             let d_box = rr_sdf(p_box, vec2<f32>(8.5, 8.5), 4.5);
-            let c_rim = smoothstep(1.2, 0.0, abs(d_box)) * mix(0.60, 0.38, is_light);
-            let c_bg = (1.0 - smoothstep(-0.4, 0.4, d_box)) * mix(0.22, 0.12, is_light);
+            let c_rim = smoothstep(1.2, 0.0, abs(d_box)) * 0.32;
+            let c_bg = (1.0 - smoothstep(-0.4, 0.4, d_box)) * 0.08;
             check_rims = max(check_rims, max(c_rim, c_bg));
 
             if is_item_done {
@@ -1267,8 +1267,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             // Daily Tag Badge (cx = 124.0, cy = row_y, half = 22.0x7.5, r = 7.5)
             let p_dtag = local_p - vec2<f32>(124.0, row_y);
             let d_dtag = rr_sdf(p_dtag, vec2<f32>(22.0, 7.5), 7.5);
-            daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * mix(0.18, 0.10, is_light));
-            daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * mix(0.40, 0.25, is_light));
+            daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * 0.06);
+            daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * 0.20);
 
             let dy0 = draw_clock_letter(p_dtag - vec2<f32>(-12.0, 0.0), 68u, 0.65); // D
             let dy1 = draw_clock_letter(p_dtag - vec2<f32>(-6.0, 0.0), 65u, 0.65);  // A
@@ -1783,20 +1783,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         col = mix(sharp_col, frosted_col, frost);
     }
 
-    // Measure local background luminance for adaptive contrast
+    // Measure local background luminance for adaptive text contrast
     let bg_luma = dot(col, vec3<f32>(0.299, 0.587, 0.114));
-    let is_light = smoothstep(0.38, 0.65, bg_luma);
+    let is_light = smoothstep(0.55, 0.78, bg_luma);
 
-    // Apple Vibrancy: boost saturation in blurred layer so wallpaper colors glow warmly
-    let sat_col = mix(vec3<f32>(bg_luma), col, 1.30);
+    // Apple Vibrancy: gently boost saturation so wallpaper colors shine warmly through frosted glass
+    let sat_col = mix(vec3<f32>(bg_luma), col, 1.15);
     col = sat_col;
 
-    // Genuine Apple Material Substrate:
-    // Rich frosted silica transmission with velvety density (eliminates transparent plastic look)
-    let glass_tint_color = select(vec3<f32>(1.0, 1.0, 1.0), params.tint.xyz, params.tint.w > 0.5);
-    let milky_fill = mix(col, glass_tint_color, 0.40);
-    let smoked_depth = mix(col * 0.52 + vec3<f32>(0.05), vec3<f32>(0.08, 0.09, 0.12), 0.48);
-    col = mix(milky_fill, smoked_depth, is_light * 0.72);
+    // True Optical Liquid Glass:
+    // Pure, crystal transmission of the real wallpaper underneath with silky frosted blur.
+    // Zero muddy tints, zero colored sludge! The glass shows the true background.
+    // A delicate 7% pure white silica transmission lift gives physical crystal presence.
+    col = mix(col, vec3<f32>(1.0, 1.0, 1.0), 0.07);
 
     // ════════════════════════════════════════════
     // 5. DIRECTIONAL APPLE SPECULAR & DOUBLE-LINE REFRACTION
