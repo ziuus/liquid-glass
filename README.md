@@ -5,6 +5,7 @@
 ### Physical Optical Lensing & Glassmorphism UI Engine for Linux & Wayland
 
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange?style=flat-square&logo=rust)](https://www.rust-lang.org)
+[![AUR version](https://img.shields.io/aur/version/liquid-glass-git?color=1793d1&logo=arch-linux&logoColor=white&style=flat-square)](https://aur.archlinux.org/packages/liquid-glass-git)
 [![WGPU](https://img.shields.io/badge/WGPU-0.19-blue?style=flat-square&logo=webgpu)](https://wgpu.rs)
 [![Wayland](https://img.shields.io/badge/Wayland-Layer--Shell-2B3A42?style=flat-square&logo=linux)](https://wayland.freedesktop.org)
 [![WGSL](https://img.shields.io/badge/Shader-WGSL-694382?style=flat-square)](https://www.w3.org/TR/WGSL/)
@@ -64,6 +65,15 @@ liquid-glass/
 
 ## ⚡ Quickstart
 
+### Arch Linux (AUR)
+Install all liquid-glass demo binaries (`glass-panel`, `glass-clock`, `glass-todo`):
+```bash
+yay -S liquid-glass-git
+# Or using paru:
+paru -S liquid-glass-git
+```
+
+### Rust Cargo Dependency
 Add `glass-core` and `glass-ui` to your `Cargo.toml`:
 
 ```toml
