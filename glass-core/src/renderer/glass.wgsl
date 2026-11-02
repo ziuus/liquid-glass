@@ -1099,7 +1099,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             app.glyph_color = glyph_light;
         } else if shadow_time > 0.04 {
             app.glyph_mask = shadow_time;
-            app.glyph_color = vec3<f32>(0.02, 0.03, 0.05);
+            app.glyph_color = mix(vec3<f32>(0.02, 0.03, 0.05), vec3<f32>(1.0, 1.0, 1.0) * 0.40, is_light);
         } else if pill_rims > 0.05 {
             app.glyph_mask = pill_rims;
             app.glyph_color = pill_rim_col;
@@ -1359,7 +1359,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             app.glyph_color = text_primary;
         } else if task_txt_shadow > 0.03 {
             app.glyph_mask = task_txt_shadow;
-            app.glyph_color = vec3<f32>(0.02, 0.03, 0.05);
+            app.glyph_color = mix(vec3<f32>(0.02, 0.03, 0.05), vec3<f32>(1.0, 1.0, 1.0) * 0.40, is_light);
         } else if task_txt_dimmed > 0.02 {
             app.glyph_mask = task_txt_dimmed;
             app.glyph_color = text_dim;
@@ -1672,53 +1672,27 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv;
     
-    // Compute pixel bounds
-    let is_base_panel = (params.bounds.z >= 0.95 && params.bounds.w >= 0.95);
-    let shadow_pad = select(8.0, 16.0, is_base_panel);
-    
-    var bounds_px: vec4<f32>;
-    if is_base_panel {
-        bounds_px = vec4<f32>(
-            shadow_pad,
-            shadow_pad,
-            params.surface_size.x - shadow_pad * 2.0,
-            params.surface_size.y - shadow_pad * 2.0
-        );
-    } else {
-        bounds_px = vec4<f32>(
-            params.bounds.x * params.surface_size.x,
-            params.bounds.y * params.surface_size.y,
-            params.bounds.z * params.surface_size.x,
-            params.bounds.w * params.surface_size.y
-        );
-    }
-    
+    // ════════════════════════════════════════════
+    // CLEAN GEOMETRIC CONTOUR (ZERO SQUARE SHADOW BOX)
+    // ════════════════════════════════════════════
+    let bounds_px = vec4<f32>(
+        params.bounds.x * params.surface_size.x,
+        params.bounds.y * params.surface_size.y,
+        params.bounds.z * params.surface_size.x,
+        params.bounds.w * params.surface_size.y
+    );
     let half_size = vec2<f32>(bounds_px.z * 0.5, bounds_px.w * 0.5);
     let center = vec2<f32>(bounds_px.x + half_size.x, bounds_px.y + half_size.y);
     let local_px = uv * params.surface_size - center;
     let r = min(params.corner_radius, min(half_size.x, half_size.y));
     
-    // ════════════════════════════════════════════
-    // CLEAN GEOMETRIC CONTOUR & INTERACTIVE DYNAMICS
-    // ════════════════════════════════════════════
-    let cur_local = params.pointer_pos * params.surface_size - center;
-    let cur_active = select(0.0, 1.0, params.pointer_pos.x >= 0.0);
-    
-    // Crisp, stable rounded-rectangle SDF (no teardrop egg distortion)
+    // Crisp, stable rounded-rectangle SDF
     let sdf = rr_sdf(local_px, half_size, r);
     
-    // ════════════════════════════════════════════
-    // 1. APPLE DUAL-LAYER PHYSICAL DROP SHADOW
-    // ════════════════════════════════════════════
+    // Outside the rounded rectangle (e.g. at corner cuts):
+    // 100% transparent. Eliminates any ugly square box / clipped outer shadow!
     if sdf > 0.0 {
-        // Tight contact ambient occlusion directly beneath the perimeter
-        let contact = exp(-sdf * 0.50) * 0.28;
-        // Diffuse ambient float shadow with gentle downward bias (+6px)
-        let p_float = local_px - vec2<f32>(0.0, 6.0);
-        let sdf_float = rr_sdf(p_float, half_size, r);
-        let diffuse = exp(-max(sdf_float, 0.0) * 0.09) * 0.24;
-        let total_shadow = max(contact, diffuse);
-        return vec4<f32>(0.0, 0.0, 0.0, total_shadow);
+        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
     
     // ════════════════════════════════════════════
