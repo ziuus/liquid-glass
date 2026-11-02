@@ -2,6 +2,8 @@
 members = [
     "benchmarks/bench-surfaces",
     "examples/glass-panel",
+    "examples/glass-clock",
+    "examples/glass-todo",
     "examples/simple-window",
     "examples/simple-demo",
     "examples/sdl-widget",

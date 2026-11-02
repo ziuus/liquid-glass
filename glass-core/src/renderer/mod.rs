@@ -501,7 +501,9 @@ impl GlassRenderer {
                 curvature: glass.curvature,
                 bevel: glass.bevel,
                 time,
-                deformation: if let crate::material::Material::LiquidGlass = glass.material {
+                deformation: if glass.deformation != 0.0 {
+                    glass.deformation
+                } else if let crate::material::Material::LiquidGlass = glass.material {
                     0.02
                 } else {
                     0.0

@@ -22,6 +22,7 @@ pub struct GlassSurface {
     pub pointer_velocity: [f32; 2],
     pub element_type: f32,
     pub progress: f32,
+    pub deformation: f32,
 }
 
 impl GlassSurface {
@@ -37,6 +38,7 @@ impl GlassSurface {
             pointer_velocity: [0.0, 0.0],
             element_type: 0.0,
             progress: 0.0,
+            deformation: 0.0,
         }
     }
 
@@ -129,6 +131,11 @@ impl GlassSurface {
 
     pub fn progress(mut self, progress: f32) -> Self {
         self.progress = progress;
+        self
+    }
+
+    pub fn deformation(mut self, def: f32) -> Self {
+        self.deformation = def;
         self
     }
 }
