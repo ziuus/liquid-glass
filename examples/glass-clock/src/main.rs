@@ -405,10 +405,16 @@ impl AppData {
     }
 
     fn render_ui_overlay(&self, buf: &mut [u8]) {
-        // High-contrast crisp white typography with subtle drop shadow for supreme legibility on all backgrounds
-        let col_primary = [255, 255, 255, 255];
-        let col_secondary = [235, 240, 250, 230];
-        let col_shadow = [10, 14, 22, 140];
+        // Adaptive luxury typography: Obsidian Slate on light backgrounds, Pure White on dark/vibrant
+        let (col_primary, col_secondary, col_shadow) = if self.is_wallpaper_light {
+            ([24, 28, 38, 245], [60, 68, 84, 225], [255, 255, 255, 160])
+        } else {
+            (
+                [255, 255, 255, 255],
+                [235, 240, 250, 230],
+                [10, 14, 22, 140],
+            )
+        };
 
         let now = Local::now();
         let hr = now.hour();

@@ -729,12 +729,25 @@ impl AppData {
     }
 
     fn render_ui_overlay(&self, buf: &mut [u8]) {
-        // High-contrast crisp white typography with subtle drop shadow for supreme legibility on all backgrounds
-        let col_primary = [255, 255, 255, 255];
-        let col_secondary = [235, 240, 250, 230];
-        let col_dimmed = [190, 198, 212, 175];
-        let col_accent = [255, 255, 255, 255];
-        let col_shadow = [10, 14, 22, 140];
+        // Adaptive luxury typography: Obsidian Slate on light backgrounds, Pure White on dark/vibrant
+        let (col_primary, col_secondary, col_dimmed, col_accent, col_shadow) =
+            if self.is_wallpaper_light {
+                (
+                    [24, 28, 38, 245],
+                    [60, 68, 84, 225],
+                    [135, 145, 165, 190],
+                    [16, 20, 30, 255],
+                    [255, 255, 255, 160],
+                )
+            } else {
+                (
+                    [255, 255, 255, 255],
+                    [235, 240, 250, 230],
+                    [190, 198, 212, 175],
+                    [255, 255, 255, 255],
+                    [10, 14, 22, 140],
+                )
+            };
 
         // 1. Top Tab Labels: "Tasks ({count})" (cx = 104.0) & "Agenda" (cx = 256.0), cy = 32.5
         let tasks_count = self.todos.tasks.len();
