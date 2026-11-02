@@ -1,4 +1,5 @@
 use chrono::{Datelike, Local, Timelike};
+use glass_core::font::{FontWeight, QuicksandFont};
 use glass_core::{geometry::Shape, GlassRenderer, GlassSurface, Material};
 use raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle,
@@ -67,6 +68,8 @@ struct AppData {
     last_minute: u32,
     battery_level: f32,
     last_battery_check: Instant,
+    font: QuicksandFont,
+    is_wallpaper_light: bool,
 }
 
 struct WaylandWindow {
@@ -382,6 +385,7 @@ impl AppData {
                         self.width,
                         self.height,
                     );
+                    self.is_wallpaper_light = is_buffer_light(&crop);
                     renderer.update_background(self.width, self.height, &crop);
                 }
             }
@@ -400,25 +404,149 @@ impl AppData {
         }
     }
 
+    fn render_ui_overlay(&self, buf: &mut [u8]) {
+        // High-contrast crisp white typography with subtle drop shadow for supreme legibility on all backgrounds
+        let col_primary = [255, 255, 255, 255];
+        let col_secondary = [235, 240, 250, 230];
+        let col_shadow = [10, 14, 22, 140];
+
+        let now = Local::now();
+        let hr = now.hour();
+        let mn = now.minute();
+        let hr12 = if hr == 0 {
+            12
+        } else if hr > 12 {
+            hr - 12
+        } else {
+            hr
+        };
+        let ampm = if hr >= 12 { "PM" } else { "AM" };
+        let time_str = format!("{:02}:{:02}", hr12, mn);
+
+        let wday_str = match now.weekday().num_days_from_sunday() {
+            1 => "MON",
+            2 => "TUE",
+            3 => "WED",
+            4 => "THU",
+            5 => "FRI",
+            6 => "SAT",
+            _ => "SUN",
+        };
+
+        let month_str = match now.month() {
+            1 => "Jan",
+            2 => "Feb",
+            3 => "Mar",
+            4 => "Apr",
+            5 => "May",
+            6 => "Jun",
+            7 => "Jul",
+            8 => "Aug",
+            9 => "Sep",
+            10 => "Oct",
+            11 => "Nov",
+            _ => "Dec",
+        };
+        let date_str = format!("{} {:02}", month_str, now.day());
+        let bat_str = format!("{:.0}%", self.battery_level);
+
+        // 1. Top Row (cy = 53.0): Day Text & Battery Text
+        self.font.draw_text_centered(
+            buf,
+            self.width,
+            self.height,
+            wday_str,
+            96.0,
+            53.0,
+            13.5,
+            col_secondary,
+            col_shadow,
+            FontWeight::Bold,
+        );
+
+        self.font.draw_text_centered(
+            buf,
+            self.width,
+            self.height,
+            &bat_str,
+            249.0,
+            53.0,
+            13.5,
+            col_secondary,
+            col_shadow,
+            FontWeight::Bold,
+        );
+
+        // 2. Hero Clock (cy = 105.0): perfectly centered Quicksand typography
+        let time_baseline = self
+            .font
+            .vertical_center_baseline(105.0, 52.0, FontWeight::Bold);
+        let time_w = self.font.measure_text(&time_str, 52.0, FontWeight::Bold);
+        let time_x = 142.0 - time_w * 0.5;
+        let end_x = self.font.draw_text_with_shadow(
+            buf,
+            self.width,
+            self.height,
+            &time_str,
+            time_x,
+            time_baseline,
+            52.0,
+            col_primary,
+            col_shadow,
+            FontWeight::Bold,
+        );
+
+        // AM/PM badge optically anchored to clock baseline
+        self.font.draw_text_with_shadow(
+            buf,
+            self.width,
+            self.height,
+            ampm,
+            end_x + 6.0,
+            time_baseline - 4.0,
+            14.0,
+            col_secondary,
+            col_shadow,
+            FontWeight::Bold,
+        );
+
+        // 3. Bottom Row (cy = 163.0): Date Text
+        self.font.draw_text_centered(
+            buf,
+            self.width,
+            self.height,
+            &date_str,
+            96.0,
+            163.0,
+            13.5,
+            col_secondary,
+            col_shadow,
+            FontWeight::Bold,
+        );
+    }
+
     fn draw(&mut self) -> bool {
         self.check_wallpaper();
         self.update_battery();
 
+        let mut overlay_buf = vec![0u8; (self.width * self.height * 4) as usize];
+        self.render_ui_overlay(&mut overlay_buf);
+
         if let Some(renderer) = &mut self.renderer {
+            renderer.update_overlay(self.width, self.height, &overlay_buf);
+
             let now = Local::now();
             let hr = now.hour() as f32;
             let mn = now.minute() as f32;
             let sec = now.second() as f32;
-            let wday = now.weekday().num_days_from_sunday() as f32; // 0 = Sun, 6 = Sat
+            let wday = now.weekday().num_days_from_sunday() as f32;
             let month = now.month() as f32;
             let mday = now.day() as f32;
 
-            // Pack time into progress: hr * 10000 + mn * 100 + sec
             let time_val = hr * 10000.0 + mn * 100.0 + sec;
-            // Pack date into deformation: wday * 10000 + month * 100 + mday
             let date_val = wday * 10000.0 + month * 100.0 + mday;
 
-            let accent = get_theme_accent();
+            let _accent = get_theme_accent();
 
             let (px, py) = (self.cursor_pos[0], self.cursor_pos[1]);
             let (vx, vy) = (self.cursor_velocity[0], self.cursor_velocity[1]);
@@ -433,7 +561,7 @@ impl AppData {
                 .refraction(0.35)
                 .dispersion(0.0)
                 .blur(16.0)
-                .tint(accent[0], accent[1], accent[2], accent[3])
+                .tint(0.0, 0.0, 0.0, 0.0)
                 .roughness(self.battery_level)
                 .specular(1.0)
                 .fresnel(0.35)
@@ -589,6 +717,23 @@ fn load_wallpaper_image(path: Option<&str>) -> Option<Arc<Vec<u8>>> {
     Some(Arc::new(fallback))
 }
 
+fn is_buffer_light(buf: &[u8]) -> bool {
+    let mut total_lum = 0u64;
+    let mut count = 0u64;
+    let step = 16 * 4;
+    for i in (0..buf.len()).step_by(step) {
+        if i + 2 < buf.len() {
+            let r = buf[i] as u64;
+            let g = buf[i + 1] as u64;
+            let b = buf[i + 2] as u64;
+            let lum = (r * 299 + g * 587 + b * 114) / 1000;
+            total_lum += lum;
+            count += 1;
+        }
+    }
+    total_lum.checked_div(count).is_some_and(|avg| avg > 135)
+}
+
 fn init_wallpaper_1080p() -> (Option<Arc<Vec<u8>>>, Option<String>) {
     let path = get_active_wallpaper_path();
     let buf = load_wallpaper_image(path.as_deref());
@@ -630,6 +775,14 @@ fn main() {
     let pos_y = 56i32;
 
     let (wallpaper_cache, current_wallpaper_path) = init_wallpaper_1080p();
+    let is_light = if let Some(buf) = &wallpaper_cache {
+        let crop = get_wallpaper_crop(buf, pos_x as u32, pos_y as u32, width, height);
+        is_buffer_light(&crop)
+    } else {
+        false
+    };
+
+    let font = QuicksandFont::new();
 
     let mut app_data = AppData {
         registry_state,
@@ -665,6 +818,8 @@ fn main() {
         last_minute: 0,
         battery_level: 100.0,
         last_battery_check: Instant::now() - std::time::Duration::from_secs(60),
+        font,
+        is_wallpaper_light: is_light,
     };
 
     let surface = app_data.compositor_state.create_surface(&qh);

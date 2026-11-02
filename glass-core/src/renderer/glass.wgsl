@@ -43,6 +43,7 @@ struct GlassUniforms {
 @group(0) @binding(0) var<uniform> params: GlassUniforms;
 @group(1) @binding(0) var background_texture: texture_2d<f32>;
 @group(1) @binding(1) var background_sampler: sampler;
+@group(1) @binding(2) var overlay_texture: texture_2d<f32>;
 
 @vertex
 fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
@@ -1034,30 +1035,13 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let d_dot = length(p_dot) - 3.2;
         let mask_dot = 1.0 - smoothstep(-0.35, 0.35, d_dot);
         let dot_glow = exp(-max(d_dot, 0.0) * 0.45) * 0.75;
-        
-        // Day of Week Text: SUN, MON, TUE, WED, THU, FRI, SAT
-        var w0 = 83u; var w1 = 85u; var w2 = 78u; // SUN
-        if wday_code == 1u { w0 = 77u; w1 = 79u; w2 = 78u; } // MON
-        else if wday_code == 2u { w0 = 84u; w1 = 85u; w2 = 69u; } // TUE
-        else if wday_code == 3u { w0 = 87u; w1 = 69u; w2 = 68u; } // WED
-        else if wday_code == 4u { w0 = 84u; w1 = 72u; w2 = 85u; } // THU
-        else if wday_code == 5u { w0 = 70u; w1 = 82u; w2 = 73u; } // FRI
-        else if wday_code == 6u { w0 = 83u; w1 = 65u; w2 = 84u; } // SAT
-        
-        let day_cx = -76.0;
-        let dsp = 9.0;
-        let d_w0 = draw_clock_letter(local_p - vec2<f32>(day_cx - 1.6 * dsp, top_y), w0, 1.15);
-        let d_w1 = draw_clock_letter(local_p - vec2<f32>(day_cx - 0.5 * dsp, top_y), w1, 1.15);
-        let d_w2 = draw_clock_letter(local_p - vec2<f32>(day_cx + 0.6 * dsp, top_y), w2, 1.15);
-        let d_day_letters = min(min(d_w0, d_w1), d_w2) - 0.72;
-        let mask_day_letters = 1.0 - smoothstep(-0.35, 0.35, d_day_letters);
-        
+
         // ── 1b. Right Battery Pill (cx = 76.0, half = 46.0x13.0, r = 13.0) ──
         let p_bat_pill = local_p - vec2<f32>(76.0, top_y);
         let d_bat_pill = rr_sdf(p_bat_pill, vec2<f32>(46.0, 13.0), 13.0);
         let mask_bat_fill = (1.0 - smoothstep(-0.4, 0.4, d_bat_pill)) * 0.08;
         let mask_bat_rim = smoothstep(1.1, 0.0, abs(d_bat_pill)) * 0.25;
-        
+
         // Lightning Bolt Icon (cx = 48.0, cy = top_y)
         let p_bolt = local_p - vec2<f32>(48.0, top_y);
         let s_b0 = dist_segment(p_bolt, vec2<f32>(1.2, -4.5), vec2<f32>(-1.8, -0.5));
@@ -1065,67 +1049,18 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let s_b2 = dist_segment(p_bolt, vec2<f32>(0.8, -0.5), vec2<f32>(-1.2, 4.5));
         let d_bolt = min(min(s_b0, s_b1), s_b2) - 0.75;
         let mask_bolt = 1.0 - smoothstep(-0.35, 0.35, d_bolt);
-        
-        // Battery Percentage digits (No ugly leading zeros)
-        let bat_u = u32(bat_val);
-        let b_tens = (bat_u % 100u) / 10u;
-        let b_ones = bat_u % 10u;
-        let b_scale = 1.10;
-        let b_sp = 7.5;
-        let bat_num_cx = 76.0;
-        var mask_bnum = 0.0;
-        if bat_u >= 100u {
-            let db_h = draw_digit(local_p - vec2<f32>(bat_num_cx - b_sp * 1.1, top_y), 1u, b_scale);
-            let db0 = draw_digit(local_p - vec2<f32>(bat_num_cx, top_y), 0u, b_scale);
-            let db1 = draw_digit(local_p - vec2<f32>(bat_num_cx + b_sp * 1.1, top_y), 0u, b_scale);
-            let db_pct = draw_percent(local_p - vec2<f32>(bat_num_cx + b_sp * 2.3, top_y), b_scale);
-            let d_all = min(min(db_h, db0), min(db1, db_pct)) - 0.68;
-            mask_bnum = 1.0 - smoothstep(-0.35, 0.35, d_all);
-        } else if bat_u >= 10u {
-            let db0 = draw_digit(local_p - vec2<f32>(bat_num_cx - b_sp * 0.7, top_y), b_tens, b_scale);
-            let db1 = draw_digit(local_p - vec2<f32>(bat_num_cx + b_sp * 0.5, top_y), b_ones, b_scale);
-            let db_pct = draw_percent(local_p - vec2<f32>(bat_num_cx + b_sp * 1.8, top_y), b_scale);
-            let d_all = min(min(db0, db1), db_pct) - 0.68;
-            mask_bnum = 1.0 - smoothstep(-0.35, 0.35, d_all);
-        } else {
-            let db1 = draw_digit(local_p - vec2<f32>(bat_num_cx - b_sp * 0.2, top_y), b_ones, b_scale);
-            let db_pct = draw_percent(local_p - vec2<f32>(bat_num_cx + b_sp * 1.1, top_y), b_scale);
-            let d_all = min(db1, db_pct) - 0.68;
-            mask_bnum = 1.0 - smoothstep(-0.35, 0.35, d_all);
-        }
+
+        // Day and Battery text rendered via dynamic Quicksand overlay
+        let mask_day_letters = 0.0;
+        let mask_bnum = 0.0;
 
         // ════════════════════════════════════════════
-        // 2. HERO DIGITAL CLOCK (y = -4.0): Bold Modern Typography
+        // 2. HERO DIGITAL CLOCK: Rendered via dynamic Quicksand overlay
         // ════════════════════════════════════════════
         let time_y = -4.0;
-        let time_cx = -12.0;
-        let t_scale = 3.6;
-        let sp = 23.5;
-        
-        let h_tens = u32(hr / 10.0);
-        let h_ones = u32(hr % 10.0);
-        let m_tens = u32(mn / 10.0);
-        let m_ones = u32(mn % 10.0);
-        
-        let d_th0 = draw_digit(local_p - vec2<f32>(time_cx - 2.15 * sp, time_y), h_tens, t_scale);
-        let d_th1 = draw_digit(local_p - vec2<f32>(time_cx - 1.05 * sp, time_y), h_ones, t_scale);
-        let d_tcol = draw_colon(local_p - vec2<f32>(time_cx, time_y), t_scale);
-        let d_tm0 = draw_digit(local_p - vec2<f32>(time_cx + 1.05 * sp, time_y), m_tens, t_scale);
-        let d_tm1 = draw_digit(local_p - vec2<f32>(time_cx + 2.15 * sp, time_y), m_ones, t_scale);
-        
-        let d_time_digits = min(min(d_th0, d_th1), min(d_tm0, d_tm1)) - 1.80;
-        let mask_time_digits = 1.0 - smoothstep(-0.35, 0.35, d_time_digits);
-        
-        let colon_pulse = 0.55 + 0.45 * sin(sec * 3.14159265);
-        let mask_time_colon = (1.0 - smoothstep(-0.35, 0.35, d_tcol - 1.20)) * colon_pulse;
-        
-        // AM / PM Badge (scale = 0.95)
-        let pm_x = time_cx + 2.15 * sp + 22.0;
-        let pm_y = time_y + 4.0;
-        let ch_ampm = select(65u, 80u, is_pm); // 'A' or 'P'
-        let d_ampm0 = draw_clock_letter(local_p - vec2<f32>(pm_x, pm_y), ch_ampm, 0.95);
-        let d_ampm1 = draw_clock_letter(local_p - vec2<f32>(pm_x + 7.5, pm_y), 77u, 0.95); // 'M'
-        let mask_ampm = 1.0 - smoothstep(-0.35, 0.35, min(d_ampm0, d_ampm1) - 0.65);
+        let mask_time_digits = 0.0;
+        let mask_time_colon = 0.0;
+        let mask_ampm = 0.0;
 
         // ════════════════════════════════════════════
         // 3. BOTTOM ROW (y = 54.0): Frosted Date Pill & Battery Fill Track
@@ -1147,33 +1082,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let mask_cal_pins = 1.0 - smoothstep(-0.35, 0.35, min(d_pin0, d_pin1));
         let mask_cal_icon = max(mask_cal_outline, mask_cal_pins);
         
-        // Month Letters (JAN..DEC)
-        var m0 = 78u; var m1 = 79u; var m2 = 86u; // NOV default
-        if month_code == 1u { m0 = 74u; m1 = 65u; m2 = 78u; }      // JAN
-        else if month_code == 2u { m0 = 70u; m1 = 69u; m2 = 66u; } // FEB
-        else if month_code == 3u { m0 = 77u; m1 = 65u; m2 = 82u; } // MAR
-        else if month_code == 4u { m0 = 65u; m1 = 80u; m2 = 82u; } // APR
-        else if month_code == 5u { m0 = 77u; m1 = 65u; m2 = 89u; } // MAY
-        else if month_code == 6u { m0 = 74u; m1 = 85u; m2 = 78u; } // JUN
-        else if month_code == 7u { m0 = 74u; m1 = 85u; m2 = 76u; } // JUL
-        else if month_code == 8u { m0 = 65u; m1 = 85u; m2 = 71u; } // AUG
-        else if month_code == 9u { m0 = 83u; m1 = 69u; m2 = 80u; } // SEP
-        else if month_code == 10u { m0 = 79u; m1 = 67u; m2 = 84u; } // OCT
-        else if month_code == 11u { m0 = 78u; m1 = 79u; m2 = 86u; } // NOV
-        else if month_code == 12u { m0 = 68u; m1 = 69u; m2 = 67u; } // DEC
-        
-        let date_cx = -76.0;
-        let mt_sp = 7.8;
-        let d_m0 = draw_clock_letter(local_p - vec2<f32>(date_cx - 2.8 * mt_sp, bot_y), m0, 1.05);
-        let d_m1 = draw_clock_letter(local_p - vec2<f32>(date_cx - 1.8 * mt_sp, bot_y), m1, 1.05);
-        let d_m2 = draw_clock_letter(local_p - vec2<f32>(date_cx - 0.8 * mt_sp, bot_y), m2, 1.05);
-        
-        let md_tens = mday_code / 10u;
-        let md_ones = mday_code % 10u;
-        let d_d0 = draw_digit(local_p - vec2<f32>(date_cx + 0.9 * mt_sp, bot_y), md_tens, 1.05);
-        let d_d1 = draw_digit(local_p - vec2<f32>(date_cx + 2.0 * mt_sp, bot_y), md_ones, 1.05);
-        let d_date_text = min(min(min(d_m0, d_m1), d_m2), min(d_d0, d_d1)) - 0.70;
-        let mask_date_text = 1.0 - smoothstep(-0.35, 0.35, d_date_text);
+        let mask_date_text = 0.0;
         
         // ── 3b. Right Battery Progress Track (cx = 76.0, half = 46.0x5.0, r = 5.0) ──
         let p_track = local_p - vec2<f32>(76.0, bot_y);
@@ -1191,20 +1100,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         // ════════════════════════════════════════════
         // 4. MASTER COMPOSITE FOR CLOCK WIDGET
         // ════════════════════════════════════════════
-        // Subtle ambient contact shadow cast beneath digits (+1.8px) for natural physical depth
-        let p_digit_sh = local_p - vec2<f32>(0.0, 1.8);
-        let d_sh0 = draw_digit(p_digit_sh - vec2<f32>(time_cx - 2.15 * sp, time_y), h_tens, t_scale);
-        let d_sh1 = draw_digit(p_digit_sh - vec2<f32>(time_cx - 1.05 * sp, time_y), h_ones, t_scale);
-        let d_sm0 = draw_digit(p_digit_sh - vec2<f32>(time_cx + 1.05 * sp, time_y), m_tens, t_scale);
-        let d_sm1 = draw_digit(p_digit_sh - vec2<f32>(time_cx + 2.15 * sp, time_y), m_ones, t_scale);
-        let d_time_sh = min(min(d_sh0, d_sh1), min(d_sm0, d_sm1)) - 1.80;
-        let shadow_time = exp(-max(d_time_sh, 0.0) * 0.90) * 0.28;
-
-        // Primary glyphs (Time digits, colon, day letters, date text, battery %)
-        let primary_glyphs = max(
-            max(mask_time_digits, mask_time_colon),
-            max(max(mask_day_letters, mask_date_text), max(mask_bnum, max(mask_cal_icon, mask_ampm)))
-        );
+        let shadow_time = 0.0;
+        let primary_glyphs = mask_cal_icon;
 
         let digit_sheen = clamp(1.0 - (local_p.y - (time_y - 12.0)) / 24.0, 0.0, 1.0);
         let glyph_light = mix(text_primary, vec3<f32>(1.0, 1.0, 1.0), digit_sheen * 0.20);
@@ -1268,44 +1165,17 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let mask_track_fill = (1.0 - smoothstep(-0.4, 0.4, d_track)) * 0.05;
         let mask_track_rim = smoothstep(1.0, 0.0, abs(d_track)) * 0.20;
 
-        // Tab 1: Tasks (cx = -76.0, half = 72.0x13.0, r = 13.0)
-        let p_tab1 = local_p - vec2<f32>(-76.0, top_y);
-        let d_tab1 = rr_sdf(p_tab1, vec2<f32>(72.0, 13.0), 13.0);
-        let is_tab1_act = (active_tab == 0u);
-        let mask_tab1_fill = (1.0 - smoothstep(-0.4, 0.4, d_tab1)) * select(0.0, 0.12, is_tab1_act);
-        let mask_tab1_rim = smoothstep(1.1, 0.0, abs(d_tab1)) * select(0.12, 0.32, is_tab1_act);
-
-        // Tab 1 Text: TASKS (6)
-        let t1_cx = -76.0;
-        let t1_sp = 7.0;
-        let dt0 = draw_clock_letter(local_p - vec2<f32>(t1_cx - 3.8 * t1_sp, top_y), 84u, 0.95); // T
-        let dt1 = draw_clock_letter(local_p - vec2<f32>(t1_cx - 2.6 * t1_sp, top_y), 65u, 0.95); // A
-        let dt2 = draw_clock_letter(local_p - vec2<f32>(t1_cx - 1.4 * t1_sp, top_y), 83u, 0.95); // S
-        let dt3 = draw_clock_letter(local_p - vec2<f32>(t1_cx - 0.2 * t1_sp, top_y), 75u, 0.95); // K
-        let dt4 = draw_clock_letter(local_p - vec2<f32>(t1_cx + 1.0 * t1_sp, top_y), 83u, 0.95); // S
-        let dt_p0 = draw_clock_letter(local_p - vec2<f32>(t1_cx + 2.3 * t1_sp, top_y), 40u, 0.95); // (
-        let dt5 = draw_digit(local_p - vec2<f32>(t1_cx + 3.3 * t1_sp, top_y), 6u, 0.95);
-        let dt_p1 = draw_clock_letter(local_p - vec2<f32>(t1_cx + 4.3 * t1_sp, top_y), 41u, 0.95); // )
-        let d_tab1_txt = min(min(min(dt0, dt1), min(dt2, dt3)), min(min(dt4, dt_p0), min(dt5, dt_p1))) - 0.70;
-        let mask_tab1_txt = 1.0 - smoothstep(-0.35, 0.35, d_tab1_txt);
-
-        // Tab 2: Agenda (cx = 76.0, half = 72.0x13.0, r = 13.0)
-        let p_tab2 = local_p - vec2<f32>(76.0, top_y);
-        let d_tab2 = rr_sdf(p_tab2, vec2<f32>(72.0, 13.0), 13.0);
-        let is_tab2_act = (active_tab == 1u);
-        let mask_tab2_fill = (1.0 - smoothstep(-0.4, 0.4, d_tab2)) * select(0.0, 0.12, is_tab2_act);
-        let mask_tab2_rim = smoothstep(1.1, 0.0, abs(d_tab2)) * select(0.12, 0.32, is_tab2_act);
-
-        // Tab 2 Text: AGENDA
-        let t2_cx = 76.0;
-        let da0 = draw_clock_letter(local_p - vec2<f32>(t2_cx - 2.6 * t1_sp, top_y), 65u, 0.90); // A
-        let da1 = draw_clock_letter(local_p - vec2<f32>(t2_cx - 1.5 * t1_sp, top_y), 71u, 0.90); // G
-        let da2 = draw_clock_letter(local_p - vec2<f32>(t2_cx - 0.4 * t1_sp, top_y), 69u, 0.90); // E
-        let da3 = draw_clock_letter(local_p - vec2<f32>(t2_cx + 0.7 * t1_sp, top_y), 78u, 0.90); // N
-        let da4 = draw_clock_letter(local_p - vec2<f32>(t2_cx + 1.8 * t1_sp, top_y), 68u, 0.90); // D
-        let da5 = draw_clock_letter(local_p - vec2<f32>(t2_cx + 2.9 * t1_sp, top_y), 65u, 0.90); // A
-        let d_tab2_txt = min(min(min(da0, da1), min(da2, da3)), min(da4, da5)) - 0.65;
-        let mask_tab2_txt = 1.0 - smoothstep(-0.35, 0.35, d_tab2_txt);
+        // Smooth continuous sliding active tab pill using params.deformation (0.0 = Tasks, 1.0 = Agenda)
+        let tab_t = clamp(params.deformation, 0.0, 1.0);
+        let tab_cx = mix(-76.0, 76.0, tab_t);
+        let p_tab = local_p - vec2<f32>(tab_cx, top_y);
+        let d_tab = rr_sdf(p_tab, vec2<f32>(72.0, 13.0), 13.0);
+        let mask_tab1_fill = (1.0 - smoothstep(-0.4, 0.4, d_tab)) * 0.12;
+        let mask_tab1_rim = smoothstep(1.1, 0.0, abs(d_tab)) * 0.32;
+        let mask_tab2_fill = 0.0;
+        let mask_tab2_rim = 0.0;
+        let mask_tab1_txt = 0.0;
+        let mask_tab2_txt = 0.0;
 
         var mask_all_fill = 0.0;
         var mask_all_rim = 0.0;
@@ -1343,39 +1213,14 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             // ════════════════════════════════════════════
             let filt_y = -148.0;
 
-            // ALL Pill (active when active_filter == 0)
-            let is_f_all = (active_filter == 0u);
-            let p_all = local_p - vec2<f32>(-96.0, filt_y);
-            let d_all = rr_sdf(p_all, vec2<f32>(30.0, 10.0), 10.0);
-            mask_all_fill = (1.0 - smoothstep(-0.4, 0.4, d_all)) * select(0.0, 0.10, is_f_all);
-            mask_all_rim = smoothstep(1.0, 0.0, abs(d_all)) * select(0.14, 0.30, is_f_all);
-            let dl0 = draw_clock_letter(p_all - vec2<f32>(-11.0, 0.0), 65u, 0.85); // A
-            let dl1 = draw_clock_letter(p_all - vec2<f32>(0.0, 0.0), 76u, 0.85);  // L
-            let dl2 = draw_clock_letter(p_all - vec2<f32>(11.0, 0.0), 76u, 0.85); // L
-            mask_all_txt = 1.0 - smoothstep(-0.35, 0.35, min(min(dl0, dl1), dl2) - 0.65);
-
-            // ACTIVE Pill (active when active_filter == 1)
-            let is_f_act = (active_filter == 1u);
-            let p_act = local_p - vec2<f32>(-24.0, filt_y);
-            let d_act = rr_sdf(p_act, vec2<f32>(34.0, 10.0), 10.0);
-            mask_act_fill = (1.0 - smoothstep(-0.4, 0.4, d_act)) * select(0.0, 0.10, is_f_act);
-            mask_act_rim = smoothstep(1.0, 0.0, abs(d_act)) * select(0.14, 0.30, is_f_act);
-            let dc0 = draw_clock_letter(p_act - vec2<f32>(-16.0, 0.0), 65u, 0.80);
-            let dc1 = draw_clock_letter(p_act - vec2<f32>(-6.0, 0.0), 67u, 0.80);
-            let dc2 = draw_clock_letter(p_act - vec2<f32>(4.0, 0.0), 84u, 0.80);
-            let dc3 = draw_clock_letter(p_act - vec2<f32>(14.0, 0.0), 86u, 0.80);
-            mask_act_txt = 1.0 - smoothstep(-0.35, 0.35, min(min(dc0, dc1), min(dc2, dc3)) - 0.60);
-
-            // DONE Pill (active when active_filter == 2)
-            let is_f_don = (active_filter == 2u);
-            let p_don = local_p - vec2<f32>(48.0, filt_y);
-            let d_don = rr_sdf(p_don, vec2<f32>(30.0, 10.0), 10.0);
-            mask_don_fill = (1.0 - smoothstep(-0.4, 0.4, d_don)) * select(0.0, 0.10, is_f_don);
-            mask_don_rim = smoothstep(1.0, 0.0, abs(d_don)) * select(0.14, 0.30, is_f_don);
-            let dd0 = draw_clock_letter(p_don - vec2<f32>(-11.0, 0.0), 68u, 0.80);
-            let dd1 = draw_clock_letter(p_don - vec2<f32>(0.0, 0.0), 79u, 0.80);
-            let dd2 = draw_clock_letter(p_don - vec2<f32>(11.0, 0.0), 78u, 0.80);
-            mask_don_txt = 1.0 - smoothstep(-0.35, 0.35, min(min(dd0, dd1), dd2) - 0.60);
+            // Smooth continuous sliding active filter pill using params.dispersion (0.0 = All, 1.0 = Active, 2.0 = Done)
+            let f_t = clamp(params.dispersion, 0.0, 2.0);
+            let filt_cx = select(mix(-96.0, -24.0, f_t), mix(-24.0, 48.0, f_t - 1.0), f_t > 1.0);
+            let filt_w = select(mix(30.0, 34.0, f_t), mix(34.0, 30.0, f_t - 1.0), f_t > 1.0);
+            let p_filt = local_p - vec2<f32>(filt_cx, filt_y);
+            let d_filt = rr_sdf(p_filt, vec2<f32>(filt_w, 10.0), 10.0);
+            mask_all_fill = (1.0 - smoothstep(-0.4, 0.4, d_filt)) * 0.10;
+            mask_all_rim = smoothstep(1.0, 0.0, abs(d_filt)) * 0.30;
 
             // Refresh Icon ↻
             let p_ref = local_p - vec2<f32>(120.0, filt_y);
@@ -1428,27 +1273,10 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
                 daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * 0.06);
                 daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * 0.20);
 
-                let dy0 = draw_clock_letter(p_dtag - vec2<f32>(-12.0, 0.0), 68u, 0.65); // D
-                let dy1 = draw_clock_letter(p_dtag - vec2<f32>(-6.0, 0.0), 65u, 0.65);  // A
-                let dy2 = draw_clock_letter(p_dtag - vec2<f32>(0.0, 0.0), 73u, 0.65);   // I
-                let dy3 = draw_clock_letter(p_dtag - vec2<f32>(6.0, 0.0), 76u, 0.65);   // L
-                let dy4 = draw_clock_letter(p_dtag - vec2<f32>(12.0, 0.0), 89u, 0.65);  // Y
-                let d_dytxt = min(min(min(dy0, dy1), min(dy2, dy3)), dy4) - 0.48;
-                daily_txts = max(daily_txts, 1.0 - smoothstep(-0.35, 0.35, d_dytxt));
-
-                // Task Titles with crisp bold strokes and drop shadow:
-                let d_txt = eval_todo_row_text(local_p, i);
-                let d_txt_sh = eval_todo_row_text(local_p - vec2<f32>(0.0, 1.2), i);
-
-                let m_txt = 1.0 - smoothstep(-0.35, 0.35, d_txt - 0.78);
-                let m_txt_sh = (1.0 - smoothstep(-0.35, 0.75, d_txt_sh - 0.78)) * 0.55;
-
-                if is_item_done {
-                    task_txt_dimmed = max(task_txt_dimmed, m_txt);
-                } else {
-                    task_txt_primary = max(task_txt_primary, m_txt);
-                    task_txt_shadow = max(task_txt_shadow, m_txt_sh);
-                }
+                daily_txts = 0.0;
+                task_txt_primary = 0.0;
+                task_txt_shadow = 0.0;
+                task_txt_dimmed = 0.0;
             }
 
             // ════════════════════════════════════════════
@@ -1468,18 +1296,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             let d_plus_h = dist_segment(p_plus, vec2<f32>(-5.0, 0.0), vec2<f32>(5.0, 0.0));
             mask_plus_icon = 1.0 - smoothstep(-0.35, 0.35, min(d_plus_v, d_plus_h) - 0.65);
 
-            // Placeholder text: + ADD TASK...
-            let at_start = -135.0;
-            let at_sp = 7.5;
-            let ap0 = draw_clock_letter(local_p - vec2<f32>(at_start + 0.0 * at_sp, bot_y), 65u, 0.85); // A
-            let ap1 = draw_clock_letter(local_p - vec2<f32>(at_start + 1.0 * at_sp, bot_y), 68u, 0.85); // D
-            let ap2 = draw_clock_letter(local_p - vec2<f32>(at_start + 2.0 * at_sp, bot_y), 68u, 0.85); // D
-            let ap3 = draw_clock_letter(local_p - vec2<f32>(at_start + 3.8 * at_sp, bot_y), 84u, 0.85); // T
-            let ap4 = draw_clock_letter(local_p - vec2<f32>(at_start + 4.8 * at_sp, bot_y), 65u, 0.85); // A
-            let ap5 = draw_clock_letter(local_p - vec2<f32>(at_start + 5.8 * at_sp, bot_y), 83u, 0.85); // S
-            let ap6 = draw_clock_letter(local_p - vec2<f32>(at_start + 6.8 * at_sp, bot_y), 75u, 0.85); // K
-            let d_add_txt = min(min(min(ap0, ap1), ap2), min(min(ap3, ap4), min(ap5, ap6))) - 0.65;
-            mask_add_txt = 1.0 - smoothstep(-0.35, 0.35, d_add_txt);
+            mask_add_txt = 0.0;
         } else {
             // ════════════════════════════════════════════
             // 2. AGENDA SCHEDULE VIEW (y = -135.0 to +135.0)
@@ -2061,6 +1878,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     fin += app.fluid_color * (app.fluid_glow * mix(1.0, 0.35, is_light));
     fin = mix(fin, app.glyph_color, app.glyph_mask);
+
+    // Composite dynamic Quicksand typography & interactive UI overlay
+    let overlay = textureSampleLevel(overlay_texture, background_sampler, uv, 0.0);
+    fin = mix(fin, overlay.rgb, overlay.a);
 
     let aa = 1.0 - smoothstep(-1.0, 0.0, sdf);
     return vec4<f32>(fin * aa, aa);

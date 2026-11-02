@@ -723,6 +723,7 @@ dependencies = [
 name = "glass-core"
 version = "0.1.0"
 dependencies = [
+ "ab_glyph",
  "bytemuck",
  "image",
  "log",

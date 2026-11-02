@@ -1,15 +1,18 @@
-use glass_core::{geometry::Shape, GlassRenderer, GlassSurface, Material};
+use glass_core::font::{FontWeight, QuicksandFont};
+use glass_core::{geometry::Shape, GlassRenderer, GlassSurface, Material, Spring, SpringParams};
 use raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle,
     RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle, WindowHandle,
 };
 use serde::{Deserialize, Serialize};
 use smithay_client_toolkit::delegate_shm;
+use smithay_client_toolkit::seat::keyboard::Keysym;
+use smithay_client_toolkit::seat::keyboard::{KeyEvent, KeyboardHandler, Modifiers};
 use smithay_client_toolkit::shm::{Shm, ShmHandler};
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
-    delegate_compositor, delegate_layer, delegate_output, delegate_pointer, delegate_registry,
-    delegate_seat,
+    delegate_compositor, delegate_keyboard, delegate_layer, delegate_output, delegate_pointer,
+    delegate_registry, delegate_seat,
     output::{OutputHandler, OutputState},
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
@@ -29,7 +32,7 @@ use std::os::fd::{AsFd, AsRawFd};
 use std::sync::Arc;
 use std::time::Instant;
 use wayland_client::{
-    protocol::{wl_pointer, wl_seat, wl_surface},
+    protocol::{wl_keyboard, wl_pointer, wl_seat, wl_surface},
     Connection, Proxy, QueueHandle,
 };
 
@@ -52,6 +55,45 @@ pub struct TodoState {
     pub tasks: Vec<TodoItem>,
 }
 
+struct AgendaItem {
+    time: &'static str,
+    title: &'static str,
+    tag: &'static str,
+}
+
+const AGENDA_SCHEDULE: [AgendaItem; 6] = [
+    AgendaItem {
+        time: "09:00 AM",
+        title: "Morning Routine & Focus",
+        tag: "HABIT",
+    },
+    AgendaItem {
+        time: "10:30 AM",
+        title: "System Architecture Review",
+        tag: "WORK",
+    },
+    AgendaItem {
+        time: "01:00 PM",
+        title: "Liquid Glass Engine Sync",
+        tag: "CORE",
+    },
+    AgendaItem {
+        time: "03:30 PM",
+        title: "Rust Pipeline Profiling",
+        tag: "PERF",
+    },
+    AgendaItem {
+        time: "06:00 PM",
+        title: "Code Review & Verification",
+        tag: "SHIP",
+    },
+    AgendaItem {
+        time: "08:30 PM",
+        title: "Reading & Research",
+        tag: "NIGHT",
+    },
+];
+
 struct AppData {
     registry_state: RegistryState,
     output_state: OutputState,
@@ -65,11 +107,11 @@ struct AppData {
     window_wrapper: Option<Arc<WaylandWindow>>,
 
     pointer: Option<wl_pointer::WlPointer>,
+    keyboard: Option<wl_keyboard::WlKeyboard>,
     cursor_pos: [f32; 2],
     cursor_velocity: [f32; 2],
     is_hovered: bool,
     is_dragging: bool,
-    drag_start_pos: [i32; 2],
     drag_grab_offset: [i32; 2],
 
     pos_x: i32,
@@ -82,13 +124,24 @@ struct AppData {
     wallpaper_cache: Option<Arc<Vec<u8>>>,
     current_wallpaper_path: Option<String>,
     last_wallpaper_check: Instant,
+    is_wallpaper_light: bool,
 
     todos: TodoState,
     last_todo_check: Instant,
     last_todo_mtime: Option<std::time::SystemTime>,
     active_tab: u32,    // 0 = Tasks, 1 = Agenda
     active_filter: u32, // 0 = All, 1 = Active, 2 = Done
-    new_task_queue: Arc<std::sync::Mutex<Vec<String>>>,
+
+    // Inline Editing
+    is_editing: bool,
+    input_buffer: String,
+    edit_start_time: Instant,
+
+    // Smooth Spring Animation States
+    font: QuicksandFont,
+    tab_spring: Spring,
+    filter_spring: Spring,
+    last_frame_time: Instant,
 }
 
 struct WaylandWindow {
@@ -249,6 +302,11 @@ impl SeatHandler for AppData {
                 self.pointer = Some(ptr);
             }
         }
+        if capability == Capability::Keyboard && self.keyboard.is_none() {
+            if let Ok(kbd) = self.seat_state.get_keyboard(qh, &seat, None) {
+                self.keyboard = Some(kbd);
+            }
+        }
     }
 
     fn remove_capability(
@@ -263,9 +321,116 @@ impl SeatHandler for AppData {
                 ptr.release();
             }
         }
+        if capability == Capability::Keyboard {
+            if let Some(kbd) = self.keyboard.take() {
+                kbd.release();
+            }
+        }
     }
 
     fn remove_seat(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _seat: wl_seat::WlSeat) {
+    }
+}
+
+impl KeyboardHandler for AppData {
+    fn enter(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &wl_keyboard::WlKeyboard,
+        _surface: &wl_surface::WlSurface,
+        _serial: u32,
+        _raw: &[u32],
+        _keysyms: &[Keysym],
+    ) {
+    }
+
+    fn leave(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &wl_keyboard::WlKeyboard,
+        _surface: &wl_surface::WlSurface,
+        _serial: u32,
+    ) {
+    }
+
+    fn press_key(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &wl_keyboard::WlKeyboard,
+        _serial: u32,
+        event: KeyEvent,
+    ) {
+        if !self.is_editing {
+            return;
+        }
+
+        match event.keysym {
+            Keysym::Return => {
+                let text = self.input_buffer.trim().to_string();
+                if !text.is_empty() {
+                    self.todos.tasks.push(TodoItem {
+                        text,
+                        done: false,
+                        r#type: "daily".to_string(),
+                        lastCompletedDate: String::new(),
+                    });
+                    self.save_todos();
+                }
+                self.is_editing = false;
+                self.input_buffer.clear();
+                if let Some(ls) = &self.layer_surface {
+                    ls.set_keyboard_interactivity(KeyboardInteractivity::None);
+                    ls.commit();
+                }
+                self.draw();
+            }
+            Keysym::Escape => {
+                self.is_editing = false;
+                self.input_buffer.clear();
+                if let Some(ls) = &self.layer_surface {
+                    ls.set_keyboard_interactivity(KeyboardInteractivity::None);
+                    ls.commit();
+                }
+                self.draw();
+            }
+            Keysym::BackSpace => {
+                self.input_buffer.pop();
+                self.draw();
+            }
+            _ => {
+                if let Some(chars) = event.utf8 {
+                    for ch in chars.chars() {
+                        if !ch.is_control() && self.input_buffer.len() < 36 {
+                            self.input_buffer.push(ch);
+                        }
+                    }
+                    self.draw();
+                }
+            }
+        }
+    }
+
+    fn release_key(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &wl_keyboard::WlKeyboard,
+        _serial: u32,
+        _event: KeyEvent,
+    ) {
+    }
+
+    fn update_modifiers(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &wl_keyboard::WlKeyboard,
+        _serial: u32,
+        _modifiers: Modifiers,
+    ) {
     }
 }
 
@@ -357,6 +522,7 @@ impl PointerHandler for AppData {
                                         self.width,
                                         self.height,
                                     );
+                                    self.is_wallpaper_light = is_buffer_light(&crop);
                                     renderer.update_background(self.width, self.height, &crop);
                                 }
                             }
@@ -370,7 +536,6 @@ impl PointerHandler for AppData {
                     let handled = self.handle_click(px, py);
                     if !handled {
                         self.is_dragging = true;
-                        self.drag_start_pos = [self.pos_x, self.pos_y];
                         self.drag_grab_offset = [px as i32, py as i32];
                     }
                 }
@@ -408,38 +573,42 @@ impl AppData {
         let local_x = px - half_w;
         let local_y = py - half_h;
 
-        // Check Tabs (y = -188, x = -76 or +76)
-        if (local_y - (-188.0)).abs() <= 16.0 {
+        // Check Top Tabs (tab_y = -195.0, cy = 32.5)
+        if (local_y - (-195.0)).abs() <= 22.0 {
             if local_x <= 0.0 {
                 self.active_tab = 0;
+                self.tab_spring.set_target(0.0);
             } else {
                 self.active_tab = 1;
+                self.tab_spring.set_target(1.0);
             }
             self.draw();
             return true;
         }
 
-        // Check Filters (y = -148)
-        if self.active_tab == 0 && (local_y - (-148.0)).abs() <= 14.0 {
-            if (-126.0..=-66.0).contains(&local_x) {
+        // Check Filters (filt_y = -148.0, cy = 79.5)
+        if self.active_tab == 0 && (local_y - (-148.0)).abs() <= 18.0 {
+            if local_x < -55.0 {
                 self.active_filter = 0; // All
-            } else if (-58.0..=10.0).contains(&local_x) {
+                self.filter_spring.set_target(0.0);
+            } else if local_x < 15.0 {
                 self.active_filter = 1; // Active
-            } else if (18.0..=78.0).contains(&local_x) {
+                self.filter_spring.set_target(1.0);
+            } else {
                 self.active_filter = 2; // Done
+                self.filter_spring.set_target(2.0);
             }
             self.draw();
             return true;
         }
 
-        // Check task row checkboxes (y = -105 + i * 44, x = -135)
+        // Check task row checkboxes (row_y = -105.0 + i * 44.0, cx = -135.0)
         if self.active_tab == 0 {
             let visible_indices = self.filtered_indices();
             for (display_row, &actual_idx) in visible_indices.iter().enumerate().take(6) {
                 let row_y = -105.0 + (display_row as f32) * 44.0;
-                // Checkbox hit box: x within [-150, -115], y within [row_y - 16, row_y + 16]
-                if (-150.0..=-115.0).contains(&local_x)
-                    && (local_y - row_y).abs() <= 16.0
+                if (-156.0..=-110.0).contains(&local_x)
+                    && (local_y - row_y).abs() <= 18.0
                     && actual_idx < self.todos.tasks.len()
                 {
                     self.todos.tasks[actual_idx].done = !self.todos.tasks[actual_idx].done;
@@ -450,54 +619,42 @@ impl AppData {
             }
         }
 
-        // Add task button (y = 185)
-        if self.active_tab == 0 && (local_y - 185.0).abs() <= 18.0 {
-            let q_clone = self.new_task_queue.clone();
-            std::thread::spawn(move || {
-                let output = std::process::Command::new("zenity")
-                    .args([
-                        "--entry",
-                        "--title=Add Task",
-                        "--text=Enter task description:",
-                    ])
-                    .output();
-                if let Ok(out) = output {
-                    if out.status.success() {
-                        let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                        if !text.is_empty() {
-                            if let Ok(mut q) = q_clone.lock() {
-                                q.push(text);
-                            }
-                        }
-                    }
-                }
-            });
+        // Check Add task button (bot_y = 185.0, cy = 412.5)
+        if self.active_tab == 0 && (local_y - 185.0).abs() <= 24.0 {
+            self.is_editing = true;
+            self.input_buffer.clear();
+            self.edit_start_time = Instant::now();
+            if let Some(ls) = &self.layer_surface {
+                ls.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+                ls.commit();
+            }
+            self.draw();
+            return true;
+        }
+
+        // If clicking outside while editing, commit or close
+        if self.is_editing {
+            let text = self.input_buffer.trim().to_string();
+            if !text.is_empty() {
+                self.todos.tasks.push(TodoItem {
+                    text,
+                    done: false,
+                    r#type: "daily".to_string(),
+                    lastCompletedDate: String::new(),
+                });
+                self.save_todos();
+            }
+            self.is_editing = false;
+            self.input_buffer.clear();
+            if let Some(ls) = &self.layer_surface {
+                ls.set_keyboard_interactivity(KeyboardInteractivity::None);
+                ls.commit();
+            }
+            self.draw();
             return true;
         }
 
         false
-    }
-
-    fn check_new_tasks(&mut self) -> bool {
-        let mut added = false;
-        if let Ok(mut q) = self.new_task_queue.lock() {
-            if !q.is_empty() {
-                for new_task in q.drain(..) {
-                    self.todos.tasks.push(TodoItem {
-                        text: new_task,
-                        done: false,
-                        r#type: "daily".to_string(),
-                        lastCompletedDate: String::new(),
-                    });
-                    added = true;
-                }
-            }
-        }
-        if added {
-            self.save_todos();
-            self.draw();
-        }
-        added
     }
 
     fn save_todos(&self) {
@@ -550,15 +707,316 @@ impl AppData {
                         self.width,
                         self.height,
                     );
+                    self.is_wallpaper_light = is_buffer_light(&crop);
                     renderer.update_background(self.width, self.height, &crop);
                 }
             }
         }
     }
 
+    fn update_physics(&mut self) -> bool {
+        let now = Instant::now();
+        let dt = now
+            .duration_since(self.last_frame_time)
+            .as_secs_f32()
+            .min(0.05);
+        self.last_frame_time = now;
+
+        self.tab_spring.update(dt);
+        self.filter_spring.update(dt);
+
+        !self.tab_spring.is_at_rest() || !self.filter_spring.is_at_rest() || self.is_editing
+    }
+
+    fn render_ui_overlay(&self, buf: &mut [u8]) {
+        // High-contrast crisp white typography with subtle drop shadow for supreme legibility on all backgrounds
+        let col_primary = [255, 255, 255, 255];
+        let col_secondary = [235, 240, 250, 230];
+        let col_dimmed = [190, 198, 212, 175];
+        let col_accent = [255, 255, 255, 255];
+        let col_shadow = [10, 14, 22, 140];
+
+        // 1. Top Tab Labels: "Tasks ({count})" (cx = 104.0) & "Agenda" (cx = 256.0), cy = 32.5
+        let tasks_count = self.todos.tasks.len();
+        let tasks_label = format!("Tasks ({})", tasks_count);
+        let tab1_col = if self.active_tab == 0 {
+            col_accent
+        } else {
+            col_dimmed
+        };
+        self.font.draw_text_centered(
+            buf,
+            self.width,
+            self.height,
+            &tasks_label,
+            104.0,
+            32.5,
+            14.0,
+            tab1_col,
+            col_shadow,
+            FontWeight::Bold,
+        );
+
+        let agenda_label = "Agenda";
+        let tab2_col = if self.active_tab == 1 {
+            col_accent
+        } else {
+            col_dimmed
+        };
+        self.font.draw_text_centered(
+            buf,
+            self.width,
+            self.height,
+            agenda_label,
+            256.0,
+            32.5,
+            14.0,
+            tab2_col,
+            col_shadow,
+            FontWeight::SemiBold,
+        );
+
+        if self.active_tab == 0 {
+            // 2. Filter Bar Labels: "All" (cx = 84.0), "Active" (cx = 156.0), "Done" (cx = 228.0), cy = 79.5
+            let f0_col = if self.active_filter == 0 {
+                col_accent
+            } else {
+                col_dimmed
+            };
+            let f1_col = if self.active_filter == 1 {
+                col_accent
+            } else {
+                col_dimmed
+            };
+            let f2_col = if self.active_filter == 2 {
+                col_accent
+            } else {
+                col_dimmed
+            };
+
+            self.font.draw_text_centered(
+                buf,
+                self.width,
+                self.height,
+                "All",
+                84.0,
+                79.5,
+                12.5,
+                f0_col,
+                col_shadow,
+                FontWeight::SemiBold,
+            );
+            self.font.draw_text_centered(
+                buf,
+                self.width,
+                self.height,
+                "Active",
+                156.0,
+                79.5,
+                12.5,
+                f1_col,
+                col_shadow,
+                FontWeight::SemiBold,
+            );
+            self.font.draw_text_centered(
+                buf,
+                self.width,
+                self.height,
+                "Done",
+                228.0,
+                79.5,
+                12.5,
+                f2_col,
+                col_shadow,
+                FontWeight::SemiBold,
+            );
+
+            // 3. Task Rows (cy = 122.5 + row_idx * 44.0)
+            let visible_indices = self.filtered_indices();
+            for (row_idx, &actual_idx) in visible_indices.iter().enumerate().take(6) {
+                let cy = 122.5 + (row_idx as f32) * 44.0;
+                let task = &self.todos.tasks[actual_idx];
+
+                let (text_col, weight) = if task.done {
+                    (col_dimmed, FontWeight::Regular)
+                } else {
+                    (col_primary, FontWeight::SemiBold)
+                };
+
+                // Truncate task text if too long for display
+                let mut display_text = task.text.clone();
+                if display_text.len() > 24 {
+                    display_text = format!("{}...", &display_text[..22]);
+                }
+
+                let end_x = self.font.draw_text_centered_y(
+                    buf,
+                    self.width,
+                    self.height,
+                    &display_text,
+                    64.0,
+                    cy,
+                    14.0,
+                    text_col,
+                    col_shadow,
+                    weight,
+                );
+
+                if task.done {
+                    // Strikethrough
+                    QuicksandFont::draw_strikethrough(
+                        buf,
+                        self.width,
+                        self.height,
+                        63.0,
+                        end_x + 2.0,
+                        cy,
+                        1.4,
+                        col_dimmed,
+                    );
+                }
+
+                // "DAILY" pill badge text centered at cx = 304.0, cy
+                let tag_text = "DAILY";
+                self.font.draw_text_centered(
+                    buf,
+                    self.width,
+                    self.height,
+                    tag_text,
+                    304.0,
+                    cy,
+                    10.0,
+                    col_secondary,
+                    col_shadow,
+                    FontWeight::Bold,
+                );
+            }
+
+            // 4. Bottom Add Task Bar (cy = 412.5)
+            if self.is_editing {
+                let input_str = if self.input_buffer.is_empty() {
+                    "Type new task..."
+                } else {
+                    &self.input_buffer
+                };
+                let input_col = if self.input_buffer.is_empty() {
+                    col_dimmed
+                } else {
+                    col_primary
+                };
+
+                let end_x = self.font.draw_text_centered_y(
+                    buf,
+                    self.width,
+                    self.height,
+                    input_str,
+                    42.0,
+                    412.5,
+                    14.0,
+                    input_col,
+                    col_shadow,
+                    FontWeight::SemiBold,
+                );
+
+                // Blinking cursor
+                let elapsed_ms = self.edit_start_time.elapsed().as_millis();
+                if (elapsed_ms / 500).is_multiple_of(2) {
+                    let cursor_x = if self.input_buffer.is_empty() {
+                        42.0
+                    } else {
+                        end_x + 2.0
+                    };
+                    QuicksandFont::draw_cursor(
+                        buf,
+                        self.width,
+                        self.height,
+                        cursor_x,
+                        412.5 - 8.0,
+                        16.0,
+                        2.0,
+                        col_accent,
+                    );
+                }
+
+                // Key hint: "↵ Enter"
+                self.font.draw_text_centered(
+                    buf,
+                    self.width,
+                    self.height,
+                    "↵ Enter",
+                    295.0,
+                    412.5,
+                    11.0,
+                    col_dimmed,
+                    col_shadow,
+                    FontWeight::Medium,
+                );
+            } else {
+                self.font.draw_text_centered_y(
+                    buf,
+                    self.width,
+                    self.height,
+                    "+  Add task",
+                    42.0,
+                    412.5,
+                    14.0,
+                    col_secondary,
+                    col_shadow,
+                    FontWeight::SemiBold,
+                );
+            }
+        } else {
+            // Agenda View (Today's Schedule, cy = 122.5 + idx * 44.0)
+            for (idx, item) in AGENDA_SCHEDULE.iter().enumerate() {
+                let cy = 122.5 + (idx as f32) * 44.0;
+
+                // Time (cx = 64.0)
+                self.font.draw_text_centered(
+                    buf,
+                    self.width,
+                    self.height,
+                    item.time,
+                    64.0,
+                    cy,
+                    11.5,
+                    col_secondary,
+                    col_shadow,
+                    FontWeight::Medium,
+                );
+
+                // Title (starts at x = 108.0)
+                self.font.draw_text_centered_y(
+                    buf,
+                    self.width,
+                    self.height,
+                    item.title,
+                    108.0,
+                    cy,
+                    13.5,
+                    col_primary,
+                    col_shadow,
+                    FontWeight::SemiBold,
+                );
+
+                // Tag (cx = 304.0)
+                self.font.draw_text_centered(
+                    buf,
+                    self.width,
+                    self.height,
+                    item.tag,
+                    304.0,
+                    cy,
+                    10.0,
+                    col_dimmed,
+                    col_shadow,
+                    FontWeight::Bold,
+                );
+            }
+        }
+    }
+
     fn draw(&mut self) -> bool {
         self.check_wallpaper();
-        let _ = self.check_new_tasks();
 
         let visible_indices = self.filtered_indices();
         let mut bitmask = 0u32;
@@ -568,14 +1026,21 @@ impl AppData {
             }
         }
 
-        if let Some(renderer) = &mut self.renderer {
-            let deformation_val = (self.active_tab as f32) * 10.0 + (self.active_filter as f32);
-            let accent = get_theme_accent();
+        // Generate dynamic Quicksand font overlay
+        let mut overlay_buf = vec![0u8; (self.width * self.height * 4) as usize];
+        self.render_ui_overlay(&mut overlay_buf);
 
+        if let Some(renderer) = &mut self.renderer {
+            renderer.update_overlay(self.width, self.height, &overlay_buf);
+
+            let _accent = get_theme_accent();
             let (px, py) = (self.cursor_pos[0], self.cursor_pos[1]);
             let (vx, vy) = (self.cursor_velocity[0], self.cursor_velocity[1]);
 
-            // True Optical Liquid Glass Surface using shader element_type 26.0 (Todo Widget)
+            // Pass continuous spring-animated values to shader
+            let tab_val = self.tab_spring.value;
+            let filter_val = self.filter_spring.value;
+
             let todo_card = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::RoundedRectangle { radius: 26.0 })
@@ -583,15 +1048,15 @@ impl AppData {
                 .curvature(0.02)
                 .bevel(5.5)
                 .refraction(0.35)
-                .dispersion(0.0)
+                .dispersion(filter_val) // Continuous Filter spring
                 .blur(16.0)
-                .tint(accent[0], accent[1], accent[2], accent[3])
-                .roughness(-1.0) // Hover row
+                .tint(0.0, 0.0, 0.0, 0.0)
+                .roughness(-1.0)
                 .specular(1.0)
                 .fresnel(0.35)
                 .element_type(26.0)
                 .progress(bitmask as f32)
-                .deformation(deformation_val)
+                .deformation(tab_val) // Continuous Tab spring
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
 
@@ -620,12 +1085,30 @@ delegate_registry!(AppData);
 delegate_shm!(AppData);
 delegate_seat!(AppData);
 delegate_pointer!(AppData);
+delegate_keyboard!(AppData);
 
 impl ProvidesRegistryState for AppData {
     fn registry(&mut self) -> &mut RegistryState {
         &mut self.registry_state
     }
     registry_handlers![OutputState, SeatState];
+}
+
+fn is_buffer_light(buf: &[u8]) -> bool {
+    let mut total_lum = 0u64;
+    let mut count = 0u64;
+    let step = 16 * 4;
+    for i in (0..buf.len()).step_by(step) {
+        if i + 2 < buf.len() {
+            let r = buf[i] as u64;
+            let g = buf[i + 1] as u64;
+            let b = buf[i + 2] as u64;
+            let lum = (r * 299 + g * 587 + b * 114) / 1000;
+            total_lum += lum;
+            count += 1;
+        }
+    }
+    total_lum.checked_div(count).is_some_and(|avg| avg > 135)
 }
 
 fn get_theme_accent() -> [f32; 4] {
@@ -768,14 +1251,19 @@ fn main() {
     let shm = Shm::bind(&globals, &qh).expect("wl_shm missing");
     let seat_state = SeatState::new(&globals, &qh);
 
-    // Exact placement matching quickshell-todo-widget: 360x455, right: 28, top: 56
-    // 1920 - 360 - 28 = 1532
+    // Exact placement: 360x455, right: 28, top: 56
     let width = 360u32;
     let height = 455u32;
     let pos_x = 1532i32;
     let pos_y = 56i32;
 
     let (wallpaper_cache, current_wallpaper_path) = init_wallpaper_1080p();
+    let is_light = if let Some(buf) = &wallpaper_cache {
+        let crop = get_wallpaper_crop(buf, pos_x as u32, pos_y as u32, width, height);
+        is_buffer_light(&crop)
+    } else {
+        false
+    };
 
     let home = std::env::var("HOME").unwrap_or_default();
     let todo_path = format!("{}/.local/state/todos.json", home);
@@ -791,6 +1279,9 @@ fn main() {
         }
     };
 
+    let font = QuicksandFont::new();
+    let spring_params = SpringParams::default_ui();
+
     let mut app_data = AppData {
         registry_state,
         output_state: OutputState::new(&globals, &qh),
@@ -804,11 +1295,11 @@ fn main() {
         window_wrapper: None,
 
         pointer: None,
+        keyboard: None,
         cursor_pos: [-10.0, -10.0],
         cursor_velocity: [0.0, 0.0],
         is_hovered: false,
         is_dragging: false,
-        drag_start_pos: [pos_x, pos_y],
         drag_grab_offset: [0, 0],
 
         pos_x,
@@ -821,13 +1312,22 @@ fn main() {
         wallpaper_cache,
         current_wallpaper_path,
         last_wallpaper_check: Instant::now(),
+        is_wallpaper_light: is_light,
 
         todos,
         last_todo_check: Instant::now(),
         last_todo_mtime: None,
         active_tab: 0,
         active_filter: 0,
-        new_task_queue: Arc::new(std::sync::Mutex::new(Vec::new())),
+
+        is_editing: false,
+        input_buffer: String::new(),
+        edit_start_time: Instant::now(),
+
+        font,
+        tab_spring: Spring::with_params(0.0, spring_params),
+        filter_spring: Spring::with_params(0.0, spring_params),
+        last_frame_time: Instant::now(),
     };
 
     let surface = app_data.compositor_state.create_surface(&qh);
@@ -867,21 +1367,25 @@ fn main() {
         }
     }
 
-    // High efficiency event loop: sleeps in kernel poll, wakes instantly on mouse or timeout
+    // High performance reactive event loop: 60fps during animation/typing, idle sleeping otherwise
     while !app_data.exit {
         let _ = event_queue.dispatch_pending(&mut app_data);
         let _ = conn.flush();
 
-        // Check if external state changed every 500ms
-        let _ = app_data.check_new_tasks();
         app_data.check_todos();
         app_data.check_wallpaper();
 
-        let timeout_ms = if app_data.is_hovered || app_data.is_dragging {
-            16
-        } else {
-            500
-        };
+        let animating = app_data.update_physics();
+        if animating {
+            app_data.draw();
+        }
+
+        let timeout_ms =
+            if animating || app_data.is_hovered || app_data.is_dragging || app_data.is_editing {
+                16
+            } else {
+                300
+            };
 
         let guard = match conn.prepare_read() {
             Some(g) => g,

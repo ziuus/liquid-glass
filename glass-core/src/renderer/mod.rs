@@ -40,6 +40,7 @@ pub struct GlassRenderer {
     params_bind_group: wgpu::BindGroup,
     base_bg_texture: wgpu::Texture,
     bg_texture: wgpu::Texture,
+    overlay_texture: wgpu::Texture,
     bg_bind_group: wgpu::BindGroup,
     bg_sampler: wgpu::Sampler,
     start_time: Instant,
@@ -239,44 +240,38 @@ impl GlassRenderer {
             ..Default::default()
         });
 
-        let bg_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Background Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
+        let overlay_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Overlay Texture"),
+            size: bg_texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
         });
 
-        let bg_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Background Bind Group"),
-            layout: &bg_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(
-                        &bg_texture.create_view(&wgpu::TextureViewDescriptor::default()),
-                    ),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&bg_sampler),
-                },
-            ],
-        });
+        // Initialize with 100% transparent pixels
+        let empty_overlay =
+            vec![0u8; (bg_texture_size.width * bg_texture_size.height * 4) as usize];
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &overlay_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &empty_overlay,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * bg_texture_size.width),
+                rows_per_image: Some(bg_texture_size.height),
+            },
+            bg_texture_size,
+        );
+
+        let (bg_layout, bg_bind_group) =
+            Self::make_bg_bind_group(&device, &bg_texture, &bg_sampler, &overlay_texture);
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Glass Pipeline Layout"),
@@ -355,6 +350,7 @@ impl GlassRenderer {
             params_bind_group,
             base_bg_texture,
             bg_texture,
+            overlay_texture,
             bg_bind_group,
             bg_sampler,
             start_time: Instant::now(),
@@ -404,50 +400,13 @@ impl GlassRenderer {
                 view_formats: &[],
             });
 
-            let bg_layout =
-                self.device
-                    .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                        label: Some("Background Layout"),
-                        entries: &[
-                            wgpu::BindGroupLayoutEntry {
-                                binding: 0,
-                                visibility: wgpu::ShaderStages::FRAGMENT,
-                                ty: wgpu::BindingType::Texture {
-                                    sample_type: wgpu::TextureSampleType::Float {
-                                        filterable: true,
-                                    },
-                                    view_dimension: wgpu::TextureViewDimension::D2,
-                                    multisampled: false,
-                                },
-                                count: None,
-                            },
-                            wgpu::BindGroupLayoutEntry {
-                                binding: 1,
-                                visibility: wgpu::ShaderStages::FRAGMENT,
-                                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                                count: None,
-                            },
-                        ],
-                    });
-
-            self.bg_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Background Bind Group"),
-                layout: &bg_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(
-                            &self
-                                .bg_texture
-                                .create_view(&wgpu::TextureViewDescriptor::default()),
-                        ),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&self.bg_sampler),
-                    },
-                ],
-            });
+            let (_, bg_bind_group) = Self::make_bg_bind_group(
+                &self.device,
+                &self.bg_texture,
+                &self.bg_sampler,
+                &self.overlay_texture,
+            );
+            self.bg_bind_group = bg_bind_group;
         }
     }
 
@@ -799,50 +758,13 @@ impl GlassRenderer {
 
             // Assuming we recreate the bind group layout... wait, we need the layout!
             // Let's just create a new layout identical to the original one.
-            let bg_layout =
-                self.device
-                    .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                        label: Some("Background Layout"),
-                        entries: &[
-                            wgpu::BindGroupLayoutEntry {
-                                binding: 0,
-                                visibility: wgpu::ShaderStages::FRAGMENT,
-                                ty: wgpu::BindingType::Texture {
-                                    sample_type: wgpu::TextureSampleType::Float {
-                                        filterable: true,
-                                    },
-                                    view_dimension: wgpu::TextureViewDimension::D2,
-                                    multisampled: false,
-                                },
-                                count: None,
-                            },
-                            wgpu::BindGroupLayoutEntry {
-                                binding: 1,
-                                visibility: wgpu::ShaderStages::FRAGMENT,
-                                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                                count: None,
-                            },
-                        ],
-                    });
-
-            self.bg_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Background Bind Group"),
-                layout: &bg_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(
-                            &self
-                                .bg_texture
-                                .create_view(&wgpu::TextureViewDescriptor::default()),
-                        ),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&self.bg_sampler),
-                    },
-                ],
-            });
+            let (_, bg_bind_group) = Self::make_bg_bind_group(
+                &self.device,
+                &self.bg_texture,
+                &self.bg_sampler,
+                &self.overlay_texture,
+            );
+            self.bg_bind_group = bg_bind_group;
         }
 
         self.queue.write_texture(
@@ -860,5 +782,119 @@ impl GlassRenderer {
             },
             size,
         );
+    }
+
+    /// Update dynamic interactive UI overlay (Quicksand typography, live text inputs, widgets)
+    pub fn update_overlay(&mut self, width: u32, height: u32, rgba_data: &[u8]) {
+        if width > 0 && height > 0 {
+            if self.overlay_texture.width() != width || self.overlay_texture.height() != height {
+                let size = wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                };
+                self.overlay_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("Overlay Texture"),
+                    size,
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                    view_formats: &[],
+                });
+                let (_, bg_bind_group) = Self::make_bg_bind_group(
+                    &self.device,
+                    &self.bg_texture,
+                    &self.bg_sampler,
+                    &self.overlay_texture,
+                );
+                self.bg_bind_group = bg_bind_group;
+            }
+
+            self.queue.write_texture(
+                wgpu::ImageCopyTexture {
+                    texture: &self.overlay_texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                rgba_data,
+                wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(4 * width),
+                    rows_per_image: Some(height),
+                },
+                wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+    }
+
+    fn make_bg_bind_group(
+        device: &wgpu::Device,
+        bg_texture: &wgpu::Texture,
+        bg_sampler: &wgpu::Sampler,
+        overlay_texture: &wgpu::Texture,
+    ) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
+        let bg_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Background Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let bg_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Background Bind Group"),
+            layout: &bg_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(
+                        &bg_texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(bg_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(
+                        &overlay_texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                    ),
+                },
+            ],
+        });
+
+        (bg_layout, bg_bind_group)
     }
 }
