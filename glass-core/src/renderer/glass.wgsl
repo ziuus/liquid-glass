@@ -96,7 +96,7 @@ fn droplet_height(p: vec2<f32>, b: vec2<f32>, r: f32, z_radius: f32, cur_px: vec
     return h_bevel;
 }
 
-// ── Silky 12-Tap Poisson Disc Frosted Blur (Single-Fetch Bilinear Hardware Filtering) ──
+// ── Apple CoreAnimation-grade 16-tap Poisson Blur (Single-Fetch Bilinear Hardware Filtering) ──
 fn sample_frost_blur(uv: vec2<f32>, radius: f32) -> vec3<f32> {
     if radius <= 0.5 {
         return textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
@@ -104,17 +104,17 @@ fn sample_frost_blur(uv: vec2<f32>, radius: f32) -> vec3<f32> {
     let rad_uv = radius / params.surface_size;
     let golden_angle = 2.39996323;
 
-    var col = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb * 0.20;
-    var total_w = 0.20;
+    var col = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb * 0.18;
+    var total_w = 0.18;
 
-    for (var i = 0.0; i < 12.0; i += 1.0) {
-        let t = (i + 0.5) / 12.0;
+    for (var i = 0.0; i < 16.0; i += 1.0) {
+        let t = (i + 0.5) / 16.0;
         let r = sqrt(t);
         let theta = i * golden_angle;
         let offset = vec2<f32>(r * cos(theta), r * sin(theta)) * rad_uv;
         let sample_uv = clamp(uv + offset, vec2<f32>(0.001), vec2<f32>(0.999));
         let s = textureSampleLevel(background_texture, background_sampler, sample_uv, 0.0).rgb;
-        let w = exp(-r * r * 2.0);
+        let w = exp(-r * r * 2.2);
         col += s * w;
         total_w += w;
     }
@@ -1712,11 +1712,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     if sdf > 0.0 {
         // Tight contact ambient occlusion directly beneath the perimeter
-        let contact = exp(-sdf * 0.45) * 0.20;
-        // Diffuse ambient float shadow with gentle downward bias (+5px)
-        let p_float = local_px - vec2<f32>(0.0, 5.0);
+        let contact = exp(-sdf * 0.50) * 0.28;
+        // Diffuse ambient float shadow with gentle downward bias (+6px)
+        let p_float = local_px - vec2<f32>(0.0, 6.0);
         let sdf_float = rr_sdf(p_float, half_size, r);
-        let diffuse = exp(-max(sdf_float, 0.0) * 0.14) * 0.16;
+        let diffuse = exp(-max(sdf_float, 0.0) * 0.09) * 0.24;
         let total_shadow = max(contact, diffuse);
         return vec4<f32>(0.0, 0.0, 0.0, total_shadow);
     }
@@ -1727,8 +1727,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let mask = 1.0 - smoothstep(-1.0, 0.1, sdf);
     let inside = max(-sdf, 0.0);
 
-    // Clean precision-milled glass chamfer (8px to 14px)
-    let bevel_w = clamp(params.bevel, 8.0, 14.0);
+    // True Apple VisionOS / macOS Micro-Chamfer (2.5px width)
+    let bevel_w = clamp(params.bevel, 1.5, 3.2);
     let t = clamp(inside / bevel_w, 0.0, 1.0); // 0 at outer edge, 1 at interior flat face
     let edge = 1.0 - t; // 1 at outer edge, 0 at interior flat face
 
@@ -1738,8 +1738,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let d_dy = rr_sdf(local_px + vec2<f32>(0.0, eps_sdf), half_size, r) - rr_sdf(local_px - vec2<f32>(0.0, eps_sdf), half_size, r);
     let grad_2d = normalize(vec2<f32>(d_dx, d_dy));
 
-    // Continuous 3D surface normal: quarter-cylinder meniscus bevel profile
-    let theta = edge * 1.5707963; // 0 at interior flat face, pi/2 at outer vertical perimeter
+    // Continuous 3D surface normal: micro-chamfer bevel profile (planar inside >= 2.5px)
+    let theta = edge * 1.5707963;
     let sin_th = sin(theta);
     let cos_th = cos(theta);
     let N = normalize(vec3<f32>(grad_2d * sin_th, cos_th));
@@ -1750,12 +1750,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
 
-    // Sleek physical optical deflection (8px to 14px) along the chamfer meniscus
-    let refr_dist = clamp(params.refraction_strength * 14.0, 4.0, 14.0) * sin_th;
+    // Subtle micro-optical deflection strictly at the 2px chamfer (zero interior warp!)
+    let refr_dist = 2.0 * params.refraction_strength * sin_th;
     let refr_ray = -grad_2d * refr_dist * px_to_uv;
 
-    // Prismatic spectral crystal dispersion (max 1.2px) strictly at the razor edge
-    let ca_dist = clamp(params.dispersion * 30.0, 0.0, 1.2) * pow(edge, 2.5);
+    // Delicate sub-pixel optical crystal glimmer at the extreme outer edge
+    let ca_dist = clamp(params.dispersion * 15.0, 0.0, 0.8) * pow(edge, 3.0);
     let ca_offset = -grad_2d * ca_dist * px_to_uv;
 
     let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1763,14 +1763,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv_b = clamp(uv + refr_ray + ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
 
     // ════════════════════════════════════════════
-    // 4. VARIABLE BLUR: CRYSTAL-CLEAR RIM + FROSTED CENTER
+    // 4. DEEP SILKY FROST + APPLE MATERIAL SUBSTRATE
     // ════════════════════════════════════════════
-    // Outer meniscus rim is 100% CLEAR LIQUID GLASS (refracted background is sharp!)
-    // Frost smoothly transitions into the interior flat face:
-    let frost = smoothstep(0.08, 0.75, t);
+    // Full interior frosted blur smoothly reaching the chamfer edge
+    let frost = smoothstep(0.0, 2.0, inside);
     let local_blur = params.blur_radius * frost;
 
-    // Outer crystal rim sample (with sub-pixel dispersion glint)
+    // Outer crystal rim sample
     let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
     let sharp_g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
     let sharp_b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
@@ -1789,49 +1788,40 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let is_light = smoothstep(0.38, 0.65, bg_luma);
 
     // Apple Vibrancy: boost saturation in blurred layer so wallpaper colors glow warmly
-    let sat_col = mix(vec3<f32>(bg_luma), col, 1.25);
+    let sat_col = mix(vec3<f32>(bg_luma), col, 1.30);
     col = sat_col;
 
-    // Apple Frosted Silica Glass Body:
-    // Pure milky translucency (Reference 0, 1, 4)
-    let milky_veil = vec3<f32>(1.0, 1.0, 1.0) * (0.16 * frost + 0.06);
-    // On bright backgrounds, add subtle smoked quartz absorption for 100% typography legibility
-    let smoked_body = vec3<f32>(0.08, 0.10, 0.14);
-    col = mix(col + milky_veil, mix(col * 0.72 + vec3<f32>(0.04), smoked_body, 0.22), is_light);
+    // Genuine Apple Material Substrate:
+    // Rich frosted silica transmission with velvety density (eliminates transparent plastic look)
+    let glass_tint_color = select(vec3<f32>(1.0, 1.0, 1.0), params.tint.xyz, params.tint.w > 0.5);
+    let milky_fill = mix(col, glass_tint_color, 0.40);
+    let smoked_depth = mix(col * 0.52 + vec3<f32>(0.05), vec3<f32>(0.08, 0.09, 0.12), 0.48);
+    col = mix(milky_fill, smoked_depth, is_light * 0.72);
 
     // ════════════════════════════════════════════
-    // 5. PHYSICAL SPECULAR HIGHLIGHTS & TACTILE MICRO-GRAIN
+    // 5. DIRECTIONAL APPLE SPECULAR & DOUBLE-LINE REFRACTION
     // ════════════════════════════════════════════
-    let L_sun = normalize(vec3<f32>(-0.60, -0.80, 0.70));
-    let V = vec3<f32>(0.0, 0.0, 1.0);
-    let H_sun = normalize(L_sun + V);
-    let N_dot_H = max(dot(N, H_sun), 0.0);
+    let top_facing = max(-grad_2d.y, 0.0);
+    let left_facing = max(-grad_2d.x, 0.0);
+    let bot_facing = max(grad_2d.y, 0.0);
 
-    // 1. Crisp razor crest highlight (1.5px width) along illuminated top-left perimeter (Reference 1, 2 & 3)
-    let hairline = smoothstep(1.8, 0.2, inside);
-    let facing_key = max(dot(grad_2d, -L_sun.xy), 0.0);
-    let outer_glint = hairline * (pow(N_dot_H, 24.0) * 1.8 + pow(facing_key, 2.5) * 0.75) * params.specular_strength;
+    // 1. Outer 1px razor crest specular highlight (Top & Top-Left only)
+    let hairline = smoothstep(1.5, 0.1, inside);
+    let top_spec = hairline * (pow(top_facing, 1.5) * 0.95 + left_facing * 0.35) * params.specular_strength;
 
-    // 2. Inner shoulder highlight where meniscus meets planar flat face
-    let d_shoulder = abs(inside - bevel_w * 0.90);
-    let shoulder_glint = exp(-d_shoulder * d_shoulder * 0.50) * pow(facing_key, 1.6) * 0.45 * params.specular_strength;
+    // 2. Inner 1px chamfer refraction line (Iconic Apple double-line reflection)
+    let inner_line = smoothstep(2.6, 1.6, inside) * smoothstep(0.8, 1.8, inside);
+    let inner_spec = inner_line * pow(top_facing, 2.0) * 0.40 * params.specular_strength;
 
-    // 3. Subtle ambient bounce on bottom-right counter-edge
-    let L_bot = normalize(vec3<f32>(0.60, 0.80, 0.30));
-    let bot_bounce = hairline * pow(max(dot(N, normalize(L_bot + V)), 0.0), 8.0) * 0.25 * params.specular_strength;
+    // 3. Bottom edge contact occlusion (grounds the card, NO white bottom stroke!)
+    let bot_occlusion = hairline * bot_facing * 0.35;
+    col = col * (1.0 - bot_occlusion);
 
-    // 4. Subtle micro-grain for tactile realism
+    // 4. Tactile micro-grain for authentic physical glass
     let noise_seed = dot(local_px, vec2<f32>(12.9898, 78.233));
-    let micro_grain = (fract(sin(noise_seed) * 43758.5453) - 0.5) * 0.025 * frost;
+    let micro_grain = (fract(sin(noise_seed) * 43758.5453) - 0.5) * 0.022;
 
-    // 5. Fresnel edge gleam
-    let fresnel = pow(1.0 - max(N.z, 0.0), 3.0);
-    let fresnel_gleam = fresnel * vec3<f32>(1.0, 1.0, 1.0) * (0.12 + 0.20 * facing_key);
-
-    // 6. Internal glass glow trapped along the refractive meniscus
-    let internal_glow = pow(edge, 1.8) * 0.08 * mix(vec3<f32>(1.0), params.tint.xyz, params.tint.w);
-
-    col += vec3<f32>(outer_glint + shoulder_glint + bot_bounce + micro_grain) + fresnel_gleam + internal_glow;
+    col += vec3<f32>(top_spec + inner_spec + micro_grain);
 
     var side_bevel_flare = 0.0;
     var side_rim_flare = 0.0;
