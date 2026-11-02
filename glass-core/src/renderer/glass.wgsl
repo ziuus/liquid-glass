@@ -1016,8 +1016,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         // High-contrast adaptive typography
         let text_primary = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.08, 0.10, 0.14), is_light);
         let text_secondary = mix(vec3<f32>(0.90, 0.93, 0.98), vec3<f32>(0.22, 0.25, 0.30), is_light);
-        let pill_frost_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.0, 0.0, 0.0), is_light);
-        let pill_rim_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.08, 0.10, 0.14), is_light);
+        let pill_frost_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.20, 0.22, 0.28), is_light * 0.15);
+        let pill_rim_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.30, 0.35, 0.45), is_light * 0.50);
 
         // ════════════════════════════════════════════
         // 1. TOP ROW (y = -56.0): Frosted Day Pill & Battery Pill
@@ -1147,8 +1147,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let text_primary = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.08, 0.10, 0.14), is_light);
         let text_dim = mix(vec3<f32>(0.65, 0.68, 0.75), vec3<f32>(0.45, 0.48, 0.52), is_light);
         let text_secondary = mix(vec3<f32>(0.88, 0.91, 0.96), vec3<f32>(0.22, 0.25, 0.30), is_light);
-        let pill_frost_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.0, 0.0, 0.0), is_light);
-        let pill_rim_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.08, 0.10, 0.14), is_light);
+        let pill_frost_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.20, 0.22, 0.28), is_light * 0.15);
+        let pill_rim_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.30, 0.35, 0.45), is_light * 0.50);
 
         let active_tab = u32(params.deformation / 10.0 + 0.05);
         let active_filter = u32(params.deformation + 0.05) % 10u;
@@ -1157,9 +1157,9 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let hover_row = params.roughness;
 
         // ════════════════════════════════════════════
-        // 1. TOP HEADER SEGMENTED TABS (y = -188.0)
+        // 1. TOP HEADER SEGMENTED TABS (y = -195.0, cy = 32.5)
         // ════════════════════════════════════════════
-        let top_y = -188.0;
+        let top_y = -195.0;
         let p_track = local_p - vec2<f32>(0.0, top_y);
         let d_track = rr_sdf(p_track, vec2<f32>(156.0, 16.0), 16.0);
         let mask_track_fill = (1.0 - smoothstep(-0.4, 0.4, d_track)) * 0.05;
@@ -1169,7 +1169,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let tab_t = clamp(params.deformation, 0.0, 1.0);
         let tab_cx = mix(-76.0, 76.0, tab_t);
         let p_tab = local_p - vec2<f32>(tab_cx, top_y);
-        let d_tab = rr_sdf(p_tab, vec2<f32>(72.0, 13.0), 13.0);
+        let d_tab = rr_sdf(p_tab, vec2<f32>(74.0, 14.0), 14.0);
         let mask_tab1_fill = (1.0 - smoothstep(-0.4, 0.4, d_tab)) * 0.12;
         let mask_tab1_rim = smoothstep(1.1, 0.0, abs(d_tab)) * 0.32;
         let mask_tab2_fill = 0.0;
@@ -1291,10 +1291,14 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             // Add Button '+' at cx = 135.0, cy = bot_y
             let p_plus = local_p - vec2<f32>(135.0, bot_y);
             let d_plus_bg = length(p_plus) - 11.0;
-            mask_plus_fill = 1.0 - smoothstep(-0.4, 0.4, d_plus_bg);
-            let d_plus_v = dist_segment(p_plus, vec2<f32>(0.0, -5.0), vec2<f32>(0.0, 5.0));
-            let d_plus_h = dist_segment(p_plus, vec2<f32>(-5.0, 0.0), vec2<f32>(5.0, 0.0));
-            mask_plus_icon = 1.0 - smoothstep(-0.35, 0.35, min(d_plus_v, d_plus_h) - 0.65);
+            let plus_fill = (1.0 - smoothstep(-0.4, 0.4, d_plus_bg)) * 0.12;
+            let plus_rim = smoothstep(1.0, 0.0, abs(d_plus_bg)) * 0.32;
+            mask_add_fill = max(mask_add_fill, plus_fill);
+            mask_add_rim = max(mask_add_rim, plus_rim);
+
+            let d_plus_v = dist_segment(p_plus, vec2<f32>(0.0, -4.5), vec2<f32>(0.0, 4.5));
+            let d_plus_h = dist_segment(p_plus, vec2<f32>(-4.5, 0.0), vec2<f32>(4.5, 0.0));
+            mask_plus_icon = 1.0 - smoothstep(-0.35, 0.35, min(d_plus_v, d_plus_h) - 0.70);
 
             mask_add_txt = 0.0;
         } else {
@@ -1381,17 +1385,12 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
 
         if mask_plus_icon > 0.05 {
             app.glyph_mask = mask_plus_icon;
-            app.glyph_color = vec3<f32>(1.0, 1.0, 1.0);
+            app.glyph_color = text_primary;
         } else if check_marks > 0.05 {
             app.glyph_mask = check_marks;
-            app.glyph_color = vec3<f32>(1.0, 1.0, 1.0);
+            app.glyph_color = select(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.10, 0.12, 0.16), is_light > 0.5);
         } else if check_fills > 0.05 {
             app.glyph_mask = check_fills;
-            app.glyph_color = primary_accent;
-            app.fluid_color = primary_accent;
-            app.fluid_glow = 0.45;
-        } else if mask_plus_fill > 0.05 {
-            app.glyph_mask = mask_plus_fill;
             app.glyph_color = primary_accent;
             app.fluid_color = primary_accent;
             app.fluid_glow = 0.45;
@@ -1801,9 +1800,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         col = mix(sharp_col, frosted_col, frost);
     }
 
-    // Measure local background luminance for adaptive text contrast
+    // Measure local background luminance for adaptive text contrast (only true light backgrounds > 185)
     let bg_luma = dot(col, vec3<f32>(0.299, 0.587, 0.114));
-    let is_light = smoothstep(0.55, 0.78, bg_luma);
+    let is_light = smoothstep(0.72, 0.86, bg_luma);
 
     // Apple Vibrancy: gently boost saturation so wallpaper colors shine warmly through frosted glass
     let sat_col = mix(vec3<f32>(bg_luma), col, 1.15);

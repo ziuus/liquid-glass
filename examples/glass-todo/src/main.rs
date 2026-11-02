@@ -710,6 +710,7 @@ impl AppData {
                     self.is_wallpaper_light = is_buffer_light(&crop);
                     renderer.update_background(self.width, self.height, &crop);
                 }
+                self.draw();
             }
         }
     }
@@ -1121,7 +1122,7 @@ fn is_buffer_light(buf: &[u8]) -> bool {
             count += 1;
         }
     }
-    total_lum.checked_div(count).is_some_and(|avg| avg > 135)
+    total_lum.checked_div(count).is_some_and(|avg| avg > 185)
 }
 
 fn get_theme_accent() -> [f32; 4] {

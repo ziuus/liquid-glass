@@ -388,6 +388,7 @@ impl AppData {
                     self.is_wallpaper_light = is_buffer_light(&crop);
                     renderer.update_background(self.width, self.height, &crop);
                 }
+                self.draw();
             }
         }
     }
@@ -737,7 +738,7 @@ fn is_buffer_light(buf: &[u8]) -> bool {
             count += 1;
         }
     }
-    total_lum.checked_div(count).is_some_and(|avg| avg > 135)
+    total_lum.checked_div(count).is_some_and(|avg| avg > 185)
 }
 
 fn init_wallpaper_1080p() -> (Option<Arc<Vec<u8>>>, Option<String>) {
@@ -875,6 +876,8 @@ fn main() {
     while !app_data.exit {
         let _ = event_queue.dispatch_pending(&mut app_data);
         let _ = conn.flush();
+
+        app_data.check_wallpaper();
 
         let now = Local::now();
         let cur_sec = now.second();
