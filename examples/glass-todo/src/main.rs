@@ -68,6 +68,9 @@ struct AppData {
     cursor_pos: [f32; 2],
     cursor_velocity: [f32; 2],
     is_hovered: bool,
+    is_dragging: bool,
+    drag_start_pos: [i32; 2],
+    drag_grab_offset: [i32; 2],
 
     pos_x: i32,
     pos_y: i32,
@@ -265,6 +268,25 @@ impl SeatHandler for AppData {
     }
 }
 
+fn get_hyprland_cursor_pos() -> Option<(i32, i32)> {
+    use std::io::{Read, Write};
+    use std::os::unix::net::UnixStream;
+    let his = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok()?;
+    let xdg = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
+        let uid = unsafe { libc::getuid() };
+        format!("/run/user/{}", uid)
+    });
+    let sock_path = format!("{}/hypr/{}/.socket.sock", xdg, his);
+    let mut stream = UnixStream::connect(sock_path).ok()?;
+    stream.write_all(b"cursorpos").ok()?;
+    let mut resp = String::new();
+    stream.read_to_string(&mut resp).ok()?;
+    let mut parts = resp.trim().split(',');
+    let x = parts.next()?.trim().parse::<i32>().ok()?;
+    let y = parts.next()?.trim().parse::<i32>().ok()?;
+    Some((x, y))
+}
+
 impl PointerHandler for AppData {
     fn pointer_frame(
         &mut self,
@@ -273,17 +295,22 @@ impl PointerHandler for AppData {
         _pointer: &wl_pointer::WlPointer,
         events: &[PointerEvent],
     ) {
+        let mut had_event = false;
         for event in events {
             match event.kind {
                 PointerEventKind::Enter { .. } => {
+                    had_event = true;
                     self.is_hovered = true;
                 }
                 PointerEventKind::Leave { .. } => {
-                    self.is_hovered = false;
-                    self.cursor_pos = [-10.0, -10.0];
-                    self.draw();
+                    had_event = true;
+                    if !self.is_dragging {
+                        self.is_hovered = false;
+                        self.cursor_pos = [-10.0, -10.0];
+                    }
                 }
                 PointerEventKind::Motion { .. } => {
+                    had_event = true;
                     let old_x = self.cursor_pos[0];
                     let old_y = self.cursor_pos[1];
                     let new_x = event.position.0 as f32 / self.width as f32;
@@ -292,22 +319,75 @@ impl PointerHandler for AppData {
                     self.cursor_velocity[0] = (new_x - old_x) * 100.0;
                     self.cursor_velocity[1] = (new_y - old_y) * 100.0;
                     self.cursor_pos = [new_x, new_y];
-                    self.draw();
+
+                    if self.is_dragging {
+                        let new_pos = if let Some((gx, gy)) = get_hyprland_cursor_pos() {
+                            let tx =
+                                (gx - self.drag_grab_offset[0]).clamp(0, 1920 - self.width as i32);
+                            let ty =
+                                (gy - self.drag_grab_offset[1]).clamp(0, 1080 - self.height as i32);
+                            Some((tx, ty))
+                        } else {
+                            let dx = event.position.0 as i32 - self.drag_grab_offset[0];
+                            let dy = event.position.1 as i32 - self.drag_grab_offset[1];
+                            let tx = (self.pos_x + dx).clamp(0, 1920 - self.width as i32);
+                            let ty = (self.pos_y + dy).clamp(0, 1080 - self.height as i32);
+                            Some((tx, ty))
+                        };
+
+                        if let Some((nx, ny)) = new_pos {
+                            if nx != self.pos_x || ny != self.pos_y {
+                                self.pos_x = nx;
+                                self.pos_y = ny;
+                                if let Some(ls) = &self.layer_surface {
+                                    ls.set_margin(self.pos_y, 0, 0, self.pos_x);
+                                    ls.commit();
+                                }
+                                if let Some(w) = &self.window_wrapper {
+                                    w.surface.commit();
+                                }
+                                if let (Some(cache), Some(renderer)) =
+                                    (&self.wallpaper_cache, &mut self.renderer)
+                                {
+                                    let crop = get_wallpaper_crop(
+                                        cache,
+                                        self.pos_x as u32,
+                                        self.pos_y as u32,
+                                        self.width,
+                                        self.height,
+                                    );
+                                    renderer.update_background(self.width, self.height, &crop);
+                                }
+                            }
+                        }
+                    }
                 }
-                PointerEventKind::Press { button: 0x110, .. } => {
-                    // Left click button: test click hit targets
+                PointerEventKind::Press { .. } => {
+                    had_event = true;
                     let px = event.position.0 as f32;
                     let py = event.position.1 as f32;
-                    self.handle_click(px, py);
+                    let handled = self.handle_click(px, py);
+                    if !handled {
+                        self.is_dragging = true;
+                        self.drag_start_pos = [self.pos_x, self.pos_y];
+                        self.drag_grab_offset = [px as i32, py as i32];
+                    }
+                }
+                PointerEventKind::Release { .. } => {
+                    had_event = true;
+                    self.is_dragging = false;
                 }
                 _ => {}
             }
+        }
+        if had_event {
+            self.draw();
         }
     }
 }
 
 impl AppData {
-    fn handle_click(&mut self, px: f32, py: f32) {
+    fn handle_click(&mut self, px: f32, py: f32) -> bool {
         let half_w = self.width as f32 * 0.5;
         let half_h = self.height as f32 * 0.5;
         let local_x = px - half_w;
@@ -324,7 +404,7 @@ impl AppData {
                 self.todos.tasks[i].done = !self.todos.tasks[i].done;
                 self.save_todos();
                 self.draw();
-                return;
+                return true;
             }
         }
 
@@ -336,7 +416,7 @@ impl AppData {
                 self.active_tab = 1;
             }
             self.draw();
-            return;
+            return true;
         }
 
         // Check Filters (y = -148)
@@ -349,7 +429,15 @@ impl AppData {
                 self.active_filter = 2; // Done
             }
             self.draw();
+            return true;
         }
+
+        // Add task button (y = 185, x = 135)
+        if (local_y - 185.0).abs() <= 18.0 && (local_x - 135.0).abs() <= 18.0 {
+            return true;
+        }
+
+        false
     }
 
     fn save_todos(&self) {
@@ -434,7 +522,7 @@ impl AppData {
                 .curvature(0.02)
                 .bevel(2.5)
                 .refraction(0.15)
-                .dispersion(0.005)
+                .dispersion(0.0)
                 .blur(36.0)
                 .tint(accent[0], accent[1], accent[2], accent[3])
                 .roughness(-1.0) // Hover row
@@ -658,6 +746,9 @@ fn main() {
         cursor_pos: [-10.0, -10.0],
         cursor_velocity: [0.0, 0.0],
         is_hovered: false,
+        is_dragging: false,
+        drag_start_pos: [pos_x, pos_y],
+        drag_grab_offset: [0, 0],
 
         pos_x,
         pos_y,
@@ -686,9 +777,9 @@ fn main() {
         None,
     );
 
-    layer_surface.set_anchor(Anchor::TOP | Anchor::RIGHT);
+    layer_surface.set_anchor(Anchor::TOP | Anchor::LEFT);
     layer_surface.set_size(app_data.width, app_data.height);
-    layer_surface.set_margin(app_data.pos_y, 28, 0, 0);
+    layer_surface.set_margin(app_data.pos_y, 0, 0, app_data.pos_x);
     layer_surface.set_exclusive_zone(0);
     layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
     layer_surface.commit();
@@ -723,7 +814,11 @@ fn main() {
         app_data.check_todos();
         app_data.check_wallpaper();
 
-        let timeout_ms = if app_data.is_hovered { 16 } else { 500 };
+        let timeout_ms = if app_data.is_hovered || app_data.is_dragging {
+            16
+        } else {
+            500
+        };
 
         let guard = match conn.prepare_read() {
             Some(g) => g,
