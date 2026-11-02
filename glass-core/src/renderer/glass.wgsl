@@ -96,36 +96,30 @@ fn droplet_height(p: vec2<f32>, b: vec2<f32>, r: f32, z_radius: f32, cur_px: vec
     return h_bevel;
 }
 
-// ── 16-tap Golden Spiral Frosted Dispersion Blur ──
-fn blurred_sample_ca(uv_r: vec2<f32>, uv_g: vec2<f32>, uv_b: vec2<f32>, radius: f32) -> vec3<f32> {
+// ── Silky 12-Tap Poisson Disc Frosted Blur (Single-Fetch Bilinear Hardware Filtering) ──
+fn sample_frost_blur(uv: vec2<f32>, radius: f32) -> vec3<f32> {
     if radius <= 0.5 {
-        let r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
-        let g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
-        let b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
-        return vec3<f32>(r, g, b);
+        return textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
     }
-
-    var color = vec3<f32>(0.0);
-    var total_w = 0.0;
-    let golden_angle = 2.39996323;
     let rad_uv = radius / params.surface_size;
+    let golden_angle = 2.39996323;
 
-    for (var i = 0.0; i < 24.0; i += 1.0) {
-        let t = (i + 0.5) / 24.0;
+    var col = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb * 0.20;
+    var total_w = 0.20;
+
+    for (var i = 0.0; i < 12.0; i += 1.0) {
+        let t = (i + 0.5) / 12.0;
         let r = sqrt(t);
         let theta = i * golden_angle;
         let offset = vec2<f32>(r * cos(theta), r * sin(theta)) * rad_uv;
-        let w = exp(-r * r * 2.2);
-
-        let sr = textureSampleLevel(background_texture, background_sampler, clamp(uv_r + offset, vec2<f32>(0.001), vec2<f32>(0.999)), 0.0).r;
-        let sg = textureSampleLevel(background_texture, background_sampler, clamp(uv_g + offset, vec2<f32>(0.001), vec2<f32>(0.999)), 0.0).g;
-        let sb = textureSampleLevel(background_texture, background_sampler, clamp(uv_b + offset, vec2<f32>(0.001), vec2<f32>(0.999)), 0.0).b;
-
-        color += vec3<f32>(sr, sg, sb) * w;
+        let sample_uv = clamp(uv + offset, vec2<f32>(0.001), vec2<f32>(0.999));
+        let s = textureSampleLevel(background_texture, background_sampler, sample_uv, 0.0).rgb;
+        let w = exp(-r * r * 2.0);
+        col += s * w;
         total_w += w;
     }
 
-    return color / total_w;
+    return col / total_w;
 }
 
 // ── Struct for Clean Minimalist Element Appearance ──
@@ -564,6 +558,73 @@ fn draw_checkmark(p: vec2<f32>, scale: f32) -> f32 {
     return (min(leg1, leg2) - 0.75) * scale;
 }
 
+// ── Evaluator for Todo Row Typography ──
+fn eval_todo_row_text(p: vec2<f32>, row_idx: u32) -> f32 {
+    let row_y = -105.0 + f32(row_idx) * 44.0;
+    let tx_start = -112.0;
+    let tx_scale = 1.05;
+    let sp = 8.2;
+    var d = 999.0;
+    if row_idx == 0u {
+        // LEETCODE
+        let l0 = draw_clock_letter(p - vec2<f32>(tx_start + 0.0 * sp, row_y), 76u, tx_scale); // L
+        let l1 = draw_clock_letter(p - vec2<f32>(tx_start + 1.0 * sp, row_y), 69u, tx_scale); // E
+        let l2 = draw_clock_letter(p - vec2<f32>(tx_start + 2.0 * sp, row_y), 69u, tx_scale); // E
+        let l3 = draw_clock_letter(p - vec2<f32>(tx_start + 3.0 * sp, row_y), 84u, tx_scale); // T
+        let l4 = draw_clock_letter(p - vec2<f32>(tx_start + 4.0 * sp, row_y), 67u, tx_scale); // C
+        let l5 = draw_clock_letter(p - vec2<f32>(tx_start + 5.0 * sp, row_y), 79u, tx_scale); // O
+        let l6 = draw_clock_letter(p - vec2<f32>(tx_start + 6.0 * sp, row_y), 68u, tx_scale); // D
+        let l7 = draw_clock_letter(p - vec2<f32>(tx_start + 7.0 * sp, row_y), 69u, tx_scale); // E
+        d = min(min(min(l0, l1), min(l2, l3)), min(min(l4, l5), min(l6, l7)));
+    } else if row_idx == 1u {
+        // LEARN
+        let l0 = draw_clock_letter(p - vec2<f32>(tx_start + 0.0 * sp, row_y), 76u, tx_scale); // L
+        let l1 = draw_clock_letter(p - vec2<f32>(tx_start + 1.0 * sp, row_y), 69u, tx_scale); // E
+        let l2 = draw_clock_letter(p - vec2<f32>(tx_start + 2.0 * sp, row_y), 65u, tx_scale); // A
+        let l3 = draw_clock_letter(p - vec2<f32>(tx_start + 3.0 * sp, row_y), 82u, tx_scale); // R
+        let l4 = draw_clock_letter(p - vec2<f32>(tx_start + 4.0 * sp, row_y), 78u, tx_scale); // N
+        d = min(min(min(l0, l1), min(l2, l3)), l4);
+    } else if row_idx == 2u {
+        // CERT
+        let l0 = draw_clock_letter(p - vec2<f32>(tx_start + 0.0 * sp, row_y), 67u, tx_scale); // C
+        let l1 = draw_clock_letter(p - vec2<f32>(tx_start + 1.0 * sp, row_y), 69u, tx_scale); // E
+        let l2 = draw_clock_letter(p - vec2<f32>(tx_start + 2.0 * sp, row_y), 82u, tx_scale); // R
+        let l3 = draw_clock_letter(p - vec2<f32>(tx_start + 3.0 * sp, row_y), 84u, tx_scale); // T
+        d = min(min(l0, l1), min(l2, l3));
+    } else if row_idx == 3u {
+        // CAREER
+        let l0 = draw_clock_letter(p - vec2<f32>(tx_start + 0.0 * sp, row_y), 67u, tx_scale); // C
+        let l1 = draw_clock_letter(p - vec2<f32>(tx_start + 1.0 * sp, row_y), 65u, tx_scale); // A
+        let l2 = draw_clock_letter(p - vec2<f32>(tx_start + 2.0 * sp, row_y), 82u, tx_scale); // R
+        let l3 = draw_clock_letter(p - vec2<f32>(tx_start + 3.0 * sp, row_y), 69u, tx_scale); // E
+        let l4 = draw_clock_letter(p - vec2<f32>(tx_start + 4.0 * sp, row_y), 69u, tx_scale); // E
+        let l5 = draw_clock_letter(p - vec2<f32>(tx_start + 5.0 * sp, row_y), 82u, tx_scale); // R
+        d = min(min(min(l0, l1), min(l2, l3)), min(l4, l5));
+    } else if row_idx == 4u {
+        // HACKERRANK
+        let l0 = draw_clock_letter(p - vec2<f32>(tx_start + 0.0 * sp, row_y), 72u, tx_scale); // H
+        let l1 = draw_clock_letter(p - vec2<f32>(tx_start + 0.9 * sp, row_y), 65u, tx_scale); // A
+        let l2 = draw_clock_letter(p - vec2<f32>(tx_start + 1.8 * sp, row_y), 67u, tx_scale); // C
+        let l3 = draw_clock_letter(p - vec2<f32>(tx_start + 2.7 * sp, row_y), 75u, tx_scale); // K
+        let l4 = draw_clock_letter(p - vec2<f32>(tx_start + 3.6 * sp, row_y), 69u, tx_scale); // E
+        let l5 = draw_clock_letter(p - vec2<f32>(tx_start + 4.5 * sp, row_y), 82u, tx_scale); // R
+        let l6 = draw_clock_letter(p - vec2<f32>(tx_start + 5.4 * sp, row_y), 82u, tx_scale); // R
+        let l7 = draw_clock_letter(p - vec2<f32>(tx_start + 6.3 * sp, row_y), 65u, tx_scale); // A
+        let l8 = draw_clock_letter(p - vec2<f32>(tx_start + 7.2 * sp, row_y), 78u, tx_scale); // N
+        let l9 = draw_clock_letter(p - vec2<f32>(tx_start + 8.1 * sp, row_y), 75u, tx_scale); // K
+        d = min(min(min(min(l0, l1), min(l2, l3)), min(l4, l5)), min(min(l6, l7), min(l8, l9)));
+    } else if row_idx == 5u {
+        // AI & ML
+        let l0 = draw_clock_letter(p - vec2<f32>(tx_start + 0.0 * sp, row_y), 65u, tx_scale); // A
+        let l1 = draw_clock_letter(p - vec2<f32>(tx_start + 1.1 * sp, row_y), 73u, tx_scale); // I
+        let l2 = draw_clock_letter(p - vec2<f32>(tx_start + 2.5 * sp, row_y), 38u, tx_scale); // &
+        let l3 = draw_clock_letter(p - vec2<f32>(tx_start + 4.0 * sp, row_y), 77u, tx_scale); // M
+        let l4 = draw_clock_letter(p - vec2<f32>(tx_start + 5.2 * sp, row_y), 76u, tx_scale); // L
+        d = min(min(min(l0, l1), l2), min(l3, l4));
+    }
+    return d;
+}
+
 // ── Serene Liquid Glass Clock Appearance ──
 fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, progress: f32, time: f32, tint: vec4<f32>, is_light: f32) -> ElementAppearance {
     var app: ElementAppearance;
@@ -837,8 +898,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         // ── 1a. Left Day Pill (cx = -76.0, half = 52.0x13.0, r = 13.0) ──
         let p_day_pill = local_p - vec2<f32>(-76.0, top_y);
         let d_day_pill = rr_sdf(p_day_pill, vec2<f32>(52.0, 13.0), 13.0);
-        let mask_day_fill = (1.0 - smoothstep(-0.4, 0.4, d_day_pill)) * mix(0.12, 0.07, is_light);
-        let mask_day_rim = smoothstep(1.1, 0.0, abs(d_day_pill)) * mix(0.35, 0.22, is_light);
+        let mask_day_fill = (1.0 - smoothstep(-0.4, 0.4, d_day_pill)) * mix(0.20, 0.12, is_light);
+        let mask_day_rim = smoothstep(1.1, 0.0, abs(d_day_pill)) * mix(0.42, 0.28, is_light);
         
         // Status indicator dot (cx = -114.0, cy = top_y, r = 3.0)
         let p_dot = local_p - vec2<f32>(-114.0, top_y);
@@ -860,21 +921,21 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let d_w0 = draw_clock_letter(local_p - vec2<f32>(day_cx - 1.6 * dsp, top_y), w0, 1.15);
         let d_w1 = draw_clock_letter(local_p - vec2<f32>(day_cx - 0.5 * dsp, top_y), w1, 1.15);
         let d_w2 = draw_clock_letter(local_p - vec2<f32>(day_cx + 0.6 * dsp, top_y), w2, 1.15);
-        let d_day_letters = min(min(d_w0, d_w1), d_w2) - 0.50;
+        let d_day_letters = min(min(d_w0, d_w1), d_w2) - 0.72;
         let mask_day_letters = 1.0 - smoothstep(-0.35, 0.35, d_day_letters);
         
         // ── 1b. Right Battery Pill (cx = 76.0, half = 46.0x13.0, r = 13.0) ──
         let p_bat_pill = local_p - vec2<f32>(76.0, top_y);
         let d_bat_pill = rr_sdf(p_bat_pill, vec2<f32>(46.0, 13.0), 13.0);
-        let mask_bat_fill = (1.0 - smoothstep(-0.4, 0.4, d_bat_pill)) * mix(0.12, 0.07, is_light);
-        let mask_bat_rim = smoothstep(1.1, 0.0, abs(d_bat_pill)) * mix(0.35, 0.22, is_light);
+        let mask_bat_fill = (1.0 - smoothstep(-0.4, 0.4, d_bat_pill)) * mix(0.20, 0.12, is_light);
+        let mask_bat_rim = smoothstep(1.1, 0.0, abs(d_bat_pill)) * mix(0.42, 0.28, is_light);
         
         // Lightning Bolt Icon (cx = 48.0, cy = top_y)
         let p_bolt = local_p - vec2<f32>(48.0, top_y);
         let s_b0 = dist_segment(p_bolt, vec2<f32>(1.2, -4.5), vec2<f32>(-1.8, -0.5));
         let s_b1 = dist_segment(p_bolt, vec2<f32>(-1.8, -0.5), vec2<f32>(0.8, -0.5));
         let s_b2 = dist_segment(p_bolt, vec2<f32>(0.8, -0.5), vec2<f32>(-1.2, 4.5));
-        let d_bolt = min(min(s_b0, s_b1), s_b2) - 0.65;
+        let d_bolt = min(min(s_b0, s_b1), s_b2) - 0.75;
         let mask_bolt = 1.0 - smoothstep(-0.35, 0.35, d_bolt);
         
         // Battery Percentage digits (No ugly leading zeros)
@@ -890,18 +951,18 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             let db0 = draw_digit(local_p - vec2<f32>(bat_num_cx, top_y), 0u, b_scale);
             let db1 = draw_digit(local_p - vec2<f32>(bat_num_cx + b_sp * 1.1, top_y), 0u, b_scale);
             let db_pct = draw_percent(local_p - vec2<f32>(bat_num_cx + b_sp * 2.3, top_y), b_scale);
-            let d_all = min(min(db_h, db0), min(db1, db_pct)) - 0.45;
+            let d_all = min(min(db_h, db0), min(db1, db_pct)) - 0.68;
             mask_bnum = 1.0 - smoothstep(-0.35, 0.35, d_all);
         } else if bat_u >= 10u {
             let db0 = draw_digit(local_p - vec2<f32>(bat_num_cx - b_sp * 0.7, top_y), b_tens, b_scale);
             let db1 = draw_digit(local_p - vec2<f32>(bat_num_cx + b_sp * 0.5, top_y), b_ones, b_scale);
             let db_pct = draw_percent(local_p - vec2<f32>(bat_num_cx + b_sp * 1.8, top_y), b_scale);
-            let d_all = min(min(db0, db1), db_pct) - 0.45;
+            let d_all = min(min(db0, db1), db_pct) - 0.68;
             mask_bnum = 1.0 - smoothstep(-0.35, 0.35, d_all);
         } else {
             let db1 = draw_digit(local_p - vec2<f32>(bat_num_cx - b_sp * 0.2, top_y), b_ones, b_scale);
             let db_pct = draw_percent(local_p - vec2<f32>(bat_num_cx + b_sp * 1.1, top_y), b_scale);
-            let d_all = min(db1, db_pct) - 0.45;
+            let d_all = min(db1, db_pct) - 0.68;
             mask_bnum = 1.0 - smoothstep(-0.35, 0.35, d_all);
         }
 
@@ -936,7 +997,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let ch_ampm = select(65u, 80u, is_pm); // 'A' or 'P'
         let d_ampm0 = draw_clock_letter(local_p - vec2<f32>(pm_x, pm_y), ch_ampm, 0.95);
         let d_ampm1 = draw_clock_letter(local_p - vec2<f32>(pm_x + 7.5, pm_y), 77u, 0.95); // 'M'
-        let mask_ampm = 1.0 - smoothstep(-0.35, 0.35, min(d_ampm0, d_ampm1) - 0.50);
+        let mask_ampm = 1.0 - smoothstep(-0.35, 0.35, min(d_ampm0, d_ampm1) - 0.65);
 
         // ════════════════════════════════════════════
         // 3. BOTTOM ROW (y = 54.0): Frosted Date Pill & Battery Fill Track
@@ -946,15 +1007,15 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         // ── 3a. Left Date Pill (cx = -76.0, half = 52.0x13.0, r = 13.0) ──
         let p_date_pill = local_p - vec2<f32>(-76.0, bot_y);
         let d_date_pill = rr_sdf(p_date_pill, vec2<f32>(52.0, 13.0), 13.0);
-        let mask_date_fill = (1.0 - smoothstep(-0.4, 0.4, d_date_pill)) * mix(0.12, 0.07, is_light);
-        let mask_date_rim = smoothstep(1.1, 0.0, abs(d_date_pill)) * mix(0.35, 0.22, is_light);
+        let mask_date_fill = (1.0 - smoothstep(-0.4, 0.4, d_date_pill)) * mix(0.20, 0.12, is_light);
+        let mask_date_rim = smoothstep(1.1, 0.0, abs(d_date_pill)) * mix(0.42, 0.28, is_light);
         
         // Calendar Icon (cx = -114.0, cy = bot_y)
         let p_cal = local_p - vec2<f32>(-114.0, bot_y);
         let d_cal_box = rr_sdf(p_cal, vec2<f32>(4.2, 4.0), 1.2);
-        let mask_cal_outline = smoothstep(0.4, -0.4, abs(d_cal_box) - 0.65);
-        let d_pin0 = dist_segment(p_cal, vec2<f32>(-2.2, -4.5), vec2<f32>(-2.2, -3.2)) - 0.5;
-        let d_pin1 = dist_segment(p_cal, vec2<f32>(2.2, -4.5), vec2<f32>(2.2, -3.2)) - 0.5;
+        let mask_cal_outline = smoothstep(0.4, -0.4, abs(d_cal_box) - 0.75);
+        let d_pin0 = dist_segment(p_cal, vec2<f32>(-2.2, -4.5), vec2<f32>(-2.2, -3.2)) - 0.6;
+        let d_pin1 = dist_segment(p_cal, vec2<f32>(2.2, -4.5), vec2<f32>(2.2, -3.2)) - 0.6;
         let mask_cal_pins = 1.0 - smoothstep(-0.35, 0.35, min(d_pin0, d_pin1));
         let mask_cal_icon = max(mask_cal_outline, mask_cal_pins);
         
@@ -983,7 +1044,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let md_ones = mday_code % 10u;
         let d_d0 = draw_digit(local_p - vec2<f32>(date_cx + 0.9 * mt_sp, bot_y), md_tens, 1.05);
         let d_d1 = draw_digit(local_p - vec2<f32>(date_cx + 2.0 * mt_sp, bot_y), md_ones, 1.05);
-        let d_date_text = min(min(min(d_m0, d_m1), d_m2), min(d_d0, d_d1)) - 0.45;
+        let d_date_text = min(min(min(d_m0, d_m1), d_m2), min(d_d0, d_d1)) - 0.70;
         let mask_date_text = 1.0 - smoothstep(-0.35, 0.35, d_date_text);
         
         // ── 3b. Right Battery Progress Track (cx = 76.0, half = 46.0x5.0, r = 5.0) ──
@@ -1093,13 +1154,13 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let dt_p0 = draw_clock_letter(local_p - vec2<f32>(t1_cx + 2.3 * t1_sp, top_y), 40u, 0.95); // (
         let dt5 = draw_digit(local_p - vec2<f32>(t1_cx + 3.3 * t1_sp, top_y), 6u, 0.95);
         let dt_p1 = draw_clock_letter(local_p - vec2<f32>(t1_cx + 4.3 * t1_sp, top_y), 41u, 0.95); // )
-        let d_tab1_txt = min(min(min(dt0, dt1), min(dt2, dt3)), min(min(dt4, dt_p0), min(dt5, dt_p1))) - 0.45;
+        let d_tab1_txt = min(min(min(dt0, dt1), min(dt2, dt3)), min(min(dt4, dt_p0), min(dt5, dt_p1))) - 0.70;
         let mask_tab1_txt = 1.0 - smoothstep(-0.35, 0.35, d_tab1_txt);
 
         // Tab 2: Agenda (cx = 76.0, half = 72.0x13.0, r = 13.0) - INACTIVE
         let p_tab2 = local_p - vec2<f32>(76.0, top_y);
         let d_tab2 = rr_sdf(p_tab2, vec2<f32>(72.0, 13.0), 13.0);
-        let mask_tab2_rim = smoothstep(1.0, 0.0, abs(d_tab2)) * mix(0.20, 0.12, is_light);
+        let mask_tab2_rim = smoothstep(1.0, 0.0, abs(d_tab2)) * mix(0.25, 0.15, is_light);
 
         // Tab 2 Text: AGENDA
         let t2_cx = 76.0;
@@ -1109,7 +1170,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let da3 = draw_clock_letter(local_p - vec2<f32>(t2_cx + 0.7 * t1_sp, top_y), 78u, 0.90); // N
         let da4 = draw_clock_letter(local_p - vec2<f32>(t2_cx + 1.8 * t1_sp, top_y), 68u, 0.90); // D
         let da5 = draw_clock_letter(local_p - vec2<f32>(t2_cx + 2.9 * t1_sp, top_y), 65u, 0.90); // A
-        let d_tab2_txt = min(min(min(da0, da1), min(da2, da3)), min(da4, da5)) - 0.40;
+        let d_tab2_txt = min(min(min(da0, da1), min(da2, da3)), min(da4, da5)) - 0.65;
         let mask_tab2_txt = 1.0 - smoothstep(-0.35, 0.35, d_tab2_txt);
 
         // ════════════════════════════════════════════
@@ -1119,31 +1180,31 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         // ALL Pill
         let p_all = local_p - vec2<f32>(-96.0, filt_y);
         let d_all = rr_sdf(p_all, vec2<f32>(30.0, 10.0), 10.0);
-        let mask_all_fill = (1.0 - smoothstep(-0.4, 0.4, d_all)) * mix(0.22, 0.16, is_light);
-        let mask_all_rim = smoothstep(1.0, 0.0, abs(d_all)) * mix(0.40, 0.25, is_light);
+        let mask_all_fill = (1.0 - smoothstep(-0.4, 0.4, d_all)) * mix(0.24, 0.16, is_light);
+        let mask_all_rim = smoothstep(1.0, 0.0, abs(d_all)) * mix(0.42, 0.26, is_light);
         let dl0 = draw_clock_letter(p_all - vec2<f32>(-11.0, 0.0), 65u, 0.85); // A
         let dl1 = draw_clock_letter(p_all - vec2<f32>(0.0, 0.0), 76u, 0.85);  // L
         let dl2 = draw_clock_letter(p_all - vec2<f32>(11.0, 0.0), 76u, 0.85); // L
-        let mask_all_txt = 1.0 - smoothstep(-0.35, 0.35, min(min(dl0, dl1), dl2) - 0.42);
+        let mask_all_txt = 1.0 - smoothstep(-0.35, 0.35, min(min(dl0, dl1), dl2) - 0.65);
 
         // ACTIVE Pill
         let p_act = local_p - vec2<f32>(-24.0, filt_y);
         let d_act = rr_sdf(p_act, vec2<f32>(34.0, 10.0), 10.0);
-        let mask_act_rim = smoothstep(1.0, 0.0, abs(d_act)) * mix(0.25, 0.15, is_light);
+        let mask_act_rim = smoothstep(1.0, 0.0, abs(d_act)) * mix(0.28, 0.18, is_light);
         let dc0 = draw_clock_letter(p_act - vec2<f32>(-16.0, 0.0), 65u, 0.80);
         let dc1 = draw_clock_letter(p_act - vec2<f32>(-6.0, 0.0), 67u, 0.80);
         let dc2 = draw_clock_letter(p_act - vec2<f32>(4.0, 0.0), 84u, 0.80);
         let dc3 = draw_clock_letter(p_act - vec2<f32>(14.0, 0.0), 86u, 0.80);
-        let mask_act_txt = 1.0 - smoothstep(-0.35, 0.35, min(min(dc0, dc1), min(dc2, dc3)) - 0.40);
+        let mask_act_txt = 1.0 - smoothstep(-0.35, 0.35, min(min(dc0, dc1), min(dc2, dc3)) - 0.60);
 
         // DONE Pill
         let p_don = local_p - vec2<f32>(48.0, filt_y);
         let d_don = rr_sdf(p_don, vec2<f32>(30.0, 10.0), 10.0);
-        let mask_don_rim = smoothstep(1.0, 0.0, abs(d_don)) * mix(0.25, 0.15, is_light);
+        let mask_don_rim = smoothstep(1.0, 0.0, abs(d_don)) * mix(0.28, 0.18, is_light);
         let dd0 = draw_clock_letter(p_don - vec2<f32>(-11.0, 0.0), 68u, 0.80);
         let dd1 = draw_clock_letter(p_don - vec2<f32>(0.0, 0.0), 79u, 0.80);
         let dd2 = draw_clock_letter(p_don - vec2<f32>(11.0, 0.0), 78u, 0.80);
-        let mask_don_txt = 1.0 - smoothstep(-0.35, 0.35, min(min(dd0, dd1), dd2) - 0.40);
+        let mask_don_txt = 1.0 - smoothstep(-0.35, 0.35, min(min(dd0, dd1), dd2) - 0.60);
 
         // Refresh Icon ↻
         let p_ref = local_p - vec2<f32>(120.0, filt_y);
@@ -1167,6 +1228,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         var daily_rims = 0.0;
         var daily_txts = 0.0;
         var task_txt_primary = 0.0;
+        var task_txt_shadow = 0.0;
         var task_txt_dimmed = 0.0;
 
         for (var i = 0u; i < 6u; i += 1u) {
@@ -1175,10 +1237,10 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             let d_row = rr_sdf(p_row, vec2<f32>(156.0, 18.0), 10.0);
 
             let is_row_hover = (hover_row >= f32(i) - 0.1 && hover_row <= f32(i) + 0.1);
-            let hover_boost = select(0.0, 0.10, is_row_hover);
+            let hover_boost = select(0.0, 0.12, is_row_hover);
 
-            let fill = (1.0 - smoothstep(-0.4, 0.4, d_row)) * (mix(0.12, 0.07, is_light) + hover_boost);
-            let rim = smoothstep(1.1, 0.0, abs(d_row)) * (mix(0.35, 0.22, is_light) + hover_boost);
+            let fill = (1.0 - smoothstep(-0.4, 0.4, d_row)) * (mix(0.24, 0.16, is_light) + hover_boost);
+            let rim = smoothstep(1.0, 0.0, abs(d_row)) * (mix(0.42, 0.26, is_light) + hover_boost);
             rows_fill = max(rows_fill, fill);
             rows_rim = max(rows_rim, rim);
 
@@ -1187,8 +1249,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             // Checkbox (cx = -135.0, cy = row_y)
             let p_box = local_p - vec2<f32>(-135.0, row_y);
             let d_box = rr_sdf(p_box, vec2<f32>(8.5, 8.5), 4.5);
-            let c_rim = smoothstep(1.2, 0.0, abs(d_box)) * mix(0.55, 0.35, is_light);
-            let c_bg = (1.0 - smoothstep(-0.4, 0.4, d_box)) * mix(0.18, 0.10, is_light);
+            let c_rim = smoothstep(1.2, 0.0, abs(d_box)) * mix(0.60, 0.38, is_light);
+            let c_bg = (1.0 - smoothstep(-0.4, 0.4, d_box)) * mix(0.22, 0.12, is_light);
             check_rims = max(check_rims, max(c_rim, c_bg));
 
             if is_item_done {
@@ -1198,93 +1260,36 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
                 check_marks = max(check_marks, 1.0 - smoothstep(-0.35, 0.35, d_cm));
 
                 // Strikethrough horizontal line running through task title
-                let d_str = dist_segment(local_p, vec2<f32>(-116.0, row_y), vec2<f32>(60.0, row_y)) - 0.70;
+                let d_str = dist_segment(local_p, vec2<f32>(-116.0, row_y), vec2<f32>(60.0, row_y)) - 0.85;
                 strikes = max(strikes, 1.0 - smoothstep(-0.35, 0.35, d_str));
             }
 
             // Daily Tag Badge (cx = 124.0, cy = row_y, half = 22.0x7.5, r = 7.5)
             let p_dtag = local_p - vec2<f32>(124.0, row_y);
             let d_dtag = rr_sdf(p_dtag, vec2<f32>(22.0, 7.5), 7.5);
-            daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * mix(0.12, 0.08, is_light));
-            daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * mix(0.35, 0.20, is_light));
+            daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * mix(0.18, 0.10, is_light));
+            daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * mix(0.40, 0.25, is_light));
 
             let dy0 = draw_clock_letter(p_dtag - vec2<f32>(-12.0, 0.0), 68u, 0.65); // D
             let dy1 = draw_clock_letter(p_dtag - vec2<f32>(-6.0, 0.0), 65u, 0.65);  // A
             let dy2 = draw_clock_letter(p_dtag - vec2<f32>(0.0, 0.0), 73u, 0.65);   // I
             let dy3 = draw_clock_letter(p_dtag - vec2<f32>(6.0, 0.0), 76u, 0.65);   // L
             let dy4 = draw_clock_letter(p_dtag - vec2<f32>(12.0, 0.0), 89u, 0.65);  // Y
-            let d_dytxt = min(min(min(dy0, dy1), min(dy2, dy3)), dy4) - 0.35;
+            let d_dytxt = min(min(min(dy0, dy1), min(dy2, dy3)), dy4) - 0.48;
             daily_txts = max(daily_txts, 1.0 - smoothstep(-0.35, 0.35, d_dytxt));
 
-            // Task Titles:
-            let tx_start = -112.0;
-            let tx_scale = 1.05;
-            let sp = 8.2;
-            var d_txt = 999.0;
+            // Task Titles with crisp bold strokes and drop shadow:
+            let d_txt = eval_todo_row_text(local_p, i);
+            let d_txt_sh = eval_todo_row_text(local_p - vec2<f32>(0.0, 1.2), i);
 
-            if i == 0u {
-                // LEETCODE
-                let l0 = draw_clock_letter(local_p - vec2<f32>(tx_start + 0.0 * sp, row_y), 76u, tx_scale); // L
-                let l1 = draw_clock_letter(local_p - vec2<f32>(tx_start + 1.0 * sp, row_y), 69u, tx_scale); // E
-                let l2 = draw_clock_letter(local_p - vec2<f32>(tx_start + 2.0 * sp, row_y), 69u, tx_scale); // E
-                let l3 = draw_clock_letter(local_p - vec2<f32>(tx_start + 3.0 * sp, row_y), 84u, tx_scale); // T
-                let l4 = draw_clock_letter(local_p - vec2<f32>(tx_start + 4.0 * sp, row_y), 67u, tx_scale); // C
-                let l5 = draw_clock_letter(local_p - vec2<f32>(tx_start + 5.0 * sp, row_y), 79u, tx_scale); // O
-                let l6 = draw_clock_letter(local_p - vec2<f32>(tx_start + 6.0 * sp, row_y), 68u, tx_scale); // D
-                let l7 = draw_clock_letter(local_p - vec2<f32>(tx_start + 7.0 * sp, row_y), 69u, tx_scale); // E
-                d_txt = min(min(min(l0, l1), min(l2, l3)), min(min(l4, l5), min(l6, l7)));
-            } else if i == 1u {
-                // LEARN
-                let l0 = draw_clock_letter(local_p - vec2<f32>(tx_start + 0.0 * sp, row_y), 76u, tx_scale); // L
-                let l1 = draw_clock_letter(local_p - vec2<f32>(tx_start + 1.0 * sp, row_y), 69u, tx_scale); // E
-                let l2 = draw_clock_letter(local_p - vec2<f32>(tx_start + 2.0 * sp, row_y), 65u, tx_scale); // A
-                let l3 = draw_clock_letter(local_p - vec2<f32>(tx_start + 3.0 * sp, row_y), 82u, tx_scale); // R
-                let l4 = draw_clock_letter(local_p - vec2<f32>(tx_start + 4.0 * sp, row_y), 78u, tx_scale); // N
-                d_txt = min(min(min(l0, l1), min(l2, l3)), l4);
-            } else if i == 2u {
-                // CERT
-                let l0 = draw_clock_letter(local_p - vec2<f32>(tx_start + 0.0 * sp, row_y), 67u, tx_scale); // C
-                let l1 = draw_clock_letter(local_p - vec2<f32>(tx_start + 1.0 * sp, row_y), 69u, tx_scale); // E
-                let l2 = draw_clock_letter(local_p - vec2<f32>(tx_start + 2.0 * sp, row_y), 82u, tx_scale); // R
-                let l3 = draw_clock_letter(local_p - vec2<f32>(tx_start + 3.0 * sp, row_y), 84u, tx_scale); // T
-                d_txt = min(min(l0, l1), min(l2, l3));
-            } else if i == 3u {
-                // CAREER
-                let l0 = draw_clock_letter(local_p - vec2<f32>(tx_start + 0.0 * sp, row_y), 67u, tx_scale); // C
-                let l1 = draw_clock_letter(local_p - vec2<f32>(tx_start + 1.0 * sp, row_y), 65u, tx_scale); // A
-                let l2 = draw_clock_letter(local_p - vec2<f32>(tx_start + 2.0 * sp, row_y), 82u, tx_scale); // R
-                let l3 = draw_clock_letter(local_p - vec2<f32>(tx_start + 3.0 * sp, row_y), 69u, tx_scale); // E
-                let l4 = draw_clock_letter(local_p - vec2<f32>(tx_start + 4.0 * sp, row_y), 69u, tx_scale); // E
-                let l5 = draw_clock_letter(local_p - vec2<f32>(tx_start + 5.0 * sp, row_y), 82u, tx_scale); // R
-                d_txt = min(min(min(l0, l1), min(l2, l3)), min(l4, l5));
-            } else if i == 4u {
-                // HACKERRANK
-                let l0 = draw_clock_letter(local_p - vec2<f32>(tx_start + 0.0 * sp, row_y), 72u, tx_scale); // H
-                let l1 = draw_clock_letter(local_p - vec2<f32>(tx_start + 1.0 * sp, row_y), 65u, tx_scale); // A
-                let l2 = draw_clock_letter(local_p - vec2<f32>(tx_start + 2.0 * sp, row_y), 67u, tx_scale); // C
-                let l3 = draw_clock_letter(local_p - vec2<f32>(tx_start + 3.0 * sp, row_y), 75u, tx_scale); // K
-                let l4 = draw_clock_letter(local_p - vec2<f32>(tx_start + 4.0 * sp, row_y), 69u, tx_scale); // E
-                let l5 = draw_clock_letter(local_p - vec2<f32>(tx_start + 5.0 * sp, row_y), 82u, tx_scale); // R
-                let l6 = draw_clock_letter(local_p - vec2<f32>(tx_start + 6.0 * sp, row_y), 82u, tx_scale); // R
-                let l7 = draw_clock_letter(local_p - vec2<f32>(tx_start + 7.0 * sp, row_y), 65u, tx_scale); // A
-                let l8 = draw_clock_letter(local_p - vec2<f32>(tx_start + 8.0 * sp, row_y), 78u, tx_scale); // N
-                let l9 = draw_clock_letter(local_p - vec2<f32>(tx_start + 9.0 * sp, row_y), 75u, tx_scale); // K
-                d_txt = min(min(min(min(l0, l1), min(l2, l3)), min(l4, l5)), min(min(l6, l7), min(l8, l9)));
-            } else if i == 5u {
-                // AI & ML
-                let l0 = draw_clock_letter(local_p - vec2<f32>(tx_start + 0.0 * sp, row_y), 65u, tx_scale); // A
-                let l1 = draw_clock_letter(local_p - vec2<f32>(tx_start + 1.1 * sp, row_y), 73u, tx_scale); // I
-                let l2 = draw_clock_letter(local_p - vec2<f32>(tx_start + 2.5 * sp, row_y), 38u, tx_scale); // &
-                let l3 = draw_clock_letter(local_p - vec2<f32>(tx_start + 4.0 * sp, row_y), 77u, tx_scale); // M
-                let l4 = draw_clock_letter(local_p - vec2<f32>(tx_start + 5.2 * sp, row_y), 76u, tx_scale); // L
-                d_txt = min(min(min(l0, l1), l2), min(l3, l4));
-            }
+            let m_txt = 1.0 - smoothstep(-0.35, 0.35, d_txt - 0.78);
+            let m_txt_sh = (1.0 - smoothstep(-0.35, 0.75, d_txt_sh - 0.78)) * 0.55;
 
-            let m_txt = 1.0 - smoothstep(-0.35, 0.35, d_txt - 0.45);
             if is_item_done {
                 task_txt_dimmed = max(task_txt_dimmed, m_txt);
             } else {
                 task_txt_primary = max(task_txt_primary, m_txt);
+                task_txt_shadow = max(task_txt_shadow, m_txt_sh);
             }
         }
 
@@ -1315,7 +1320,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let ap4 = draw_clock_letter(local_p - vec2<f32>(at_start + 4.8 * at_sp, bot_y), 65u, 0.85); // A
         let ap5 = draw_clock_letter(local_p - vec2<f32>(at_start + 5.8 * at_sp, bot_y), 83u, 0.85); // S
         let ap6 = draw_clock_letter(local_p - vec2<f32>(at_start + 6.8 * at_sp, bot_y), 75u, 0.85); // K
-        let d_add_txt = min(min(min(ap0, ap1), ap2), min(min(ap3, ap4), min(ap5, ap6))) - 0.40;
+        let d_add_txt = min(min(min(ap0, ap1), ap2), min(min(ap3, ap4), min(ap5, ap6))) - 0.65;
         let mask_add_txt = 1.0 - smoothstep(-0.35, 0.35, d_add_txt);
 
         // ════════════════════════════════════════════
@@ -1352,6 +1357,9 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         } else if primary_glyphs > 0.02 {
             app.glyph_mask = primary_glyphs;
             app.glyph_color = text_primary;
+        } else if task_txt_shadow > 0.03 {
+            app.glyph_mask = task_txt_shadow;
+            app.glyph_color = vec3<f32>(0.02, 0.03, 0.05);
         } else if task_txt_dimmed > 0.02 {
             app.glyph_mask = task_txt_dimmed;
             app.glyph_color = text_dim;
@@ -1719,8 +1727,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let mask = 1.0 - smoothstep(-1.0, 0.1, sdf);
     let inside = max(-sdf, 0.0);
 
-    // Thick, sculpted liquid glass bevel (16px to 32px matching reference mockups)
-    let bevel_w = clamp(params.bevel, 14.0, 32.0);
+    // Clean precision-milled glass chamfer (8px to 14px)
+    let bevel_w = clamp(params.bevel, 8.0, 14.0);
     let t = clamp(inside / bevel_w, 0.0, 1.0); // 0 at outer edge, 1 at interior flat face
     let edge = 1.0 - t; // 1 at outer edge, 0 at interior flat face
 
@@ -1742,12 +1750,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
 
-    // Significant physical optical deflection (up to 52px) along the meniscus
-    let refr_dist = 52.0 * params.refraction_strength * sin_th;
+    // Sleek physical optical deflection (8px to 14px) along the chamfer meniscus
+    let refr_dist = clamp(params.refraction_strength * 14.0, 4.0, 14.0) * sin_th;
     let refr_ray = -grad_2d * refr_dist * px_to_uv;
 
-    // Prismatic spectral rainbow dispersion along the curved glass meniscus
-    let ca_dist = 14.0 * (params.dispersion * 45.0) * pow(edge, 1.3);
+    // Prismatic spectral crystal dispersion (max 1.2px) strictly at the razor edge
+    let ca_dist = clamp(params.dispersion * 30.0, 0.0, 1.2) * pow(edge, 2.5);
     let ca_offset = -grad_2d * ca_dist * px_to_uv;
 
     let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1757,19 +1765,23 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     // 4. VARIABLE BLUR: CRYSTAL-CLEAR RIM + FROSTED CENTER
     // ════════════════════════════════════════════
-    // Outer meniscus rim is 100% CLEAR LIQUID GLASS (refracted & dispersed background is sharp!)
+    // Outer meniscus rim is 100% CLEAR LIQUID GLASS (refracted background is sharp!)
     // Frost smoothly transitions into the interior flat face:
-    let frost = smoothstep(0.12, 0.88, t);
+    let frost = smoothstep(0.08, 0.75, t);
     let local_blur = params.blur_radius * frost;
+
+    // Outer crystal rim sample (with sub-pixel dispersion glint)
+    let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
+    let sharp_g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
+    let sharp_b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
+    let sharp_col = vec3<f32>(sharp_r, sharp_g, sharp_b);
 
     var col: vec3<f32>;
     if local_blur <= 0.5 {
-        let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
-        let sharp_g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
-        let sharp_b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
-        col = vec3<f32>(sharp_r, sharp_g, sharp_b);
+        col = sharp_col;
     } else {
-        col = blurred_sample_ca(uv_r, uv_g, uv_b, local_blur);
+        let frosted_col = sample_frost_blur(uv_g, local_blur);
+        col = mix(sharp_col, frosted_col, frost);
     }
 
     // Measure local background luminance for adaptive contrast
@@ -1777,13 +1789,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let is_light = smoothstep(0.38, 0.65, bg_luma);
 
     // Apple Vibrancy: boost saturation in blurred layer so wallpaper colors glow warmly
-    let sat_col = mix(vec3<f32>(bg_luma), col, 1.30);
+    let sat_col = mix(vec3<f32>(bg_luma), col, 1.25);
     col = sat_col;
 
-    // Apple Smoked Quartz Adaptation on light wallpapers:
-    // Gently deepens interior transmission so foreground elements have 10:1+ contrast!
-    let smoked_depth = vec3<f32>(0.07, 0.09, 0.13);
-    col = mix(col, mix(col * 0.70, smoked_depth, 0.28), is_light);
+    // Apple Frosted Silica Glass Body:
+    // Pure milky translucency (Reference 0, 1, 4)
+    let milky_veil = vec3<f32>(1.0, 1.0, 1.0) * (0.16 * frost + 0.06);
+    // On bright backgrounds, add subtle smoked quartz absorption for 100% typography legibility
+    let smoked_body = vec3<f32>(0.08, 0.10, 0.14);
+    col = mix(col + milky_veil, mix(col * 0.72 + vec3<f32>(0.04), smoked_body, 0.22), is_light);
 
     // ════════════════════════════════════════════
     // 5. PHYSICAL SPECULAR HIGHLIGHTS & TACTILE MICRO-GRAIN
@@ -1793,56 +1807,32 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let H_sun = normalize(L_sun + V);
     let N_dot_H = max(dot(N, H_sun), 0.0);
 
-    // 1. Continuous specular crest gleam tracing the illuminated top-left rounded perimeter (Reference 1 & 3)
-    let hairline = smoothstep(2.5, 0.2, inside);
+    // 1. Crisp razor crest highlight (1.5px width) along illuminated top-left perimeter (Reference 1, 2 & 3)
+    let hairline = smoothstep(1.8, 0.2, inside);
     let facing_key = max(dot(grad_2d, -L_sun.xy), 0.0);
-    let outer_glint = hairline * (pow(N_dot_H, 16.0) * 1.6 + pow(facing_key, 2.0) * 0.65) * params.specular_strength;
+    let outer_glint = hairline * (pow(N_dot_H, 24.0) * 1.8 + pow(facing_key, 2.5) * 0.75) * params.specular_strength;
 
-    // 2. Inner caustic ridge (where curved meniscus meets flat face)
-    let d_shoulder = abs(inside - bevel_w * 0.85);
-    let shoulder_caustic = exp(-d_shoulder * d_shoulder * 0.30) * pow(facing_key, 1.4) * 0.75 * params.specular_strength;
+    // 2. Inner shoulder highlight where meniscus meets planar flat face
+    let d_shoulder = abs(inside - bevel_w * 0.90);
+    let shoulder_glint = exp(-d_shoulder * d_shoulder * 0.50) * pow(facing_key, 1.6) * 0.45 * params.specular_strength;
 
-    // 3. Dark internal reflection horizon between outer and inner glints (physical glass volume)
-    let d_trough = abs(inside - bevel_w * 0.45);
-    let tir_dark = exp(-d_trough * d_trough * 0.25) * 0.26;
-    col = col * (1.0 - tir_dark);
-
-    // 4. Subtle ambient ground bounce on bottom counter-edge
+    // 3. Subtle ambient bounce on bottom-right counter-edge
     let L_bot = normalize(vec3<f32>(0.60, 0.80, 0.30));
-    let bot_bounce = hairline * pow(max(dot(N, normalize(L_bot + V)), 0.0), 8.0) * 0.35 * params.specular_strength;
+    let bot_bounce = hairline * pow(max(dot(N, normalize(L_bot + V)), 0.0), 8.0) * 0.25 * params.specular_strength;
+
+    // 4. Subtle micro-grain for tactile realism
+    let noise_seed = dot(local_px, vec2<f32>(12.9898, 78.233));
+    let micro_grain = (fract(sin(noise_seed) * 43758.5453) - 0.5) * 0.025 * frost;
 
     // 5. Fresnel edge gleam
     let fresnel = pow(1.0 - max(N.z, 0.0), 3.0);
     let fresnel_gleam = fresnel * vec3<f32>(1.0, 1.0, 1.0) * (0.12 + 0.20 * facing_key);
 
     // 6. Internal glass glow trapped along the refractive meniscus
-    let internal_glow = pow(edge, 1.8) * 0.10 * mix(vec3<f32>(1.0), params.tint.xyz, params.tint.w);
+    let internal_glow = pow(edge, 1.8) * 0.08 * mix(vec3<f32>(1.0), params.tint.xyz, params.tint.w);
 
-    // 7. Tactile frosted silica micro-grain (eliminates digital banding; Reference 0, 1 & 3)
-    let noise_seed = dot(local_px, vec2<f32>(12.9898, 78.233));
-    let micro_grain = (fract(sin(noise_seed) * 43758.5453) - 0.5) * 0.035 * frost;
+    col += vec3<f32>(outer_glint + shoulder_glint + bot_bounce + micro_grain) + fresnel_gleam + internal_glow;
 
-    col += vec3<f32>(outer_glint + shoulder_caustic + bot_bounce + micro_grain) + fresnel_gleam + internal_glow;
-
-    // ════════════════════════════════════════════
-    // 6. INSET FROSTED COMPLICATION PLATE (Image 3 Architecture)
-    // ════════════════════════════════════════════
-    let plate_margin = 12.0;
-    let plate_half = half_size - vec2<f32>(plate_margin, plate_margin);
-    let plate_r = max(r - 8.0, 12.0);
-    let d_plate = rr_sdf(local_px, plate_half, plate_r);
-
-    if d_plate > 0.0 {
-        // Contact ambient occlusion beneath the complication plate
-        let plate_sh = exp(-d_plate * 0.35) * 0.18;
-        col *= (1.0 - plate_sh);
-    } else {
-        // Frosted plate fill with delicate top specular glint
-        let plate_fill = mix(vec3<f32>(1.0), vec3<f32>(0.05), is_light * 0.40) * 0.06;
-        col += plate_fill;
-        let plate_glint = smoothstep(1.5, 0.0, -d_plate) * smoothstep(0.0, -14.0, local_px.y - (-plate_half.y)) * 0.25;
-        col += vec3<f32>(plate_glint);
-    }
     var side_bevel_flare = 0.0;
     var side_rim_flare = 0.0;
     if params.pointer_pos.x >= 0.0 {
