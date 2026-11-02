@@ -1786,22 +1786,23 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     col = mix(col, mix(col * 0.70, smoked_depth, 0.28), is_light);
 
     // ════════════════════════════════════════════
-    // 5. PHYSICAL SPECULAR HIGHLIGHTS & INTERNAL HORIZON
+    // 5. PHYSICAL SPECULAR HIGHLIGHTS & TACTILE MICRO-GRAIN
     // ════════════════════════════════════════════
     let L_sun = normalize(vec3<f32>(-0.60, -0.80, 0.70));
     let V = vec3<f32>(0.0, 0.0, 1.0);
     let H_sun = normalize(L_sun + V);
     let N_dot_H = max(dot(N, H_sun), 0.0);
 
-    // 1. Razor-sharp 1.2px hairline specular crest on illuminated outer bevel
+    // 1. Continuous specular crest gleam tracing the illuminated top-left rounded perimeter (Reference 1 & 3)
     let hairline = smoothstep(2.5, 0.2, inside);
-    let outer_glint = hairline * pow(N_dot_H, 16.0) * 2.2 * params.specular_strength;
+    let facing_key = max(dot(grad_2d, -L_sun.xy), 0.0);
+    let outer_glint = hairline * (pow(N_dot_H, 16.0) * 1.6 + pow(facing_key, 2.0) * 0.65) * params.specular_strength;
 
     // 2. Inner caustic ridge (where curved meniscus meets flat face)
     let d_shoulder = abs(inside - bevel_w * 0.85);
-    let shoulder_caustic = exp(-d_shoulder * d_shoulder * 0.30) * pow(max(dot(grad_2d, -L_sun.xy), 0.0), 1.4) * 0.75 * params.specular_strength;
+    let shoulder_caustic = exp(-d_shoulder * d_shoulder * 0.30) * pow(facing_key, 1.4) * 0.75 * params.specular_strength;
 
-    // 3. Dark internal reflection horizon between outer and inner glints (gives physical volume)
+    // 3. Dark internal reflection horizon between outer and inner glints (physical glass volume)
     let d_trough = abs(inside - bevel_w * 0.45);
     let tir_dark = exp(-d_trough * d_trough * 0.25) * 0.26;
     col = col * (1.0 - tir_dark);
@@ -1812,9 +1813,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // 5. Fresnel edge gleam
     let fresnel = pow(1.0 - max(N.z, 0.0), 3.0);
-    let fresnel_gleam = fresnel * vec3<f32>(1.0, 1.0, 1.0) * (0.12 + 0.20 * max(dot(grad_2d, -L_sun.xy), 0.0));
+    let fresnel_gleam = fresnel * vec3<f32>(1.0, 1.0, 1.0) * (0.12 + 0.20 * facing_key);
 
-    col += vec3<f32>(outer_glint + shoulder_caustic + bot_bounce) + fresnel_gleam;
+    // 6. Internal glass glow trapped along the refractive meniscus
+    let internal_glow = pow(edge, 1.8) * 0.10 * mix(vec3<f32>(1.0), params.tint.xyz, params.tint.w);
+
+    // 7. Tactile frosted silica micro-grain (eliminates digital banding; Reference 0, 1 & 3)
+    let noise_seed = dot(local_px, vec2<f32>(12.9898, 78.233));
+    let micro_grain = (fract(sin(noise_seed) * 43758.5453) - 0.5) * 0.035 * frost;
+
+    col += vec3<f32>(outer_glint + shoulder_caustic + bot_bounce + micro_grain) + fresnel_gleam + internal_glow;
 
     // ════════════════════════════════════════════
     // 6. INSET FROSTED COMPLICATION PLATE (Image 3 Architecture)
