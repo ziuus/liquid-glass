@@ -1012,12 +1012,11 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let neutral_accent = mix(vec3<f32>(0.96, 0.98, 1.0), vec3<f32>(0.11, 0.14, 0.18), is_light);
         let primary_accent = select(neutral_accent, accent_raw, has_accent);
         
-        // High-contrast crystal typography with guaranteed obsidian frosted backing
-        let text_primary = vec3<f32>(1.0, 1.0, 1.0);
-        let text_secondary = vec3<f32>(0.92, 0.94, 0.98);
-        let text_halo_col = vec3<f32>(0.01, 0.02, 0.03);
-        let pill_frost_col = vec3<f32>(0.04, 0.06, 0.10);
-        let pill_rim_col = vec3<f32>(1.0, 1.0, 1.0);
+        // High-contrast adaptive typography
+        let text_primary = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.08, 0.10, 0.14), is_light);
+        let text_secondary = mix(vec3<f32>(0.90, 0.93, 0.98), vec3<f32>(0.22, 0.25, 0.30), is_light);
+        let pill_frost_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.0, 0.0, 0.0), is_light);
+        let pill_rim_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.08, 0.10, 0.14), is_light);
 
         // ════════════════════════════════════════════
         // 1. TOP ROW (y = -56.0): Frosted Day Pill & Battery Pill
@@ -1027,8 +1026,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         // ── 1a. Left Day Pill (cx = -76.0, half = 52.0x13.0, r = 13.0) ──
         let p_day_pill = local_p - vec2<f32>(-76.0, top_y);
         let d_day_pill = rr_sdf(p_day_pill, vec2<f32>(52.0, 13.0), 13.0);
-        let mask_day_fill = (1.0 - smoothstep(-0.4, 0.4, d_day_pill)) * 0.22;
-        let mask_day_rim = smoothstep(1.1, 0.0, abs(d_day_pill)) * 0.35;
+        let mask_day_fill = (1.0 - smoothstep(-0.4, 0.4, d_day_pill)) * 0.08;
+        let mask_day_rim = smoothstep(1.1, 0.0, abs(d_day_pill)) * 0.25;
         
         // Status indicator dot (cx = -114.0, cy = top_y, r = 3.0)
         let p_dot = local_p - vec2<f32>(-114.0, top_y);
@@ -1050,22 +1049,21 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let d_w0 = draw_clock_letter(local_p - vec2<f32>(day_cx - 1.6 * dsp, top_y), w0, 1.15);
         let d_w1 = draw_clock_letter(local_p - vec2<f32>(day_cx - 0.5 * dsp, top_y), w1, 1.15);
         let d_w2 = draw_clock_letter(local_p - vec2<f32>(day_cx + 0.6 * dsp, top_y), w2, 1.15);
-        let d_day_letters = min(min(d_w0, d_w1), d_w2) - 0.95;
+        let d_day_letters = min(min(d_w0, d_w1), d_w2) - 0.72;
         let mask_day_letters = 1.0 - smoothstep(-0.35, 0.35, d_day_letters);
-        let halo_day_letters = (1.0 - smoothstep(-0.35, 1.2, d_day_letters - 1.0)) * 0.80;
         
         // ── 1b. Right Battery Pill (cx = 76.0, half = 46.0x13.0, r = 13.0) ──
         let p_bat_pill = local_p - vec2<f32>(76.0, top_y);
         let d_bat_pill = rr_sdf(p_bat_pill, vec2<f32>(46.0, 13.0), 13.0);
-        let mask_bat_fill = (1.0 - smoothstep(-0.4, 0.4, d_bat_pill)) * 0.22;
-        let mask_bat_rim = smoothstep(1.1, 0.0, abs(d_bat_pill)) * 0.35;
+        let mask_bat_fill = (1.0 - smoothstep(-0.4, 0.4, d_bat_pill)) * 0.08;
+        let mask_bat_rim = smoothstep(1.1, 0.0, abs(d_bat_pill)) * 0.25;
         
         // Lightning Bolt Icon (cx = 48.0, cy = top_y)
         let p_bolt = local_p - vec2<f32>(48.0, top_y);
         let s_b0 = dist_segment(p_bolt, vec2<f32>(1.2, -4.5), vec2<f32>(-1.8, -0.5));
         let s_b1 = dist_segment(p_bolt, vec2<f32>(-1.8, -0.5), vec2<f32>(0.8, -0.5));
         let s_b2 = dist_segment(p_bolt, vec2<f32>(0.8, -0.5), vec2<f32>(-1.2, 4.5));
-        let d_bolt = min(min(s_b0, s_b1), s_b2) - 0.90;
+        let d_bolt = min(min(s_b0, s_b1), s_b2) - 0.75;
         let mask_bolt = 1.0 - smoothstep(-0.35, 0.35, d_bolt);
         
         // Battery Percentage digits (No ugly leading zeros)
@@ -1076,28 +1074,24 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let b_sp = 7.5;
         let bat_num_cx = 76.0;
         var mask_bnum = 0.0;
-        var halo_bnum = 0.0;
         if bat_u >= 100u {
             let db_h = draw_digit(local_p - vec2<f32>(bat_num_cx - b_sp * 1.1, top_y), 1u, b_scale);
             let db0 = draw_digit(local_p - vec2<f32>(bat_num_cx, top_y), 0u, b_scale);
             let db1 = draw_digit(local_p - vec2<f32>(bat_num_cx + b_sp * 1.1, top_y), 0u, b_scale);
             let db_pct = draw_percent(local_p - vec2<f32>(bat_num_cx + b_sp * 2.3, top_y), b_scale);
-            let d_all = min(min(db_h, db0), min(db1, db_pct)) - 0.90;
+            let d_all = min(min(db_h, db0), min(db1, db_pct)) - 0.68;
             mask_bnum = 1.0 - smoothstep(-0.35, 0.35, d_all);
-            halo_bnum = (1.0 - smoothstep(-0.35, 1.2, d_all - 1.0)) * 0.80;
         } else if bat_u >= 10u {
             let db0 = draw_digit(local_p - vec2<f32>(bat_num_cx - b_sp * 0.7, top_y), b_tens, b_scale);
             let db1 = draw_digit(local_p - vec2<f32>(bat_num_cx + b_sp * 0.5, top_y), b_ones, b_scale);
-            let db_pct = draw_percent(local_p - vec2<f32>(bat_num_cx + b_sp * 1.7, top_y), b_scale);
-            let d_all = min(min(db0, db1), db_pct) - 0.90;
+            let db_pct = draw_percent(local_p - vec2<f32>(bat_num_cx + b_sp * 1.8, top_y), b_scale);
+            let d_all = min(min(db0, db1), db_pct) - 0.68;
             mask_bnum = 1.0 - smoothstep(-0.35, 0.35, d_all);
-            halo_bnum = (1.0 - smoothstep(-0.35, 1.2, d_all - 1.0)) * 0.80;
         } else {
-            let db1 = draw_digit(local_p - vec2<f32>(bat_num_cx - b_sp * 0.4, top_y), b_ones, b_scale);
-            let db_pct = draw_percent(local_p - vec2<f32>(bat_num_cx + b_sp * 0.8, top_y), b_scale);
-            let d_all = min(db1, db_pct) - 0.90;
+            let db1 = draw_digit(local_p - vec2<f32>(bat_num_cx - b_sp * 0.2, top_y), b_ones, b_scale);
+            let db_pct = draw_percent(local_p - vec2<f32>(bat_num_cx + b_sp * 1.1, top_y), b_scale);
+            let d_all = min(db1, db_pct) - 0.68;
             mask_bnum = 1.0 - smoothstep(-0.35, 0.35, d_all);
-            halo_bnum = (1.0 - smoothstep(-0.35, 1.2, d_all - 1.0)) * 0.80;
         }
 
         // ════════════════════════════════════════════
@@ -1141,8 +1135,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         // ── 3a. Left Date Pill (cx = -76.0, half = 52.0x13.0, r = 13.0) ──
         let p_date_pill = local_p - vec2<f32>(-76.0, bot_y);
         let d_date_pill = rr_sdf(p_date_pill, vec2<f32>(52.0, 13.0), 13.0);
-        let mask_date_fill = (1.0 - smoothstep(-0.4, 0.4, d_date_pill)) * 0.22;
-        let mask_date_rim = smoothstep(1.1, 0.0, abs(d_date_pill)) * 0.35;
+        let mask_date_fill = (1.0 - smoothstep(-0.4, 0.4, d_date_pill)) * 0.08;
+        let mask_date_rim = smoothstep(1.1, 0.0, abs(d_date_pill)) * 0.25;
         
         // Calendar Icon (cx = -114.0, cy = bot_y)
         let p_cal = local_p - vec2<f32>(-114.0, bot_y);
@@ -1178,15 +1172,14 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let md_ones = mday_code % 10u;
         let d_d0 = draw_digit(local_p - vec2<f32>(date_cx + 0.9 * mt_sp, bot_y), md_tens, 1.05);
         let d_d1 = draw_digit(local_p - vec2<f32>(date_cx + 2.0 * mt_sp, bot_y), md_ones, 1.05);
-        let d_date_text = min(min(min(d_m0, d_m1), d_m2), min(d_d0, d_d1)) - 0.95;
+        let d_date_text = min(min(min(d_m0, d_m1), d_m2), min(d_d0, d_d1)) - 0.70;
         let mask_date_text = 1.0 - smoothstep(-0.35, 0.35, d_date_text);
-        let halo_date_text = (1.0 - smoothstep(-0.35, 1.2, d_date_text - 1.0)) * 0.80;
         
         // ── 3b. Right Battery Progress Track (cx = 76.0, half = 46.0x5.0, r = 5.0) ──
         let p_track = local_p - vec2<f32>(76.0, bot_y);
         let d_track = rr_sdf(p_track, vec2<f32>(46.0, 5.0), 5.0);
-        let mask_track_bg = (1.0 - smoothstep(-0.4, 0.4, d_track)) * 0.22;
-        let mask_track_rim = smoothstep(1.0, 0.0, abs(d_track)) * 0.35;
+        let mask_track_bg = (1.0 - smoothstep(-0.4, 0.4, d_track)) * 0.08;
+        let mask_track_rim = smoothstep(1.0, 0.0, abs(d_track)) * 0.25;
         
         let max_bar_w = 88.0;
         let bar_w = (bat_val / 100.0) * max_bar_w;
@@ -1205,7 +1198,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let d_sm0 = draw_digit(p_digit_sh - vec2<f32>(time_cx + 1.05 * sp, time_y), m_tens, t_scale);
         let d_sm1 = draw_digit(p_digit_sh - vec2<f32>(time_cx + 2.15 * sp, time_y), m_ones, t_scale);
         let d_time_sh = min(min(d_sh0, d_sh1), min(d_sm0, d_sm1)) - 1.80;
-        let shadow_time = max(exp(-max(d_time_sh, 0.0) * 0.75) * 0.65, max(halo_day_letters, max(halo_bnum, halo_date_text)));
+        let shadow_time = exp(-max(d_time_sh, 0.0) * 0.90) * 0.28;
 
         // Primary glyphs (Time digits, colon, day letters, date text, battery %)
         let primary_glyphs = max(
@@ -1214,7 +1207,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         );
 
         let digit_sheen = clamp(1.0 - (local_p.y - (time_y - 12.0)) / 24.0, 0.0, 1.0);
-        let glyph_light = mix(text_primary, vec3<f32>(1.0, 1.0, 1.0), digit_sheen * 0.15);
+        let glyph_light = mix(text_primary, vec3<f32>(1.0, 1.0, 1.0), digit_sheen * 0.20);
 
         // Inset Frosted Glass Pills (Day, Battery, Date, Battery Track)
         let pill_fills = max(max(mask_day_fill, mask_bat_fill), max(mask_date_fill, mask_track_bg));
@@ -1234,7 +1227,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             app.glyph_color = glyph_light;
         } else if shadow_time > 0.04 {
             app.glyph_mask = shadow_time;
-            app.glyph_color = text_halo_col;
+            app.glyph_color = mix(vec3<f32>(0.02, 0.03, 0.05), vec3<f32>(1.0, 1.0, 1.0) * 0.40, is_light);
         } else if pill_rims > 0.05 {
             app.glyph_mask = pill_rims;
             app.glyph_color = pill_rim_col;
@@ -1254,12 +1247,11 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let neutral_accent = mix(vec3<f32>(0.96, 0.98, 1.0), vec3<f32>(0.11, 0.14, 0.18), is_light);
         let primary_accent = select(neutral_accent, accent_raw, has_accent);
 
-        let text_primary = vec3<f32>(1.0, 1.0, 1.0);
-        let text_secondary = vec3<f32>(0.92, 0.94, 0.98);
-        let text_dim = vec3<f32>(0.72, 0.76, 0.82);
-        let text_halo_col = vec3<f32>(0.01, 0.02, 0.04);
-        let pill_frost_col = vec3<f32>(0.04, 0.06, 0.10);
-        let pill_rim_col = vec3<f32>(1.0, 1.0, 1.0);
+        let text_primary = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.08, 0.10, 0.14), is_light);
+        let text_dim = mix(vec3<f32>(0.65, 0.68, 0.75), vec3<f32>(0.45, 0.48, 0.52), is_light);
+        let text_secondary = mix(vec3<f32>(0.88, 0.91, 0.96), vec3<f32>(0.22, 0.25, 0.30), is_light);
+        let pill_frost_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.0, 0.0, 0.0), is_light);
+        let pill_rim_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.08, 0.10, 0.14), is_light);
 
         let active_tab = u32(params.deformation / 10.0 + 0.05);
         let active_filter = u32(params.deformation + 0.05) % 10u;
@@ -1273,15 +1265,15 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let top_y = -188.0;
         let p_track = local_p - vec2<f32>(0.0, top_y);
         let d_track = rr_sdf(p_track, vec2<f32>(156.0, 16.0), 16.0);
-        let mask_track_fill = (1.0 - smoothstep(-0.4, 0.4, d_track)) * 0.18;
-        let mask_track_rim = smoothstep(1.0, 0.0, abs(d_track)) * 0.30;
+        let mask_track_fill = (1.0 - smoothstep(-0.4, 0.4, d_track)) * 0.05;
+        let mask_track_rim = smoothstep(1.0, 0.0, abs(d_track)) * 0.20;
 
         // Tab 1: Tasks (cx = -76.0, half = 72.0x13.0, r = 13.0)
         let p_tab1 = local_p - vec2<f32>(-76.0, top_y);
         let d_tab1 = rr_sdf(p_tab1, vec2<f32>(72.0, 13.0), 13.0);
         let is_tab1_act = (active_tab == 0u);
-        let mask_tab1_fill = (1.0 - smoothstep(-0.4, 0.4, d_tab1)) * select(0.08, 0.26, is_tab1_act);
-        let mask_tab1_rim = smoothstep(1.1, 0.0, abs(d_tab1)) * select(0.18, 0.45, is_tab1_act);
+        let mask_tab1_fill = (1.0 - smoothstep(-0.4, 0.4, d_tab1)) * select(0.0, 0.12, is_tab1_act);
+        let mask_tab1_rim = smoothstep(1.1, 0.0, abs(d_tab1)) * select(0.12, 0.32, is_tab1_act);
 
         // Tab 1 Text: TASKS (6)
         let t1_cx = -76.0;
@@ -1294,16 +1286,15 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let dt_p0 = draw_clock_letter(local_p - vec2<f32>(t1_cx + 2.3 * t1_sp, top_y), 40u, 0.95); // (
         let dt5 = draw_digit(local_p - vec2<f32>(t1_cx + 3.3 * t1_sp, top_y), 6u, 0.95);
         let dt_p1 = draw_clock_letter(local_p - vec2<f32>(t1_cx + 4.3 * t1_sp, top_y), 41u, 0.95); // )
-        let d_tab1_txt = min(min(min(dt0, dt1), min(dt2, dt3)), min(min(dt4, dt_p0), min(dt5, dt_p1))) - 1.05;
+        let d_tab1_txt = min(min(min(dt0, dt1), min(dt2, dt3)), min(min(dt4, dt_p0), min(dt5, dt_p1))) - 0.70;
         let mask_tab1_txt = 1.0 - smoothstep(-0.35, 0.35, d_tab1_txt);
-        let halo_tab1 = (1.0 - smoothstep(-0.35, 1.2, d_tab1_txt - 1.0)) * 0.75;
 
         // Tab 2: Agenda (cx = 76.0, half = 72.0x13.0, r = 13.0)
         let p_tab2 = local_p - vec2<f32>(76.0, top_y);
         let d_tab2 = rr_sdf(p_tab2, vec2<f32>(72.0, 13.0), 13.0);
         let is_tab2_act = (active_tab == 1u);
-        let mask_tab2_fill = (1.0 - smoothstep(-0.4, 0.4, d_tab2)) * select(0.08, 0.26, is_tab2_act);
-        let mask_tab2_rim = smoothstep(1.1, 0.0, abs(d_tab2)) * select(0.18, 0.45, is_tab2_act);
+        let mask_tab2_fill = (1.0 - smoothstep(-0.4, 0.4, d_tab2)) * select(0.0, 0.12, is_tab2_act);
+        let mask_tab2_rim = smoothstep(1.1, 0.0, abs(d_tab2)) * select(0.12, 0.32, is_tab2_act);
 
         // Tab 2 Text: AGENDA
         let t2_cx = 76.0;
@@ -1313,27 +1304,19 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let da3 = draw_clock_letter(local_p - vec2<f32>(t2_cx + 0.7 * t1_sp, top_y), 78u, 0.90); // N
         let da4 = draw_clock_letter(local_p - vec2<f32>(t2_cx + 1.8 * t1_sp, top_y), 68u, 0.90); // D
         let da5 = draw_clock_letter(local_p - vec2<f32>(t2_cx + 2.9 * t1_sp, top_y), 65u, 0.90); // A
-        let d_tab2_txt = min(min(min(da0, da1), min(da2, da3)), min(da4, da5)) - 1.00;
+        let d_tab2_txt = min(min(min(da0, da1), min(da2, da3)), min(da4, da5)) - 0.65;
         let mask_tab2_txt = 1.0 - smoothstep(-0.35, 0.35, d_tab2_txt);
-        let halo_tab2 = (1.0 - smoothstep(-0.35, 1.2, d_tab2_txt - 1.0)) * 0.70;
 
         var mask_all_fill = 0.0;
         var mask_all_rim = 0.0;
         var mask_all_txt = 0.0;
-        var halo_all = 0.0;
-
         var mask_act_fill = 0.0;
         var mask_act_rim = 0.0;
         var mask_act_txt = 0.0;
-        var halo_act = 0.0;
-
         var mask_don_fill = 0.0;
         var mask_don_rim = 0.0;
         var mask_don_txt = 0.0;
-        var halo_don = 0.0;
-
         var mask_ref = 0.0;
-        var halo_ref = 0.0;
 
         var rows_fill = 0.0;
         var rows_rim = 0.0;
@@ -1344,10 +1327,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         var daily_fills = 0.0;
         var daily_rims = 0.0;
         var daily_txts = 0.0;
-        var daily_halos = 0.0;
         var task_txt_primary = 0.0;
         var task_txt_shadow = 0.0;
-        var task_txt_halos = 0.0;
         var task_txt_dimmed = 0.0;
 
         var mask_add_fill = 0.0;
@@ -1355,7 +1336,6 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         var mask_plus_fill = 0.0;
         var mask_plus_icon = 0.0;
         var mask_add_txt = 0.0;
-        var halo_add = 0.0;
 
         if active_tab == 0u {
             // ════════════════════════════════════════════
@@ -1367,51 +1347,44 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             let is_f_all = (active_filter == 0u);
             let p_all = local_p - vec2<f32>(-96.0, filt_y);
             let d_all = rr_sdf(p_all, vec2<f32>(30.0, 10.0), 10.0);
-            mask_all_fill = (1.0 - smoothstep(-0.4, 0.4, d_all)) * select(0.08, 0.24, is_f_all);
-            mask_all_rim = smoothstep(1.0, 0.0, abs(d_all)) * select(0.18, 0.40, is_f_all);
+            mask_all_fill = (1.0 - smoothstep(-0.4, 0.4, d_all)) * select(0.0, 0.10, is_f_all);
+            mask_all_rim = smoothstep(1.0, 0.0, abs(d_all)) * select(0.14, 0.30, is_f_all);
             let dl0 = draw_clock_letter(p_all - vec2<f32>(-11.0, 0.0), 65u, 0.85); // A
             let dl1 = draw_clock_letter(p_all - vec2<f32>(0.0, 0.0), 76u, 0.85);  // L
             let dl2 = draw_clock_letter(p_all - vec2<f32>(11.0, 0.0), 76u, 0.85); // L
-            let d_all_txt = min(min(dl0, dl1), dl2) - 0.95;
-            mask_all_txt = 1.0 - smoothstep(-0.35, 0.35, d_all_txt);
-            halo_all = (1.0 - smoothstep(-0.35, 1.2, d_all_txt - 1.0)) * 0.70;
+            mask_all_txt = 1.0 - smoothstep(-0.35, 0.35, min(min(dl0, dl1), dl2) - 0.65);
 
             // ACTIVE Pill (active when active_filter == 1)
             let is_f_act = (active_filter == 1u);
             let p_act = local_p - vec2<f32>(-24.0, filt_y);
             let d_act = rr_sdf(p_act, vec2<f32>(34.0, 10.0), 10.0);
-            mask_act_fill = (1.0 - smoothstep(-0.4, 0.4, d_act)) * select(0.08, 0.24, is_f_act);
-            mask_act_rim = smoothstep(1.0, 0.0, abs(d_act)) * select(0.18, 0.40, is_f_act);
+            mask_act_fill = (1.0 - smoothstep(-0.4, 0.4, d_act)) * select(0.0, 0.10, is_f_act);
+            mask_act_rim = smoothstep(1.0, 0.0, abs(d_act)) * select(0.14, 0.30, is_f_act);
             let dc0 = draw_clock_letter(p_act - vec2<f32>(-16.0, 0.0), 65u, 0.80);
             let dc1 = draw_clock_letter(p_act - vec2<f32>(-6.0, 0.0), 67u, 0.80);
             let dc2 = draw_clock_letter(p_act - vec2<f32>(4.0, 0.0), 84u, 0.80);
             let dc3 = draw_clock_letter(p_act - vec2<f32>(14.0, 0.0), 86u, 0.80);
-            let d_act_txt = min(min(dc0, dc1), min(dc2, dc3)) - 0.90;
-            mask_act_txt = 1.0 - smoothstep(-0.35, 0.35, d_act_txt);
-            halo_act = (1.0 - smoothstep(-0.35, 1.2, d_act_txt - 1.0)) * 0.70;
+            mask_act_txt = 1.0 - smoothstep(-0.35, 0.35, min(min(dc0, dc1), min(dc2, dc3)) - 0.60);
 
             // DONE Pill (active when active_filter == 2)
             let is_f_don = (active_filter == 2u);
             let p_don = local_p - vec2<f32>(48.0, filt_y);
             let d_don = rr_sdf(p_don, vec2<f32>(30.0, 10.0), 10.0);
-            mask_don_fill = (1.0 - smoothstep(-0.4, 0.4, d_don)) * select(0.08, 0.24, is_f_don);
-            mask_don_rim = smoothstep(1.0, 0.0, abs(d_don)) * select(0.18, 0.40, is_f_don);
+            mask_don_fill = (1.0 - smoothstep(-0.4, 0.4, d_don)) * select(0.0, 0.10, is_f_don);
+            mask_don_rim = smoothstep(1.0, 0.0, abs(d_don)) * select(0.14, 0.30, is_f_don);
             let dd0 = draw_clock_letter(p_don - vec2<f32>(-11.0, 0.0), 68u, 0.80);
             let dd1 = draw_clock_letter(p_don - vec2<f32>(0.0, 0.0), 79u, 0.80);
             let dd2 = draw_clock_letter(p_don - vec2<f32>(11.0, 0.0), 78u, 0.80);
-            let d_don_txt = min(min(dd0, dd1), dd2) - 0.90;
-            mask_don_txt = 1.0 - smoothstep(-0.35, 0.35, d_don_txt);
-            halo_don = (1.0 - smoothstep(-0.35, 1.2, d_don_txt - 1.0)) * 0.70;
+            mask_don_txt = 1.0 - smoothstep(-0.35, 0.35, min(min(dd0, dd1), dd2) - 0.60);
 
             // Refresh Icon ↻
             let p_ref = local_p - vec2<f32>(120.0, filt_y);
             let r_ref = length(p_ref);
-            let d_ref_arc = abs(r_ref - 5.5) - 0.90;
+            let d_ref_arc = abs(r_ref - 5.5) - 0.65;
             let ang_ref = atan2(p_ref.y, p_ref.x);
             let mask_ref_arc = select(1.0 - smoothstep(-0.35, 0.35, d_ref_arc), 0.0, ang_ref > 1.2 && ang_ref < 2.0);
-            let d_ref_arr = dist_segment(p_ref, vec2<f32>(3.5, 3.5), vec2<f32>(7.5, 3.5)) - 0.90;
-            mask_ref = max(mask_ref_arc, 1.0 - smoothstep(-0.35, 0.35, d_ref_arr));
-            halo_ref = (1.0 - smoothstep(-0.35, 1.2, min(d_ref_arc, d_ref_arr) - 0.85)) * 0.70;
+            let d_ref_arr = dist_segment(p_ref, vec2<f32>(3.5, 3.5), vec2<f32>(7.5, 3.5));
+            mask_ref = max(mask_ref_arc, 1.0 - smoothstep(-0.35, 0.35, d_ref_arr - 0.65));
 
             // ════════════════════════════════════════════
             // 3. TASK ROWS (6 Rows, y = -105.0 to +115.0)
@@ -1424,8 +1397,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
                 let is_row_hover = (hover_row >= f32(i) - 0.1 && hover_row <= f32(i) + 0.1);
                 let hover_boost = select(0.0, 0.12, is_row_hover);
 
-                let fill = (1.0 - smoothstep(-0.4, 0.4, d_row)) * (0.22 + hover_boost);
-                let rim = smoothstep(1.0, 0.0, abs(d_row)) * (0.35 + hover_boost);
+                let fill = (1.0 - smoothstep(-0.4, 0.4, d_row)) * (0.06 + hover_boost);
+                let rim = smoothstep(1.0, 0.0, abs(d_row)) * (0.18 + hover_boost);
                 rows_fill = max(rows_fill, fill);
                 rows_rim = max(rows_rim, rim);
 
@@ -1434,50 +1407,47 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
                 // Checkbox (cx = -135.0, cy = row_y)
                 let p_box = local_p - vec2<f32>(-135.0, row_y);
                 let d_box = rr_sdf(p_box, vec2<f32>(8.5, 8.5), 4.5);
-                let c_rim = smoothstep(1.2, 0.0, abs(d_box)) * 0.45;
-                let c_bg = (1.0 - smoothstep(-0.4, 0.4, d_box)) * 0.20;
+                let c_rim = smoothstep(1.2, 0.0, abs(d_box)) * 0.32;
+                let c_bg = (1.0 - smoothstep(-0.4, 0.4, d_box)) * 0.08;
                 check_rims = max(check_rims, max(c_rim, c_bg));
 
                 if is_item_done {
                     let c_fill = (1.0 - smoothstep(-0.4, 0.4, d_box));
                     check_fills = max(check_fills, c_fill);
-                    let d_cm = draw_checkmark(p_box, 1.05) - 0.40;
+                    let d_cm = draw_checkmark(p_box, 1.05);
                     check_marks = max(check_marks, 1.0 - smoothstep(-0.35, 0.35, d_cm));
 
                     // Strikethrough horizontal line running through task title
-                    let d_str = dist_segment(local_p, vec2<f32>(-116.0, row_y), vec2<f32>(60.0, row_y)) - 0.95;
+                    let d_str = dist_segment(local_p, vec2<f32>(-116.0, row_y), vec2<f32>(60.0, row_y)) - 0.85;
                     strikes = max(strikes, 1.0 - smoothstep(-0.35, 0.35, d_str));
                 }
 
                 // Daily Tag Badge (cx = 124.0, cy = row_y, half = 22.0x7.5, r = 7.5)
                 let p_dtag = local_p - vec2<f32>(124.0, row_y);
                 let d_dtag = rr_sdf(p_dtag, vec2<f32>(22.0, 7.5), 7.5);
-                daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * 0.20);
-                daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * 0.35);
+                daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * 0.06);
+                daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * 0.20);
 
                 let dy0 = draw_clock_letter(p_dtag - vec2<f32>(-12.0, 0.0), 68u, 0.65); // D
                 let dy1 = draw_clock_letter(p_dtag - vec2<f32>(-6.0, 0.0), 65u, 0.65);  // A
                 let dy2 = draw_clock_letter(p_dtag - vec2<f32>(0.0, 0.0), 73u, 0.65);   // I
                 let dy3 = draw_clock_letter(p_dtag - vec2<f32>(6.0, 0.0), 76u, 0.65);   // L
                 let dy4 = draw_clock_letter(p_dtag - vec2<f32>(12.0, 0.0), 89u, 0.65);  // Y
-                let d_dytxt = min(min(min(dy0, dy1), min(dy2, dy3)), dy4) - 0.75;
+                let d_dytxt = min(min(min(dy0, dy1), min(dy2, dy3)), dy4) - 0.48;
                 daily_txts = max(daily_txts, 1.0 - smoothstep(-0.35, 0.35, d_dytxt));
-                daily_halos = max(daily_halos, (1.0 - smoothstep(-0.35, 1.1, d_dytxt - 0.9)) * 0.70);
 
-                // Task Titles with crisp bold strokes and drop shadow + ambient halo:
-                let d_txt = eval_todo_row_text(local_p, i) - 1.10;
-                let m_txt = 1.0 - smoothstep(-0.35, 0.35, d_txt);
-                let h_txt = (1.0 - smoothstep(-0.35, 1.3, d_txt - 1.1)) * 0.80;
+                // Task Titles with crisp bold strokes and drop shadow:
+                let d_txt = eval_todo_row_text(local_p, i);
+                let d_txt_sh = eval_todo_row_text(local_p - vec2<f32>(0.0, 1.2), i);
 
-                let d_txt_sh = eval_todo_row_text(local_p - vec2<f32>(0.0, 1.5), i) - 1.10;
-                let m_txt_sh = (1.0 - smoothstep(-0.35, 1.1, d_txt_sh - 0.9)) * 0.65;
+                let m_txt = 1.0 - smoothstep(-0.35, 0.35, d_txt - 0.78);
+                let m_txt_sh = (1.0 - smoothstep(-0.35, 0.75, d_txt_sh - 0.78)) * 0.55;
 
                 if is_item_done {
                     task_txt_dimmed = max(task_txt_dimmed, m_txt);
                 } else {
                     task_txt_primary = max(task_txt_primary, m_txt);
                     task_txt_shadow = max(task_txt_shadow, m_txt_sh);
-                    task_txt_halos = max(task_txt_halos, h_txt);
                 }
             }
 
@@ -1487,8 +1457,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             let bot_y = 185.0;
             let p_add_bar = local_p - vec2<f32>(0.0, bot_y);
             let d_add_bar = rr_sdf(p_add_bar, vec2<f32>(156.0, 17.0), 17.0);
-            mask_add_fill = (1.0 - smoothstep(-0.4, 0.4, d_add_bar)) * 0.22;
-            mask_add_rim = smoothstep(1.1, 0.0, abs(d_add_bar)) * 0.38;
+            mask_add_fill = (1.0 - smoothstep(-0.4, 0.4, d_add_bar)) * mix(0.12, 0.08, is_light);
+            mask_add_rim = smoothstep(1.1, 0.0, abs(d_add_bar)) * mix(0.35, 0.22, is_light);
 
             // Add Button '+' at cx = 135.0, cy = bot_y
             let p_plus = local_p - vec2<f32>(135.0, bot_y);
@@ -1496,7 +1466,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             mask_plus_fill = 1.0 - smoothstep(-0.4, 0.4, d_plus_bg);
             let d_plus_v = dist_segment(p_plus, vec2<f32>(0.0, -5.0), vec2<f32>(0.0, 5.0));
             let d_plus_h = dist_segment(p_plus, vec2<f32>(-5.0, 0.0), vec2<f32>(5.0, 0.0));
-            mask_plus_icon = 1.0 - smoothstep(-0.35, 0.35, min(d_plus_v, d_plus_h) - 0.85);
+            mask_plus_icon = 1.0 - smoothstep(-0.35, 0.35, min(d_plus_v, d_plus_h) - 0.65);
 
             // Placeholder text: + ADD TASK...
             let at_start = -135.0;
@@ -1508,9 +1478,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             let ap4 = draw_clock_letter(local_p - vec2<f32>(at_start + 4.8 * at_sp, bot_y), 65u, 0.85); // A
             let ap5 = draw_clock_letter(local_p - vec2<f32>(at_start + 5.8 * at_sp, bot_y), 83u, 0.85); // S
             let ap6 = draw_clock_letter(local_p - vec2<f32>(at_start + 6.8 * at_sp, bot_y), 75u, 0.85); // K
-            let d_add_txt = min(min(min(ap0, ap1), ap2), min(min(ap3, ap4), min(ap5, ap6))) - 1.00;
+            let d_add_txt = min(min(min(ap0, ap1), ap2), min(min(ap3, ap4), min(ap5, ap6))) - 0.65;
             mask_add_txt = 1.0 - smoothstep(-0.35, 0.35, d_add_txt);
-            halo_add = (1.0 - smoothstep(-0.35, 1.2, d_add_txt - 1.0)) * 0.70;
         } else {
             // ════════════════════════════════════════════
             // 2. AGENDA SCHEDULE VIEW (y = -135.0 to +135.0)
@@ -1523,52 +1492,48 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
                 let is_row_hover = (hover_row >= f32(i) - 0.1 && hover_row <= f32(i) + 0.1);
                 let hover_boost = select(0.0, 0.12, is_row_hover);
 
-                let fill = (1.0 - smoothstep(-0.4, 0.4, d_row)) * (0.22 + hover_boost);
-                let rim = smoothstep(1.0, 0.0, abs(d_row)) * (0.35 + hover_boost);
+                let fill = (1.0 - smoothstep(-0.4, 0.4, d_row)) * (0.06 + hover_boost);
+                let rim = smoothstep(1.0, 0.0, abs(d_row)) * (0.18 + hover_boost);
                 rows_fill = max(rows_fill, fill);
                 rows_rim = max(rows_rim, rim);
 
                 // Time Badge Capsule (cx = -120.0, cy = row_y)
                 let p_tbadge = local_p - vec2<f32>(-120.0, row_y);
                 let d_tbadge = rr_sdf(p_tbadge, vec2<f32>(24.0, 9.0), 6.0);
-                let tb_rim = smoothstep(1.0, 0.0, abs(d_tbadge)) * 0.35;
-                let tb_fill = (1.0 - smoothstep(-0.4, 0.4, d_tbadge)) * 0.20;
+                let tb_rim = smoothstep(1.0, 0.0, abs(d_tbadge)) * 0.25;
+                let tb_fill = (1.0 - smoothstep(-0.4, 0.4, d_tbadge)) * 0.10;
                 check_rims = max(check_rims, max(tb_rim, tb_fill));
 
                 // Right Status Badge: TODAY (cx = 124.0, cy = row_y)
                 let p_dtag = local_p - vec2<f32>(124.0, row_y);
                 let d_dtag = rr_sdf(p_dtag, vec2<f32>(22.0, 7.5), 7.5);
-                daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * 0.20);
-                daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * 0.35);
+                daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * 0.08);
+                daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * 0.22);
 
                 let dy0 = draw_clock_letter(p_dtag - vec2<f32>(-12.0, 0.0), 84u, 0.65); // T
                 let dy1 = draw_clock_letter(p_dtag - vec2<f32>(-6.0, 0.0), 79u, 0.65);  // O
                 let dy2 = draw_clock_letter(p_dtag - vec2<f32>(0.0, 0.0), 68u, 0.65);   // D
                 let dy3 = draw_clock_letter(p_dtag - vec2<f32>(6.0, 0.0), 65u, 0.65);   // A
                 let dy4 = draw_clock_letter(p_dtag - vec2<f32>(12.0, 0.0), 89u, 0.65);  // Y
-                let d_dytxt = min(min(min(dy0, dy1), min(dy2, dy3)), dy4) - 0.75;
+                let d_dytxt = min(min(min(dy0, dy1), min(dy2, dy3)), dy4) - 0.48;
                 daily_txts = max(daily_txts, 1.0 - smoothstep(-0.35, 0.35, d_dytxt));
-                daily_halos = max(daily_halos, (1.0 - smoothstep(-0.35, 1.1, d_dytxt - 0.9)) * 0.70);
 
-                // Agenda Times & Event Titles with bold strokes and halo:
-                let d_ag = eval_agenda_row_text(local_p, i) - 1.10;
-                let m_ag = 1.0 - smoothstep(-0.35, 0.35, d_ag);
-                let h_ag = (1.0 - smoothstep(-0.35, 1.3, d_ag - 1.1)) * 0.80;
-
-                let d_ag_sh = eval_agenda_row_text(local_p - vec2<f32>(0.0, 1.5), i) - 1.10;
-                let m_ag_sh = (1.0 - smoothstep(-0.35, 1.1, d_ag_sh - 0.9)) * 0.65;
+                // Agenda Times & Event Titles
+                let d_ag = eval_agenda_row_text(local_p, i);
+                let d_ag_sh = eval_agenda_row_text(local_p - vec2<f32>(0.0, 1.2), i);
+                let m_ag = 1.0 - smoothstep(-0.35, 0.35, d_ag - 0.78);
+                let m_ag_sh = (1.0 - smoothstep(-0.35, 0.75, d_ag_sh - 0.78)) * 0.55;
 
                 task_txt_primary = max(task_txt_primary, m_ag);
                 task_txt_shadow = max(task_txt_shadow, m_ag_sh);
-                task_txt_halos = max(task_txt_halos, h_ag);
             }
 
             // Bottom Status Bar (y = +185.0): CALENDAR • 6 EVENTS
             let bot_y = 185.0;
             let p_add_bar = local_p - vec2<f32>(0.0, bot_y);
             let d_add_bar = rr_sdf(p_add_bar, vec2<f32>(156.0, 17.0), 17.0);
-            mask_add_fill = (1.0 - smoothstep(-0.4, 0.4, d_add_bar)) * 0.22;
-            mask_add_rim = smoothstep(1.1, 0.0, abs(d_add_bar)) * 0.38;
+            mask_add_fill = (1.0 - smoothstep(-0.4, 0.4, d_add_bar)) * mix(0.12, 0.08, is_light);
+            mask_add_rim = smoothstep(1.1, 0.0, abs(d_add_bar)) * mix(0.35, 0.22, is_light);
 
             // CALENDAR Text in bottom bar
             let cal_start = -110.0;
@@ -1581,9 +1546,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             let cp5 = draw_clock_letter(local_p - vec2<f32>(cal_start + 5.0 * cal_sp, bot_y), 68u, 0.85); // D
             let cp6 = draw_clock_letter(local_p - vec2<f32>(cal_start + 6.0 * cal_sp, bot_y), 65u, 0.85); // A
             let cp7 = draw_clock_letter(local_p - vec2<f32>(cal_start + 7.0 * cal_sp, bot_y), 82u, 0.85); // R
-            let d_cal_txt = min(min(min(cp0, cp1), min(cp2, cp3)), min(min(cp4, cp5), min(cp6, cp7))) - 1.00;
+            let d_cal_txt = min(min(min(cp0, cp1), min(cp2, cp3)), min(min(cp4, cp5), min(cp6, cp7))) - 0.65;
             mask_add_txt = 1.0 - smoothstep(-0.35, 0.35, d_cal_txt);
-            halo_add = (1.0 - smoothstep(-0.35, 1.2, d_cal_txt - 1.0)) * 0.70;
         }
 
         // ════════════════════════════════════════════
@@ -1597,12 +1561,6 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             max(max(task_txt_primary, check_marks), max(daily_txts, mask_plus_icon))
         );
         let secondary_glyphs = max(max(mask_tab2_txt, mask_act_txt), max(mask_don_txt, mask_add_txt));
-
-        let all_halos = max(
-            max(halo_tab1, halo_tab2),
-            max(max(halo_all, max(halo_act, max(halo_don, halo_ref))),
-                max(max(task_txt_halos, task_txt_shadow), max(daily_halos, halo_add)))
-        );
 
         if mask_plus_icon > 0.05 {
             app.glyph_mask = mask_plus_icon;
@@ -1626,15 +1584,15 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         } else if primary_glyphs > 0.02 {
             app.glyph_mask = primary_glyphs;
             app.glyph_color = text_primary;
+        } else if task_txt_shadow > 0.03 {
+            app.glyph_mask = task_txt_shadow;
+            app.glyph_color = mix(vec3<f32>(0.02, 0.03, 0.05), vec3<f32>(1.0, 1.0, 1.0) * 0.40, is_light);
         } else if task_txt_dimmed > 0.02 {
             app.glyph_mask = task_txt_dimmed;
             app.glyph_color = text_dim;
         } else if secondary_glyphs > 0.02 {
             app.glyph_mask = secondary_glyphs;
             app.glyph_color = text_secondary;
-        } else if all_halos > 0.04 {
-            app.glyph_mask = all_halos;
-            app.glyph_color = text_halo_col;
         } else if all_rims > 0.05 {
             app.glyph_mask = all_rims;
             app.glyph_color = pill_rim_col;
@@ -1645,6 +1603,9 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         return app;
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // 30. Minimalist Liquid Glass Square Box with Center Action Button
+    // ─────────────────────────────────────────────────────────────
     // ─────────────────────────────────────────────────────────────
     // 30. Minimalist Liquid Glass Square Box with Center Action Button
     // ─────────────────────────────────────────────────────────────
@@ -2023,15 +1984,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         col = mix(sharp_col, frosted_col, frost);
     }
 
-    // ── Global Surface Background Luminance for Coherent, Rock-Solid Adaptive Contrast ──
-    // Sample representative points across the surface background to establish a uniform,
-    // jitter-free, non-splitting typography theme across the entire card.
-    let c_mid = textureSampleLevel(background_texture, background_sampler, vec2<f32>(0.5, 0.5), 0.0).rgb;
-    let c_top = textureSampleLevel(background_texture, background_sampler, vec2<f32>(0.5, 0.25), 0.0).rgb;
-    let c_bot = textureSampleLevel(background_texture, background_sampler, vec2<f32>(0.5, 0.75), 0.0).rgb;
-    let avg_bg = (c_mid * 2.0 + c_top + c_bot) * 0.25;
-    let bg_luma = dot(avg_bg, vec3<f32>(0.299, 0.587, 0.114));
-    let is_light = smoothstep(0.50, 0.64, bg_luma);
+    // Measure local background luminance for adaptive text contrast
+    let bg_luma = dot(col, vec3<f32>(0.299, 0.587, 0.114));
+    let is_light = smoothstep(0.55, 0.78, bg_luma);
 
     // Apple Vibrancy: gently boost saturation so wallpaper colors shine warmly through frosted glass
     let sat_col = mix(vec3<f32>(bg_luma), col, 1.15);
@@ -2039,12 +1994,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // True Optical Liquid Glass:
     // Pure, crystal transmission of the real wallpaper underneath with silky frosted blur.
-    // Dense silica glass naturally tempers blinding specular blow-out on light wallpapers
-    // while providing a crisp 6% silica crystal lift on dark backgrounds.
-    let glass_luma = dot(col, vec3<f32>(0.299, 0.587, 0.114));
-    let bright_absorb = smoothstep(0.52, 0.82, glass_luma) * 0.18;
-    col = mix(col, vec3<f32>(0.04, 0.06, 0.10), bright_absorb);
-    col = mix(col, vec3<f32>(1.0, 1.0, 1.0), (1.0 - smoothstep(0.40, 0.70, glass_luma)) * 0.06);
+    // Zero muddy tints, zero colored sludge! The glass shows the true background.
+    // A delicate 6% pure white silica transmission lift gives physical crystal presence.
+    col = mix(col, vec3<f32>(1.0, 1.0, 1.0), 0.06);
 
     // ════════════════════════════════════════════
     // 5. 3D DIRECTIONAL LIQUID SPECULAR & BLINN-PHONG GLOSS
