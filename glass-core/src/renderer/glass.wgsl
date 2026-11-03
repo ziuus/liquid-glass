@@ -1016,8 +1016,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         // High-contrast adaptive typography
         let text_primary = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.08, 0.10, 0.14), is_light);
         let text_secondary = mix(vec3<f32>(0.90, 0.93, 0.98), vec3<f32>(0.22, 0.25, 0.30), is_light);
-        let pill_frost_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.20, 0.22, 0.28), is_light * 0.15);
-        let pill_rim_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.30, 0.35, 0.45), is_light * 0.50);
+        let pill_frost_col = vec3<f32>(1.0, 1.0, 1.0);
+        let pill_rim_col = mix(vec3<f32>(1.0, 1.0, 1.0) * 0.35, vec3<f32>(0.72, 0.76, 0.82), is_light);
 
         // ════════════════════════════════════════════
         // 1. TOP ROW (y = -56.0): Frosted Day Pill & Battery Pill
@@ -1144,11 +1144,11 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let neutral_accent = mix(vec3<f32>(0.96, 0.98, 1.0), vec3<f32>(0.11, 0.14, 0.18), is_light);
         let primary_accent = select(neutral_accent, accent_raw, has_accent);
 
-        let text_primary = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.08, 0.10, 0.14), is_light);
-        let text_dim = mix(vec3<f32>(0.65, 0.68, 0.75), vec3<f32>(0.45, 0.48, 0.52), is_light);
-        let text_secondary = mix(vec3<f32>(0.88, 0.91, 0.96), vec3<f32>(0.22, 0.25, 0.30), is_light);
-        let pill_frost_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.20, 0.22, 0.28), is_light * 0.15);
-        let pill_rim_col = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.30, 0.35, 0.45), is_light * 0.50);
+        let text_primary = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.06, 0.08, 0.12), is_light);
+        let text_dim = mix(vec3<f32>(0.65, 0.68, 0.75), vec3<f32>(0.45, 0.48, 0.54), is_light);
+        let text_secondary = mix(vec3<f32>(0.88, 0.91, 0.96), vec3<f32>(0.25, 0.28, 0.34), is_light);
+        let pill_frost_col = vec3<f32>(1.0, 1.0, 1.0);
+        let pill_rim_col = mix(vec3<f32>(1.0, 1.0, 1.0) * 0.35, vec3<f32>(0.65, 0.68, 0.75), is_light);
 
         // Smooth continuous sliding active tab pill using params.deformation (0.0 = Tasks, 1.0 = Agenda)
         let tab_t = clamp(params.deformation, 0.0, 1.0);
@@ -1167,15 +1167,15 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let top_y = -195.0;
         let p_track = local_p - vec2<f32>(0.0, top_y);
         let d_track = rr_sdf(p_track, vec2<f32>(156.0, 16.0), 16.0);
-        let mask_track_fill = (1.0 - smoothstep(-0.4, 0.4, d_track)) * 0.05;
-        let mask_track_rim = smoothstep(1.0, 0.0, abs(d_track)) * 0.20;
+        let mask_track_fill = (1.0 - smoothstep(-0.4, 0.4, d_track)) * mix(0.05, 0.14, is_light);
+        let mask_track_rim = smoothstep(1.0, 0.0, abs(d_track)) * mix(0.20, 0.32, is_light);
 
         // Sliding active tab pill
         let tab_cx = mix(-76.0, 76.0, tab_t);
         let p_tab = local_p - vec2<f32>(tab_cx, top_y);
         let d_tab = rr_sdf(p_tab, vec2<f32>(74.0, 14.0), 14.0);
-        let mask_tab1_fill = (1.0 - smoothstep(-0.4, 0.4, d_tab)) * 0.12;
-        let mask_tab1_rim = smoothstep(1.1, 0.0, abs(d_tab)) * 0.32;
+        let mask_tab1_fill = (1.0 - smoothstep(-0.4, 0.4, d_tab)) * mix(0.14, 0.55, is_light);
+        let mask_tab1_rim = smoothstep(1.1, 0.0, abs(d_tab)) * mix(0.32, 0.45, is_light);
         let mask_tab2_fill = 0.0;
         let mask_tab2_rim = 0.0;
         let mask_tab1_txt = 0.0;
@@ -1223,8 +1223,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             let filt_w = select(mix(30.0, 34.0, f_t), mix(34.0, 30.0, f_t - 1.0), f_t > 1.0);
             let p_filt = local_p - vec2<f32>(filt_cx, filt_y);
             let d_filt = rr_sdf(p_filt, vec2<f32>(filt_w, 10.0), 10.0);
-            mask_all_fill = (1.0 - smoothstep(-0.4, 0.4, d_filt)) * 0.10 * task_view_weight;
-            mask_all_rim = smoothstep(1.0, 0.0, abs(d_filt)) * 0.30 * task_view_weight;
+            mask_all_fill = (1.0 - smoothstep(-0.4, 0.4, d_filt)) * mix(0.12, 0.45, is_light) * task_view_weight;
+            mask_all_rim = smoothstep(1.0, 0.0, abs(d_filt)) * mix(0.25, 0.35, is_light) * task_view_weight;
 
             // Refresh Icon ↻
             let p_ref = local_p - vec2<f32>(120.0, filt_y);
@@ -1249,8 +1249,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
                 let is_row_hover = (hover_row >= f32(i) - 0.1 && hover_row <= f32(i) + 0.1);
                 let hover_boost = select(0.0, 0.12, is_row_hover);
 
-                let fill = (1.0 - smoothstep(-0.4, 0.4, d_row)) * (0.06 + hover_boost) * task_view_weight;
-                let rim = smoothstep(1.0, 0.0, abs(d_row)) * (0.18 + hover_boost) * task_view_weight;
+                let fill = (1.0 - smoothstep(-0.4, 0.4, d_row)) * mix(0.10 + hover_boost, 0.60 + hover_boost, is_light) * task_view_weight;
+                let rim = smoothstep(1.0, 0.0, abs(d_row)) * mix(0.18 + hover_boost, 0.28 + hover_boost, is_light) * task_view_weight;
                 rows_fill = max(rows_fill, fill);
                 rows_rim = max(rows_rim, rim);
 
@@ -1259,8 +1259,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
                 // Checkbox (cx = -135.0, cy = row_y)
                 let p_box = local_p - vec2<f32>(-135.0, row_y);
                 let d_box = rr_sdf(p_box, vec2<f32>(8.5, 8.5), 4.5);
-                let c_rim = smoothstep(1.2, 0.0, abs(d_box)) * 0.32 * task_view_weight;
-                let c_bg = (1.0 - smoothstep(-0.4, 0.4, d_box)) * 0.08 * task_view_weight;
+                let c_rim = smoothstep(1.2, 0.0, abs(d_box)) * mix(0.32, 0.45, is_light) * task_view_weight;
+                let c_bg = (1.0 - smoothstep(-0.4, 0.4, d_box)) * mix(0.08, 0.18, is_light) * task_view_weight;
                 check_rims = max(check_rims, max(c_rim, c_bg));
 
                 if is_item_done {
@@ -1283,13 +1283,13 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             let bot_y = 185.0;
             let p_add_bar = local_p - vec2<f32>(0.0, bot_y);
             let d_add_bar = rr_sdf(p_add_bar, vec2<f32>(156.0, 17.0), 17.0);
-            mask_add_fill = (1.0 - smoothstep(-0.4, 0.4, d_add_bar)) * mix(0.12, 0.08, is_light) * task_view_weight;
-            mask_add_rim = smoothstep(1.1, 0.0, abs(d_add_bar)) * mix(0.35, 0.22, is_light) * task_view_weight;
+            mask_add_fill = (1.0 - smoothstep(-0.4, 0.4, d_add_bar)) * mix(0.12, 0.45, is_light) * task_view_weight;
+            mask_add_rim = smoothstep(1.1, 0.0, abs(d_add_bar)) * mix(0.35, 0.35, is_light) * task_view_weight;
 
             // Add Button '+' at cx = 135.0, cy = bot_y
             let p_plus = local_p - vec2<f32>(135.0, bot_y);
             let d_plus_bg = length(p_plus) - 11.0;
-            let plus_fill = (1.0 - smoothstep(-0.4, 0.4, d_plus_bg)) * 0.12 * task_view_weight;
+            let plus_fill = (1.0 - smoothstep(-0.4, 0.4, d_plus_bg)) * mix(0.12, 0.85, is_light) * task_view_weight;
             let plus_rim = smoothstep(1.0, 0.0, abs(d_plus_bg)) * 0.32 * task_view_weight;
             mask_add_fill = max(mask_add_fill, plus_fill);
             mask_add_rim = max(mask_add_rim, plus_rim);
@@ -1314,8 +1314,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
                 let is_row_hover = (hover_row >= f32(i) - 0.1 && hover_row <= f32(i) + 0.1);
                 let hover_boost = select(0.0, 0.12, is_row_hover);
 
-                let fill = (1.0 - smoothstep(-0.4, 0.4, d_row)) * (0.06 + hover_boost) * agenda_view_weight;
-                let rim = smoothstep(1.0, 0.0, abs(d_row)) * (0.18 + hover_boost) * agenda_view_weight;
+                let fill = (1.0 - smoothstep(-0.4, 0.4, d_row)) * mix(0.10 + hover_boost, 0.60 + hover_boost, is_light) * agenda_view_weight;
+                let rim = smoothstep(1.0, 0.0, abs(d_row)) * mix(0.18 + hover_boost, 0.28 + hover_boost, is_light) * agenda_view_weight;
                 rows_fill = max(rows_fill, fill);
                 rows_rim = max(rows_rim, rim);
 
@@ -1770,19 +1770,22 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         col = mix(sharp_col, frosted_col, frost);
     }
 
-    // Measure local background luminance for adaptive text contrast (only true light backgrounds > 185)
+    // Card-wide uniform light/dark appearance mode passed from CPU crop analysis
+    // (Falls back to local blur luminance if tint.w is negative)
+    let is_light = select(smoothstep(0.48, 0.58, dot(col, vec3<f32>(0.299, 0.587, 0.114))), params.tint.w, params.tint.w >= 0.0);
     let bg_luma = dot(col, vec3<f32>(0.299, 0.587, 0.114));
-    let is_light = smoothstep(0.72, 0.86, bg_luma);
 
-    // Apple Vibrancy: gently boost saturation so wallpaper colors shine warmly through frosted glass
-    let sat_col = mix(vec3<f32>(bg_luma), col, 1.15);
+    // Apple Vibrancy: boost saturation so wallpaper colors shine warmly through frosted glass
+    let sat_col = mix(vec3<f32>(bg_luma), col, 1.25);
     col = sat_col;
 
-    // True Optical Liquid Glass:
-    // Pure, crystal transmission of the real wallpaper underneath with silky frosted blur.
-    // Zero muddy tints, zero colored sludge! The glass shows the true background.
-    // A delicate 6% pure white silica transmission lift gives physical crystal presence.
-    col = mix(col, vec3<f32>(1.0, 1.0, 1.0), 0.06);
+    // Apple macOS Sequoia & visionOS Material Substrate:
+    // Guarantees high-contrast readability on ANY wallpaper.
+    // In Light Mode: 50% clean translucent milk-glass sheet (white + slight warmth)
+    // In Dark Mode: 42% deep obsidian-tinted glass sheet
+    let light_substrate = mix(col, vec3<f32>(0.96, 0.97, 0.99), 0.50);
+    let dark_substrate = mix(col, vec3<f32>(0.08, 0.10, 0.14), 0.42);
+    col = mix(dark_substrate, light_substrate, is_light);
 
     // ════════════════════════════════════════════
     // 5. 3D DIRECTIONAL LIQUID SPECULAR & BLINN-PHONG GLOSS

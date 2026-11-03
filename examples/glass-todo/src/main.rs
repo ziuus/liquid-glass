@@ -364,6 +364,9 @@ impl KeyboardHandler for AppData {
                     ls.set_keyboard_interactivity(KeyboardInteractivity::None);
                     ls.commit();
                 }
+                if let Some(w) = &self.window_wrapper {
+                    w.surface.commit();
+                }
                 self.draw();
             }
             Keysym::Escape => {
@@ -372,6 +375,9 @@ impl KeyboardHandler for AppData {
                 if let Some(ls) = &self.layer_surface {
                     ls.set_keyboard_interactivity(KeyboardInteractivity::None);
                     ls.commit();
+                }
+                if let Some(w) = &self.window_wrapper {
+                    w.surface.commit();
                 }
                 self.draw();
             }
@@ -508,11 +514,12 @@ impl PointerHandler for AppData {
                         }
                     }
                 }
-                PointerEventKind::Press { .. } => {
+                PointerEventKind::Press { button, .. } => {
                     had_event = true;
                     let px = event.position.0 as f32;
                     let py = event.position.1 as f32;
-                    let handled = self.handle_click(px, py);
+                    let is_right = button == 0x111; // BTN_RIGHT (273)
+                    let handled = self.handle_click(px, py, is_right);
                     if !handled {
                         self.is_dragging = true;
                         self.drag_grab_offset = [px as i32, py as i32];
@@ -546,7 +553,7 @@ impl AppData {
             .collect()
     }
 
-    fn handle_click(&mut self, px: f32, py: f32) -> bool {
+    fn handle_click(&mut self, px: f32, py: f32, is_right: bool) -> bool {
         let half_w = self.width as f32 * 0.5;
         let half_h = self.height as f32 * 0.5;
         let local_x = px - half_w;
@@ -554,6 +561,14 @@ impl AppData {
 
         // Check Top Tabs (tab_y = -195.0, cy = 32.5)
         if (local_y - (-195.0)).abs() <= 22.0 {
+            if self.is_editing {
+                self.is_editing = false;
+                self.input_buffer.clear();
+                if let Some(ls) = &self.layer_surface {
+                    ls.set_keyboard_interactivity(KeyboardInteractivity::None);
+                    ls.commit();
+                }
+            }
             if local_x <= 0.0 {
                 self.active_tab = 0;
                 self.tab_spring.set_target(0.0);
@@ -567,7 +582,17 @@ impl AppData {
 
         // Check Filters (filt_y = -148.0, cy = 79.5)
         if self.active_tab == 0 && (local_y - (-148.0)).abs() <= 18.0 {
-            if local_x < -55.0 {
+            if (local_x - 120.0).abs() <= 16.0 {
+                // Refresh icon: reset daily tasks
+                for t in &mut self.todos.tasks {
+                    if t.r#type == "daily" {
+                        t.done = false;
+                    }
+                }
+                self.save_todos();
+                self.draw();
+                return true;
+            } else if local_x < -55.0 {
                 self.active_filter = 0; // All
                 self.filter_spring.set_target(0.0);
             } else if local_x < 15.0 {
@@ -581,16 +606,28 @@ impl AppData {
             return true;
         }
 
-        // Check task row checkboxes (row_y = -105.0 + i * 44.0, cx = -135.0)
+        // Check task row click (row_y = -105.0 + i * 44.0)
         if self.active_tab == 0 {
             let visible_indices = self.filtered_indices();
             for (display_row, &actual_idx) in visible_indices.iter().enumerate().take(6) {
                 let row_y = -105.0 + (display_row as f32) * 44.0;
-                if (-156.0..=-110.0).contains(&local_x)
+                if (-156.0..=156.0).contains(&local_x)
                     && (local_y - row_y).abs() <= 18.0
                     && actual_idx < self.todos.tasks.len()
                 {
-                    self.todos.tasks[actual_idx].done = !self.todos.tasks[actual_idx].done;
+                    if is_right || local_x > 115.0 {
+                        if is_right {
+                            self.todos.tasks.remove(actual_idx);
+                        } else {
+                            if self.todos.tasks[actual_idx].r#type == "daily" {
+                                self.todos.tasks[actual_idx].r#type = "todo".to_string();
+                            } else {
+                                self.todos.tasks[actual_idx].r#type = "daily".to_string();
+                            }
+                        }
+                    } else {
+                        self.todos.tasks[actual_idx].done = !self.todos.tasks[actual_idx].done;
+                    }
                     self.save_todos();
                     self.draw();
                     return true;
@@ -598,7 +635,7 @@ impl AppData {
             }
         }
 
-        // Check Add task button (bot_y = 185.0, cy = 412.5)
+        // Check Add task button in Tasks view (bot_y = 185.0, cy = 412.5)
         if self.active_tab == 0 && (local_y - 185.0).abs() <= 24.0 {
             self.is_editing = true;
             self.input_buffer.clear();
@@ -607,6 +644,24 @@ impl AppData {
                 ls.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
                 ls.commit();
             }
+            if let Some(w) = &self.window_wrapper {
+                w.surface.commit();
+            }
+            self.draw();
+            return true;
+        }
+
+        // Check Calendar sync button in Agenda view (bot_y = 185.0, cy = 412.5)
+        if self.active_tab == 1 && (local_y - 185.0).abs() <= 24.0 {
+            let home = std::env::var("HOME").unwrap_or_default();
+            let sync_script = format!("{}/.config/quickshell-todo-widget/calendar_sync.py", home);
+            if std::path::Path::new(&sync_script).exists() {
+                let _ = std::process::Command::new("python3")
+                    .arg(&sync_script)
+                    .spawn();
+            }
+            self.last_calendar_check = Instant::now() - std::time::Duration::from_secs(10);
+            self.check_calendar();
             self.draw();
             return true;
         }
@@ -628,6 +683,9 @@ impl AppData {
             if let Some(ls) = &self.layer_surface {
                 ls.set_keyboard_interactivity(KeyboardInteractivity::None);
                 ls.commit();
+            }
+            if let Some(w) = &self.window_wrapper {
+                w.surface.commit();
             }
             self.draw();
             return true;
@@ -724,23 +782,23 @@ impl AppData {
     }
 
     fn render_ui_overlay(&self, buf: &mut [u8]) {
-        // Adaptive luxury typography: Obsidian Slate on light backgrounds, Pure White on dark/vibrant
+        // Apple macOS Sequoia Typography: Deep Obsidian Slate on Light Mode, Pure Crisp White on Dark Mode
         let (col_primary, col_secondary, col_dimmed, col_accent, col_shadow) =
             if self.is_wallpaper_light {
                 (
-                    [24, 28, 38, 245],
-                    [60, 68, 84, 225],
-                    [135, 145, 165, 190],
-                    [16, 20, 30, 255],
-                    [255, 255, 255, 160],
+                    [22, 26, 36, 255],    // Primary text: Deep Obsidian (WCAG AAA contrast 14:1)
+                    [65, 72, 88, 235],    // Secondary text: Refined Slate
+                    [130, 138, 155, 210], // Tertiary/Dimmed: Subtle Slate
+                    [14, 18, 26, 255],    // Accent text
+                    [0, 0, 0, 0],         // Natural contrast from frosted card substrate
                 )
             } else {
                 (
-                    [255, 255, 255, 255],
-                    [235, 240, 250, 230],
-                    [190, 198, 212, 175],
-                    [255, 255, 255, 255],
-                    [10, 14, 22, 140],
+                    [255, 255, 255, 255], // Primary text: Crisp Pure White
+                    [225, 232, 245, 230], // Secondary text: Soft White
+                    [170, 178, 195, 180], // Tertiary/Dimmed: Dimmed White
+                    [255, 255, 255, 255], // White accent
+                    [10, 14, 22, 140],    // Downward soft drop shadow (0, +1)
                 )
             };
 
@@ -1116,6 +1174,8 @@ impl AppData {
             let tab_val = self.tab_spring.value;
             let filter_val = self.filter_spring.value;
 
+            let is_light_f32 = if self.is_wallpaper_light { 1.0 } else { 0.0 };
+
             let todo_card = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::RoundedRectangle { radius: 26.0 })
@@ -1124,8 +1184,8 @@ impl AppData {
                 .bevel(5.5)
                 .refraction(0.35)
                 .dispersion(filter_val) // Continuous Filter spring
-                .blur(16.0)
-                .tint(0.0, 0.0, 0.0, 0.0)
+                .blur(28.0)
+                .tint(0.0, 0.0, 0.0, is_light_f32)
                 .roughness(-1.0)
                 .specular(1.0)
                 .fresnel(0.35)
@@ -1183,7 +1243,7 @@ fn is_buffer_light(buf: &[u8]) -> bool {
             count += 1;
         }
     }
-    total_lum.checked_div(count).is_some_and(|avg| avg > 185)
+    total_lum.checked_div(count).is_some_and(|avg| avg > 130)
 }
 
 fn get_theme_accent() -> [f32; 4] {
@@ -1476,11 +1536,12 @@ fn main() {
             let _ = conn.flush();
         }
 
-        let timeout_ms = if animating || app_data.is_hovered || app_data.is_dragging {
-            16
-        } else {
-            250
-        };
+        let timeout_ms =
+            if animating || app_data.is_hovered || app_data.is_dragging || app_data.is_editing {
+                16
+            } else {
+                250
+            };
 
         let guard = match conn.prepare_read() {
             Some(g) => g,

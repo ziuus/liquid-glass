@@ -145,13 +145,14 @@ impl QuicksandFont {
         weight: FontWeight,
     ) -> f32 {
         if shadow_color[3] > 0 {
+            // Elegant macOS downward drop shadow (y + 1.0)
             self.draw_text(
                 buf,
                 width,
                 height,
                 text,
                 x,
-                y + 1.2,
+                y + 1.0,
                 size,
                 shadow_color,
                 weight,

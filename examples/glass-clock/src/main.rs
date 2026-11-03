@@ -406,13 +406,17 @@ impl AppData {
     }
 
     fn render_ui_overlay(&self, buf: &mut [u8]) {
-        // Adaptive luxury typography: Obsidian Slate on light backgrounds, Pure White on dark/vibrant
+        // Apple macOS Sequoia Typography: Deep Obsidian Slate on Light Mode, Pure Crisp White on Dark Mode
         let (col_primary, col_secondary, col_shadow) = if self.is_wallpaper_light {
-            ([24, 28, 38, 245], [60, 68, 84, 225], [255, 255, 255, 160])
+            (
+                [22, 26, 36, 255], // Deep obsidian slate
+                [65, 72, 88, 235], // Secondary slate
+                [0, 0, 0, 0],      // Natural contrast from frosted card substrate
+            )
         } else {
             (
                 [255, 255, 255, 255],
-                [235, 240, 250, 230],
+                [225, 232, 245, 230],
                 [10, 14, 22, 140],
             )
         };
@@ -558,6 +562,8 @@ impl AppData {
             let (px, py) = (self.cursor_pos[0], self.cursor_pos[1]);
             let (vx, vy) = (self.cursor_velocity[0], self.cursor_velocity[1]);
 
+            let is_light_f32 = if self.is_wallpaper_light { 1.0 } else { 0.0 };
+
             // Glass Surface using shader element_type 25.0 (Clock Face)
             let clock_card = GlassSurface::new()
                 .material(Material::LiquidGlass)
@@ -567,8 +573,8 @@ impl AppData {
                 .bevel(5.5)
                 .refraction(0.35)
                 .dispersion(0.0)
-                .blur(16.0)
-                .tint(0.0, 0.0, 0.0, 0.0)
+                .blur(28.0)
+                .tint(0.0, 0.0, 0.0, is_light_f32)
                 .roughness(self.battery_level)
                 .specular(1.0)
                 .fresnel(0.35)
@@ -738,7 +744,7 @@ fn is_buffer_light(buf: &[u8]) -> bool {
             count += 1;
         }
     }
-    total_lum.checked_div(count).is_some_and(|avg| avg > 185)
+    total_lum.checked_div(count).is_some_and(|avg| avg > 130)
 }
 
 fn init_wallpaper_1080p() -> (Option<Arc<Vec<u8>>>, Option<String>) {
