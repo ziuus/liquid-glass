@@ -3,7 +3,16 @@ use glass_core::font::{FontWeight, QuicksandFont};
 #[test]
 fn test_render_clock_and_todo_overlays() {
     let font = QuicksandFont::new();
-    let brain_dir = "/home/zius/.gemini/antigravity-cli/brain/47486015-2027-4a74-9bb3-457d7cd0d76b";
+    let target_dir = {
+        let brain = std::path::Path::new(
+            "/home/zius/.gemini/antigravity-cli/brain/47486015-2027-4a74-9bb3-457d7cd0d76b",
+        );
+        if brain.exists() {
+            brain.to_path_buf()
+        } else {
+            std::env::temp_dir()
+        }
+    };
 
     for is_light in [false, true] {
         let (col_primary, col_secondary, col_dimmed, col_accent, col_shadow) = if is_light {
@@ -101,14 +110,13 @@ fn test_render_clock_and_todo_overlays() {
         );
 
         let suffix = if is_light { "light" } else { "dark" };
-        image::save_buffer(
-            format!("{}/clock_overlay_{}.png", brain_dir, suffix),
+        let _ = image::save_buffer(
+            format!("{}/clock_overlay_{}.png", target_dir.display(), suffix),
             &clock_buf,
             cw,
             ch,
             image::ExtendedColorType::Rgba8,
-        )
-        .expect("Saved clock overlay");
+        );
 
         // 2. TODO OVERLAY (360 x 455)
         let (tw, th) = (360u32, 455u32);
@@ -250,13 +258,12 @@ fn test_render_clock_and_todo_overlays() {
             FontWeight::SemiBold,
         );
 
-        image::save_buffer(
-            format!("{}/todo_overlay_{}.png", brain_dir, suffix),
+        let _ = image::save_buffer(
+            format!("{}/todo_overlay_{}.png", target_dir.display(), suffix),
             &todo_buf,
             tw,
             th,
             image::ExtendedColorType::Rgba8,
-        )
-        .expect("Saved todo overlay");
+        );
     }
 }

@@ -1,5 +1,5 @@
 use chrono::{Datelike, Local, Timelike};
-use glass_core::font::{FontWeight, QuicksandFont};
+use glass_core::font::{FontWeight, QuicksandFont, UIFont};
 use glass_core::{geometry::Shape, GlassRenderer, GlassSurface, Material};
 use raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle,
@@ -462,28 +462,43 @@ impl AppData {
         let full_date_str = format!("{}, {}", wday_str, date_str);
         let bat_str = format!("{:.0}%", self.battery_level);
 
-        // 1. Top Centered Date Capsule (cy = 47.0)
-        self.font.draw_text_centered(
+        let half_w = self.width as f32 * 0.5;
+
+        // 1. Top Centered Date (cy = 44.0) with crisp minimal calendar icon
+        let date_w = self
+            .font
+            .measure_text(&full_date_str, 16.5, FontWeight::Bold);
+        let date_total_w = 18.0 + date_w;
+        let date_start_x = half_w - date_total_w * 0.5;
+        UIFont::draw_calendar_icon(
+            buf,
+            self.width,
+            self.height,
+            date_start_x + 6.0,
+            44.0,
+            col_secondary,
+        );
+        self.font.draw_text_centered_y(
             buf,
             self.width,
             self.height,
             &full_date_str,
-            168.0,
-            47.0,
-            14.5,
+            date_start_x + 18.0,
+            44.0,
+            16.5,
             col_primary,
             col_shadow,
             FontWeight::Bold,
         );
 
-        // 2. Hero Digital Clock (cy = 109.0): mathematically centered Quicksand typography
+        // 2. Hero Digital Clock (cy = 110.0): large, bold, sculptural typography (68px)
         let time_baseline = self
             .font
-            .vertical_center_baseline(109.0, 56.0, FontWeight::Bold);
-        let time_w = self.font.measure_text(&time_str, 56.0, FontWeight::Bold);
-        let ampm_w = self.font.measure_text(ampm, 14.0, FontWeight::Bold);
-        let total_w = time_w + 8.0 + ampm_w;
-        let time_x = 160.0 - total_w * 0.5;
+            .vertical_center_baseline(110.0, 68.0, FontWeight::Bold);
+        let time_w = self.font.measure_text(&time_str, 68.0, FontWeight::Bold);
+        let ampm_w = self.font.measure_text(ampm, 18.0, FontWeight::Bold);
+        let total_w = time_w + 10.0 + ampm_w;
+        let time_x = half_w - total_w * 0.5;
         let end_x = self.font.draw_text_with_shadow(
             buf,
             self.width,
@@ -491,7 +506,7 @@ impl AppData {
             &time_str,
             time_x,
             time_baseline,
-            56.0,
+            68.0,
             col_primary,
             col_shadow,
             FontWeight::Bold,
@@ -503,26 +518,38 @@ impl AppData {
             self.width,
             self.height,
             ampm,
-            end_x + 8.0,
-            time_baseline - 6.0,
-            15.0,
+            end_x + 10.0,
+            time_baseline - 8.0,
+            18.0,
             col_secondary,
             col_shadow,
             FontWeight::Bold,
         );
 
-        // 3. Bottom Centered Battery Capsule (cy = 171.0)
-        self.font.draw_text_centered(
+        // 3. Bottom Centered Battery Capsule & Percentage (cy = 176.0)
+        let bat_text_w = self.font.measure_text(&bat_str, 15.0, FontWeight::Bold);
+        let bat_total_w = bat_text_w + 12.0 + 26.0;
+        let bat_start_x = half_w - bat_total_w * 0.5;
+        self.font.draw_text_centered_y(
             buf,
             self.width,
             self.height,
             &bat_str,
-            144.0,
-            171.0,
-            13.5,
+            bat_start_x,
+            176.0,
+            15.0,
             col_secondary,
             col_shadow,
             FontWeight::Bold,
+        );
+        UIFont::draw_battery_capsule(
+            buf,
+            self.width,
+            self.height,
+            bat_start_x + bat_text_w + 18.0,
+            176.0,
+            self.battery_level,
+            col_secondary,
         );
     }
 
@@ -554,20 +581,20 @@ impl AppData {
 
             let is_light_f32 = if self.is_wallpaper_light { 1.0 } else { 0.0 };
 
-            // Authentic Liquid Glass with sleek 4px precision glass meniscus
+            // Authentic 3D Liquid Glass with generous 22px curved optical meniscus
             let clock_card = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::RoundedRectangle { radius: 24.0 })
+                .shape(Shape::RoundedRectangle { radius: 28.0 })
                 .bounds(0.0, 0.0, 1.0, 1.0)
-                .curvature(0.04)
-                .bevel(4.0)
-                .refraction(0.35)
-                .dispersion(0.020)
-                .blur(32.0)
+                .curvature(0.035)
+                .bevel(22.0)
+                .refraction(0.48)
+                .dispersion(0.024)
+                .blur(28.0)
                 .tint(0.0, 0.0, 0.0, is_light_f32)
                 .roughness(self.battery_level)
-                .specular(1.2)
-                .fresnel(0.50)
+                .specular(1.35)
+                .fresnel(0.55)
                 .element_type(25.0)
                 .progress(time_val)
                 .deformation(date_val)

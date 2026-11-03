@@ -1,4 +1,4 @@
-use glass_core::font::{FontWeight, QuicksandFont};
+use glass_core::font::{FontWeight, QuicksandFont, UIFont};
 use glass_core::{geometry::Shape, GlassRenderer, GlassSurface, Material, Spring, SpringParams};
 use raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle,
@@ -817,7 +817,7 @@ impl AppData {
             &tasks_label,
             104.0,
             32.5,
-            14.0,
+            15.5,
             tab1_col,
             col_shadow,
             FontWeight::Bold,
@@ -836,7 +836,7 @@ impl AppData {
             agenda_label,
             256.0,
             32.5,
-            14.5,
+            15.5,
             tab2_col,
             col_shadow,
             FontWeight::Bold,
@@ -867,7 +867,7 @@ impl AppData {
                 "All",
                 84.0,
                 79.5,
-                13.0,
+                14.0,
                 f0_col,
                 col_shadow,
                 FontWeight::Bold,
@@ -879,7 +879,7 @@ impl AppData {
                 "Active",
                 156.0,
                 79.5,
-                13.0,
+                14.0,
                 f1_col,
                 col_shadow,
                 FontWeight::Bold,
@@ -891,7 +891,7 @@ impl AppData {
                 "Done",
                 228.0,
                 79.5,
-                13.0,
+                14.0,
                 f2_col,
                 col_shadow,
                 FontWeight::Bold,
@@ -912,7 +912,7 @@ impl AppData {
                     msg,
                     180.0,
                     200.0,
-                    13.0,
+                    14.5,
                     col_dimmed,
                     col_shadow,
                     FontWeight::Medium,
@@ -928,6 +928,60 @@ impl AppData {
                     (col_primary, FontWeight::Bold)
                 };
 
+                // Precision anti-aliased vector checkbox
+                let chk_cx = 38.0;
+                if task.done {
+                    let bg_box = if self.is_wallpaper_light {
+                        [10, 14, 22, 255]
+                    } else {
+                        [255, 255, 255, 245]
+                    };
+                    let fg_chk = if self.is_wallpaper_light {
+                        [255, 255, 255, 255]
+                    } else {
+                        [10, 14, 22, 255]
+                    };
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        chk_cx,
+                        cy,
+                        9.0,
+                        9.0,
+                        5.0,
+                        bg_box,
+                    );
+                    UIFont::draw_checkmark(
+                        buf,
+                        self.width,
+                        self.height,
+                        chk_cx,
+                        cy,
+                        1.1,
+                        1.6,
+                        fg_chk,
+                    );
+                } else {
+                    let stroke_box = if self.is_wallpaper_light {
+                        [35, 45, 60, 200]
+                    } else {
+                        [220, 230, 248, 190]
+                    };
+                    UIFont::draw_rounded_rect_stroke(
+                        buf,
+                        self.width,
+                        self.height,
+                        chk_cx,
+                        cy,
+                        9.0,
+                        9.0,
+                        5.0,
+                        1.5,
+                        stroke_box,
+                    );
+                }
+
                 // Truncate task text if too long for display
                 let mut display_text = task.text.clone();
                 if display_text.len() > 24 {
@@ -939,9 +993,9 @@ impl AppData {
                     self.width,
                     self.height,
                     &display_text,
-                    64.0,
+                    58.0,
                     cy,
-                    14.0,
+                    15.5,
                     text_col,
                     col_shadow,
                     weight,
@@ -953,16 +1007,33 @@ impl AppData {
                         buf,
                         self.width,
                         self.height,
-                        63.0,
+                        57.0,
                         end_x + 2.0,
                         cy,
-                        1.4,
+                        1.5,
                         col_dimmed,
                     );
                 }
 
-                // "DAILY" pill badge text centered at cx = 304.0, cy
+                // "DAILY" pill badge centered at cx = 304.0, cy
                 let tag_text = "DAILY";
+                let tag_stroke = if self.is_wallpaper_light {
+                    [45, 55, 70, 160]
+                } else {
+                    [200, 215, 235, 140]
+                };
+                UIFont::draw_rounded_rect_stroke(
+                    buf,
+                    self.width,
+                    self.height,
+                    304.0,
+                    cy,
+                    22.0,
+                    9.0,
+                    5.0,
+                    1.2,
+                    tag_stroke,
+                );
                 self.font.draw_text_centered(
                     buf,
                     self.width,
@@ -970,7 +1041,7 @@ impl AppData {
                     tag_text,
                     304.0,
                     cy,
-                    10.0,
+                    10.5,
                     col_secondary,
                     col_shadow,
                     FontWeight::Bold,
@@ -997,7 +1068,7 @@ impl AppData {
                     input_str,
                     42.0,
                     412.5,
-                    14.0,
+                    15.5,
                     input_col,
                     col_shadow,
                     FontWeight::SemiBold,
@@ -1016,8 +1087,8 @@ impl AppData {
                         self.width,
                         self.height,
                         cursor_x,
-                        412.5 - 8.0,
-                        16.0,
+                        412.5 - 9.0,
+                        18.0,
                         2.0,
                         col_accent,
                     );
@@ -1031,7 +1102,7 @@ impl AppData {
                     "↵ Enter",
                     295.0,
                     412.5,
-                    11.0,
+                    12.0,
                     col_dimmed,
                     col_shadow,
                     FontWeight::Medium,
@@ -1044,7 +1115,7 @@ impl AppData {
                     "+  Add task",
                     42.0,
                     412.5,
-                    14.0,
+                    15.5,
                     col_secondary,
                     col_shadow,
                     FontWeight::SemiBold,
@@ -1178,17 +1249,17 @@ impl AppData {
 
             let todo_card = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::RoundedRectangle { radius: 24.0 })
+                .shape(Shape::RoundedRectangle { radius: 28.0 })
                 .bounds(0.0, 0.0, 1.0, 1.0)
-                .curvature(0.04)
-                .bevel(4.0)
-                .refraction(0.35)
+                .curvature(0.035)
+                .bevel(22.0)
+                .refraction(0.48)
                 .dispersion(filter_val) // Continuous Filter spring
-                .blur(32.0)
+                .blur(28.0)
                 .tint(0.0, 0.0, 0.0, is_light_f32)
                 .roughness(-1.0)
-                .specular(1.2)
-                .fresnel(0.50)
+                .specular(1.35)
+                .fresnel(0.55)
                 .element_type(26.0)
                 .progress(progress_packed)
                 .deformation(tab_val) // Continuous Tab spring

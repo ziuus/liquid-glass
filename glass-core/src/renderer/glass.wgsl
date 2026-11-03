@@ -987,118 +987,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
     // Adapts to wallpaper accent color or pure crystalline glass ("otherwise just no color")
     // ─────────────────────────────────────────────────────────────
     if el_type >= 24.9 && el_type <= 25.1 {
-        // Unpack time from progress: hr * 10000 + mn * 100 + sec
-        let total_time_code = u32(progress);
-        var hr = f32(total_time_code / 10000u);
-        let rem_time = total_time_code % 10000u;
-        let mn = f32(rem_time / 100u);
-        let sec = f32(rem_time % 100u);
-        
-        let is_12h = (params.ior > 0.5);
-        let is_pm = (hr >= 12.0);
-        if is_12h {
-            if hr == 0.0 { hr = 12.0; }
-            else if hr > 12.0 { hr = hr - 12.0; }
-        }
-        
-        // Unpack date from deformation: wday * 10000 + month * 100 + mday
-        let total_date_code = u32(params.deformation);
-        let wday_code = total_date_code / 10000u;
-        let rem_date = total_date_code % 10000u;
-        let month_code = rem_date / 100u;
-        let mday_code = rem_date % 100u;
-        
-        let bat_val = clamp(params.roughness, 0.0, 100.0);
-        
-        // Dynamic Accent Adaptation:
-        // If wallpaper has accent (tint.w > 0.5), use tint.xyz
-        // Otherwise: pure neutral crystalline glass ("otherwise just no color")
-        let has_accent = (tint.w > 0.5);
-        let accent_raw = tint.xyz;
-        let neutral_accent = mix(vec3<f32>(0.96, 0.98, 1.0), vec3<f32>(0.11, 0.14, 0.18), is_light);
-        let primary_accent = select(neutral_accent, accent_raw, has_accent);
-        
-        // High-contrast adaptive typography
-        let text_primary = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.08, 0.10, 0.14), is_light);
-        let text_secondary = mix(vec3<f32>(0.90, 0.93, 0.98), vec3<f32>(0.22, 0.25, 0.30), is_light);
-        let pill_frost_col = vec3<f32>(1.0, 1.0, 1.0);
-        let pill_rim_col = mix(vec3<f32>(1.0, 1.0, 1.0) * 0.35, vec3<f32>(0.72, 0.76, 0.82), is_light);
-
-        // ════════════════════════════════════════════
-        // 1. TOP CENTER PILL (y = -62.0): Frosted Date Capsule [ 🗓️ Tue, Nov 3 ]
-        // ════════════════════════════════════════════
-        let top_y = -62.0;
-        let p_top_pill = local_p - vec2<f32>(0.0, top_y);
-        let d_top_pill = rr_sdf(p_top_pill, vec2<f32>(66.0, 14.0), 14.0);
-        let mask_top_fill = (1.0 - smoothstep(-0.4, 0.4, d_top_pill)) * mix(0.04, 0.08, is_light);
-        let mask_top_rim = smoothstep(1.0, 0.0, abs(d_top_pill)) * mix(0.15, 0.22, is_light);
-
-        // Calendar Icon (cx = -50.0, cy = top_y)
-        let p_cal = local_p - vec2<f32>(-50.0, top_y);
-        let d_cal_box = rr_sdf(p_cal, vec2<f32>(4.2, 4.0), 1.2);
-        let mask_cal_outline = smoothstep(0.4, -0.4, abs(d_cal_box) - 0.75);
-        let d_pin0 = dist_segment(p_cal, vec2<f32>(-2.2, -4.5), vec2<f32>(-2.2, -3.2)) - 0.6;
-        let d_pin1 = dist_segment(p_cal, vec2<f32>(2.2, -4.5), vec2<f32>(2.2, -3.2)) - 0.6;
-        let mask_cal_pins = 1.0 - smoothstep(-0.35, 0.35, min(d_pin0, d_pin1));
-        let mask_cal_icon = max(mask_cal_outline, mask_cal_pins);
-
-        // ════════════════════════════════════════════
-        // 2. HERO DIGITAL CLOCK: Centered at (0.0, 0.0) via Quicksand overlay
-        // ════════════════════════════════════════════
-
-        // ════════════════════════════════════════════
-        // 3. BOTTOM CENTER PILL (y = 62.0): Frosted Battery Capsule [ ⚡ 58% • Capsule ]
-        // ════════════════════════════════════════════
-        let bot_y = 62.0;
-        let p_bot_pill = local_p - vec2<f32>(0.0, bot_y);
-        let d_bot_pill = rr_sdf(p_bot_pill, vec2<f32>(66.0, 14.0), 14.0);
-        let mask_bot_fill = (1.0 - smoothstep(-0.4, 0.4, d_bot_pill)) * mix(0.04, 0.08, is_light);
-        let mask_bot_rim = smoothstep(1.0, 0.0, abs(d_bot_pill)) * mix(0.15, 0.22, is_light);
-
-        // Lightning Bolt Icon (cx = -50.0, cy = bot_y)
-        let p_bolt = local_p - vec2<f32>(-50.0, bot_y);
-        let s_b0 = dist_segment(p_bolt, vec2<f32>(1.2, -4.5), vec2<f32>(-1.8, -0.5));
-        let s_b1 = dist_segment(p_bolt, vec2<f32>(-1.8, -0.5), vec2<f32>(0.8, -0.5));
-        let s_b2 = dist_segment(p_bolt, vec2<f32>(0.8, -0.5), vec2<f32>(-1.2, 4.5));
-        let d_bolt = min(min(s_b0, s_b1), s_b2) - 0.75;
-        let mask_bolt = 1.0 - smoothstep(-0.35, 0.35, d_bolt);
-
-        // Mini Liquid Battery Bar inside bottom capsule (cx = 24.0, cy = bot_y, w = 36.0, h = 6.0)
-        let p_track = local_p - vec2<f32>(24.0, bot_y);
-        let d_track = rr_sdf(p_track, vec2<f32>(18.0, 4.0), 4.0);
-        let mask_track_bg = (1.0 - smoothstep(-0.4, 0.4, d_track)) * 0.15;
-        let mask_track_rim = smoothstep(0.9, 0.0, abs(d_track)) * 0.30;
-
-        let max_bar_w = 34.0;
-        let bar_w = (bat_val / 100.0) * max_bar_w;
-        let bar_cx = 24.0 - 17.0 + bar_w * 0.5;
-        let d_bar_fill = rr_sdf(local_p - vec2<f32>(bar_cx, bot_y), vec2<f32>(max(bar_w * 0.5, 1.0), 3.0), 3.0);
-        let mask_bar_fill = 1.0 - smoothstep(-0.35, 0.35, d_bar_fill);
-        let bar_glow = exp(-max(d_bar_fill, 0.0) * 0.6) * 0.35;
-
-        // ════════════════════════════════════════════
-        // 4. MASTER COMPOSITE FOR CLOCK WIDGET
-        // ════════════════════════════════════════════
-        let glyph_light = mix(text_primary, vec3<f32>(1.0, 1.0, 1.0), 0.20);
-        let primary_glyphs = mask_cal_icon;
-
-        // Inset Frosted Glass Pills (Top Date Capsule & Bottom Battery Capsule)
-        let pill_fills = max(max(mask_top_fill, mask_bot_fill), mask_track_bg);
-        let pill_rims = max(max(mask_top_rim, mask_bot_rim), mask_track_rim);
-
-        // Accent elements (Lightning bolt & Battery liquid bar)
-        let accent_glyphs = max(mask_bolt, mask_bar_fill);
-        let total_glow = bar_glow;
-
-        if accent_glyphs > 0.05 {
-            app.glyph_mask = accent_glyphs;
-            app.glyph_color = primary_accent;
-            app.fluid_color = primary_accent;
-            app.fluid_glow = total_glow;
-        } else if primary_glyphs > 0.02 {
-            app.glyph_mask = primary_glyphs;
-            app.glyph_color = glyph_light;
-        }
+        // Pure Liquid Glass Clock Canvas: All typography, calendar icon, and battery capsule
+        // are rendered via the subpixel-perfect UIFont vector overlay.
         return app;
     }
 
@@ -1709,12 +1599,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
 
     // Physical lens refraction: crisp, elegant ray deflection strictly along the meniscus
-    let refr_dist = bevel_w * 0.65 * params.refraction_strength * sin_th;
+    let refr_dist = bevel_w * 0.70 * params.refraction_strength * sin_th;
     let refr_ray = -grad_2d * refr_dist * px_to_uv;
 
     // Elegant sub-pixel chromatic dispersion (subtle crystal prismatic separation, safely inward)
-    let disp_val = select(params.dispersion, 0.020, params.padding2.x >= 25.5 && params.padding2.x <= 26.5);
-    let ca_dist = min(disp_val * 8.0 * edge_curv, refr_dist * 0.30);
+    let disp_val = select(params.dispersion, 0.024, params.padding2.x >= 25.5 && params.padding2.x <= 26.5);
+    let ca_dist = min(disp_val * 10.0 * edge_curv, refr_dist * 0.40);
     let ca_offset = -grad_2d * ca_dist * px_to_uv;
 
     let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1722,7 +1612,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv_b = clamp(uv + refr_ray + ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
 
     // ════════════════════════════════════════════
-    // 4. TRUE PHYSICAL LIQUID GLASS TRANSMISSION (BEER-LAMBERT GRADIENT)
+    // 4. TRUE PHYSICAL LIQUID GLASS TRANSMISSION (CRYSTAL RIM -> SILKY BULK)
     // ════════════════════════════════════════════
     // Sharp crystal refraction sample at the outer meniscus rim
     let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
@@ -1734,11 +1624,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if params.blur_radius <= 0.5 {
         col = sharp_col;
     } else {
-        // Physical optical thickness: exponential transition from crystal rim to silky frost
-        let frost_depth = 1.0 - exp(-inside / 6.0);
-        let local_blur = params.blur_radius * frost_depth;
+        // Physical liquid glass: crystal clear outer rim, smoothly transitioning into frosted interior
+        let frost_transition = smoothstep(bevel_w * 0.45, bevel_w * 1.15, inside);
+        let local_blur = params.blur_radius * frost_transition;
         let frosted_col = sample_frost_blur(uv_g, local_blur);
-        col = mix(sharp_col, frosted_col, frost_depth);
+        col = mix(sharp_col, frosted_col, frost_transition);
     }
 
     // Card-wide uniform light/dark appearance mode passed from CPU crop analysis
@@ -1746,13 +1636,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let bg_luma = dot(col, vec3<f32>(0.299, 0.587, 0.114));
 
     // Apple Vibrancy: boost saturation so underlying colors glow richly through frosted glass
-    let sat_col = mix(vec3<f32>(bg_luma), col, 1.25);
+    let sat_col = mix(vec3<f32>(bg_luma), col, 1.30);
     col = sat_col;
 
     // Apple macOS Sequoia & visionOS Material Substrate:
     // Pure, luminous, uniform translucent glass with bright, airy lighting
-    let light_substrate = mix(col, vec3<f32>(0.98, 0.99, 1.0), 0.14) + vec3<f32>(0.04, 0.04, 0.05);
-    let dark_substrate = mix(col, vec3<f32>(0.14, 0.16, 0.22), 0.18) + vec3<f32>(0.02, 0.02, 0.03);
+    let light_substrate = mix(col, vec3<f32>(0.99, 0.995, 1.0), 0.08);
+    let dark_substrate = mix(col, vec3<f32>(0.12, 0.14, 0.18), 0.15);
     col = mix(dark_substrate, light_substrate, is_light);
 
     // Optional custom tint absorption (e.g. blue tint in music card or lavender tint)
@@ -1771,14 +1661,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 3D Directional Key Light from Top-Left (-0.35, -0.75, 0.55)
     let L = normalize(vec3<f32>(-0.35, -0.75, 0.55));
     let H = normalize(L + vec3<f32>(0.0, 0.0, 1.0));
-    let gloss_spec = pow(max(dot(N, H), 0.0), 32.0) * edge_curv * 0.85 * params.specular_strength;
+    let gloss_spec = pow(max(dot(N, H), 0.0), 28.0) * pow(edge, 1.3) * 0.95 * params.specular_strength;
 
     // 1. Razor-thin outer 1.2px specular crest (Top & Top-Left arc)
-    let hairline = smoothstep(1.5, 0.1, inside);
-    let top_spec = hairline * (pow(top_facing, 1.3) * 1.10 + left_facing * 0.45) * params.specular_strength;
+    let hairline = smoothstep(1.8, 0.2, inside);
+    let top_spec = hairline * (pow(top_facing, 1.4) * 1.25 + left_facing * 0.45) * params.specular_strength;
 
     // 2. Ambient Fresnel Silhouette Sheen along the curved meniscus
-    let fresnel_edge = pow(1.0 - cos_th, 3.0) * edge_curv * 0.25 * params.fresnel_strength;
+    let fresnel_edge = pow(1.0 - cos_th, 3.2) * edge_curv * 0.30 * params.fresnel_strength;
 
     // 3. Bottom bounce reflection (gives bottom edge translucent glassy depth)
     let L_bounce = normalize(vec3<f32>(0.0, 0.85, 0.50));
