@@ -55,44 +55,21 @@ pub struct TodoState {
     pub tasks: Vec<TodoItem>,
 }
 
-struct AgendaItem {
-    time: &'static str,
-    title: &'static str,
-    tag: &'static str,
+#[allow(non_snake_case)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalendarEvent {
+    pub title: String,
+    #[serde(default)]
+    pub date: String,
+    #[serde(default)]
+    pub dateDisplay: String,
+    #[serde(default)]
+    pub time: String,
+    #[serde(default)]
+    pub location: String,
+    #[serde(default)]
+    pub isToday: bool,
 }
-
-const AGENDA_SCHEDULE: [AgendaItem; 6] = [
-    AgendaItem {
-        time: "09:00 AM",
-        title: "Morning Routine & Focus",
-        tag: "HABIT",
-    },
-    AgendaItem {
-        time: "10:30 AM",
-        title: "System Architecture Review",
-        tag: "WORK",
-    },
-    AgendaItem {
-        time: "01:00 PM",
-        title: "Liquid Glass Engine Sync",
-        tag: "CORE",
-    },
-    AgendaItem {
-        time: "03:30 PM",
-        title: "Rust Pipeline Profiling",
-        tag: "PERF",
-    },
-    AgendaItem {
-        time: "06:00 PM",
-        title: "Code Review & Verification",
-        tag: "SHIP",
-    },
-    AgendaItem {
-        time: "08:30 PM",
-        title: "Reading & Research",
-        tag: "NIGHT",
-    },
-];
 
 struct AppData {
     registry_state: RegistryState,
@@ -129,6 +106,9 @@ struct AppData {
     todos: TodoState,
     last_todo_check: Instant,
     last_todo_mtime: Option<std::time::SystemTime>,
+    events: Vec<CalendarEvent>,
+    last_calendar_check: Instant,
+    last_calendar_mtime: Option<std::time::SystemTime>,
     active_tab: u32,    // 0 = Tasks, 1 = Agenda
     active_filter: u32, // 0 = All, 1 = Active, 2 = Done
 
@@ -141,7 +121,6 @@ struct AppData {
     font: QuicksandFont,
     tab_spring: Spring,
     filter_spring: Spring,
-    last_frame_time: Instant,
 }
 
 struct WaylandWindow {
@@ -687,6 +666,28 @@ impl AppData {
         }
     }
 
+    fn check_calendar(&mut self) {
+        if self.last_calendar_check.elapsed().as_millis() < 500 {
+            return;
+        }
+        self.last_calendar_check = Instant::now();
+        let home = std::env::var("HOME").unwrap_or_default();
+        let path = format!("{}/.local/state/calendar_events.json", home);
+        if let Ok(meta) = std::fs::metadata(&path) {
+            if let Ok(mtime) = meta.modified() {
+                if Some(mtime) != self.last_calendar_mtime {
+                    self.last_calendar_mtime = Some(mtime);
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        if let Ok(evs) = serde_json::from_str::<Vec<CalendarEvent>>(&content) {
+                            self.events = evs;
+                            self.draw();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fn check_wallpaper(&mut self) {
         if self.last_wallpaper_check.elapsed().as_millis() < 500 {
             return;
@@ -715,14 +716,7 @@ impl AppData {
         }
     }
 
-    fn update_physics(&mut self) -> bool {
-        let now = Instant::now();
-        let dt = now
-            .duration_since(self.last_frame_time)
-            .as_secs_f32()
-            .min(0.05);
-        self.last_frame_time = now;
-
+    fn update_physics(&mut self, dt: f32) -> bool {
         self.tab_spring.update(dt);
         self.filter_spring.update(dt);
 
@@ -847,6 +841,25 @@ impl AppData {
 
             // 3. Task Rows (cy = 122.5 + row_idx * 44.0)
             let visible_indices = self.filtered_indices();
+            if visible_indices.is_empty() {
+                let msg = match self.active_filter {
+                    1 => "All tasks completed",
+                    2 => "No completed tasks yet",
+                    _ => "No tasks found",
+                };
+                self.font.draw_text_centered(
+                    buf,
+                    self.width,
+                    self.height,
+                    msg,
+                    180.0,
+                    200.0,
+                    13.0,
+                    col_dimmed,
+                    col_shadow,
+                    FontWeight::Medium,
+                );
+            }
             for (row_idx, &actual_idx) in visible_indices.iter().enumerate().take(6) {
                 let cy = 122.5 + (row_idx as f32) * 44.0;
                 let task = &self.todos.tasks[actual_idx];
@@ -980,65 +993,113 @@ impl AppData {
                 );
             }
         } else {
-            // Agenda View (Today's Schedule, cy = 122.5 + idx * 44.0)
-            for (idx, item) in AGENDA_SCHEDULE.iter().enumerate() {
-                let cy = 122.5 + (idx as f32) * 44.0;
-
-                // Time (cx = 64.0)
+            // Agenda View (Events from ~/.local/state/calendar_events.json, cy = 122.5 + idx * 44.0)
+            if self.events.is_empty() {
                 self.font.draw_text_centered(
                     buf,
                     self.width,
                     self.height,
-                    item.time,
-                    64.0,
-                    cy,
-                    11.5,
-                    col_secondary,
+                    "No upcoming events",
+                    180.0,
+                    200.0,
+                    14.0,
+                    col_dimmed,
                     col_shadow,
                     FontWeight::Medium,
                 );
+            } else {
+                for (idx, item) in self.events.iter().enumerate().take(6) {
+                    let cy = 122.5 + (idx as f32) * 44.0;
 
-                // Title (starts at x = 108.0)
-                self.font.draw_text_centered_y(
-                    buf,
-                    self.width,
-                    self.height,
-                    item.title,
-                    108.0,
-                    cy,
-                    13.5,
-                    col_primary,
-                    col_shadow,
-                    FontWeight::SemiBold,
-                );
+                    // Time (cx = 64.0)
+                    let time_str = if !item.time.is_empty() {
+                        item.time.as_str()
+                    } else {
+                        "ALL DAY"
+                    };
+                    self.font.draw_text_centered(
+                        buf,
+                        self.width,
+                        self.height,
+                        time_str,
+                        64.0,
+                        cy,
+                        11.0,
+                        col_secondary,
+                        col_shadow,
+                        FontWeight::Medium,
+                    );
 
-                // Tag (cx = 304.0)
-                self.font.draw_text_centered(
-                    buf,
-                    self.width,
-                    self.height,
-                    item.tag,
-                    304.0,
-                    cy,
-                    10.0,
-                    col_dimmed,
-                    col_shadow,
-                    FontWeight::Bold,
-                );
+                    // Title (starts at x = 108.0)
+                    let mut title = item.title.clone();
+                    if title.len() > 22 {
+                        title = format!("{}...", &title[..20]);
+                    }
+                    self.font.draw_text_centered_y(
+                        buf,
+                        self.width,
+                        self.height,
+                        &title,
+                        108.0,
+                        cy,
+                        13.5,
+                        col_primary,
+                        col_shadow,
+                        FontWeight::SemiBold,
+                    );
+
+                    // Tag (cx = 304.0)
+                    let tag_str = if item.isToday { "TODAY" } else { "EVENT" };
+                    self.font.draw_text_centered(
+                        buf,
+                        self.width,
+                        self.height,
+                        tag_str,
+                        304.0,
+                        cy,
+                        10.0,
+                        col_dimmed,
+                        col_shadow,
+                        FontWeight::Bold,
+                    );
+                }
             }
+
+            // Bottom Status Bar (y = +185.0, cy = 412.5): "CALENDAR • {N} EVENTS"
+            let cal_status = format!("CALENDAR • {} EVENTS", self.events.len());
+            self.font.draw_text_centered(
+                buf,
+                self.width,
+                self.height,
+                &cal_status,
+                180.0,
+                412.5,
+                12.0,
+                col_secondary,
+                col_shadow,
+                FontWeight::SemiBold,
+            );
         }
     }
 
     fn draw(&mut self) -> bool {
         self.check_wallpaper();
 
-        let visible_indices = self.filtered_indices();
-        let mut bitmask = 0u32;
-        for (display_row, &actual_idx) in visible_indices.iter().enumerate().take(6) {
-            if actual_idx < self.todos.tasks.len() && self.todos.tasks[actual_idx].done {
-                bitmask |= 1 << display_row;
+        let (item_count, bitmask) = if self.active_tab == 0 {
+            let visible_indices = self.filtered_indices();
+            let mut bm = 0u32;
+            for (display_row, &actual_idx) in visible_indices.iter().enumerate().take(6) {
+                if actual_idx < self.todos.tasks.len() && self.todos.tasks[actual_idx].done {
+                    bm |= 1 << display_row;
+                }
             }
-        }
+            (visible_indices.len().min(6) as u32, bm)
+        } else {
+            (self.events.len().min(6) as u32, 0u32)
+        };
+
+        // Pack item_count in upper 16 bits, bitmask in lower 16 bits
+        let progress_packed = (((item_count & 0xFFFF) << 16) | (bitmask & 0xFFFF)) as f32;
 
         // Generate dynamic Quicksand font overlay
         let mut overlay_buf = vec![0u8; (self.width * self.height * 4) as usize];
@@ -1069,7 +1130,7 @@ impl AppData {
                 .specular(1.0)
                 .fresnel(0.35)
                 .element_type(26.0)
-                .progress(bitmask as f32)
+                .progress(progress_packed)
                 .deformation(tab_val) // Continuous Tab spring
                 .pointer_pos(px, py)
                 .pointer_velocity(vx, vy);
@@ -1293,6 +1354,16 @@ fn main() {
         }
     };
 
+    let events = {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let path = format!("{}/.local/state/calendar_events.json", home);
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            serde_json::from_str::<Vec<CalendarEvent>>(&content).unwrap_or_default()
+        } else {
+            Vec::new()
+        }
+    };
+
     let font = QuicksandFont::new();
     let spring_params = SpringParams::default_ui();
 
@@ -1331,6 +1402,9 @@ fn main() {
         todos,
         last_todo_check: Instant::now(),
         last_todo_mtime: None,
+        events,
+        last_calendar_check: Instant::now(),
+        last_calendar_mtime: None,
         active_tab: 0,
         active_filter: 0,
 
@@ -1341,7 +1415,6 @@ fn main() {
         font,
         tab_spring: Spring::with_params(0.0, spring_params),
         filter_spring: Spring::with_params(0.0, spring_params),
-        last_frame_time: Instant::now(),
     };
 
     let surface = app_data.compositor_state.create_surface(&qh);
@@ -1381,25 +1454,33 @@ fn main() {
         }
     }
 
+    let mut last_frame = Instant::now();
+
     // High performance reactive event loop: 60fps during animation/typing, idle sleeping otherwise
     while !app_data.exit {
         let _ = event_queue.dispatch_pending(&mut app_data);
         let _ = conn.flush();
 
         app_data.check_todos();
+        app_data.check_calendar();
         app_data.check_wallpaper();
 
-        let animating = app_data.update_physics();
+        let now = Instant::now();
+        let dt = (now - last_frame).as_secs_f32().clamp(0.001, 0.05);
+        last_frame = now;
+
+        let animating = app_data.update_physics(dt);
+
         if animating {
             app_data.draw();
+            let _ = conn.flush();
         }
 
-        let timeout_ms =
-            if animating || app_data.is_hovered || app_data.is_dragging || app_data.is_editing {
-                16
-            } else {
-                300
-            };
+        let timeout_ms = if animating || app_data.is_hovered || app_data.is_dragging {
+            16
+        } else {
+            250
+        };
 
         let guard = match conn.prepare_read() {
             Some(g) => g,
