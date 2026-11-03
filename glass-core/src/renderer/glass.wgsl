@@ -1098,12 +1098,6 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         } else if primary_glyphs > 0.02 {
             app.glyph_mask = primary_glyphs;
             app.glyph_color = glyph_light;
-        } else if pill_rims > 0.05 {
-            app.glyph_mask = pill_rims;
-            app.glyph_color = pill_rim_col;
-        } else if pill_fills > 0.05 {
-            app.glyph_mask = pill_fills;
-            app.glyph_color = pill_frost_col;
         }
         return app;
     }
@@ -1714,13 +1708,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
 
-    // Smooth physical lens refraction: rays bend inwards towards the optical axis (center)
-    let refr_dist = bevel_w * 0.25 * params.refraction_strength * sin_th;
+    // Dramatic physical lens refraction: rays bend inwards towards the optical axis (center)
+    let refr_dist = bevel_w * 0.45 * params.refraction_strength * sin_th;
     let refr_ray = -grad_2d * refr_dist * px_to_uv;
 
     // Elegant sub-pixel chromatic dispersion (subtle crystal prismatic separation, safely inward)
     let disp_val = select(params.dispersion, 0.020, params.padding2.x >= 25.5 && params.padding2.x <= 26.5);
-    let ca_dist = min(disp_val * 12.0 * edge_curv, refr_dist * 0.30);
+    let ca_dist = min(disp_val * 15.0 * edge_curv, refr_dist * 0.30);
     let ca_offset = -grad_2d * ca_dist * px_to_uv;
 
     let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1728,19 +1722,26 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv_b = clamp(uv + refr_ray + ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
 
     // ════════════════════════════════════════════
-    // 4. UNIFIED PHYSICAL LIQUID GLASS SUBSTRATE (ZERO INNER DEMARCATION)
+    // 4. TRUE PHYSICAL LIQUID GLASS TRANSMISSION (BEER-LAMBERT GRADIENT)
     // ════════════════════════════════════════════
-    // Sample the background through the physical refractive meniscus lens
+    // Sharp crystal refraction sample at the outer meniscus rim
+    let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
+    let sharp_g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
+    let sharp_b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
+    let sharp_col = vec3<f32>(sharp_r, sharp_g, sharp_b);
+
     var col: vec3<f32>;
     if params.blur_radius <= 0.5 {
-        // Clear Liquid Glass lens: sharp background with Snell's law refraction & spectral dispersion
-        let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
-        let sharp_g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
-        let sharp_b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
-        col = vec3<f32>(sharp_r, sharp_g, sharp_b);
+        col = sharp_col;
     } else {
-        // Frosted Liquid Glass lens: smooth, silky, uniform frosted diffusion across the entire card
-        col = sample_frost_blur(uv_g, params.blur_radius);
+        // Physical optical thickness: increases exponentially with distance from rim.
+        // Outer curved meniscus is 100% crystal-clear (sharp bending of branches & lines),
+        // smoothly blooming into velvety frosted diffusion deeper in the bulk glass.
+        // Exponential decay guarantees zero demarcation lines or inner container boundaries!
+        let frost_depth = 1.0 - exp(-inside / 10.0);
+        let local_blur = params.blur_radius * frost_depth;
+        let frosted_col = sample_frost_blur(uv_g, local_blur);
+        col = mix(sharp_col, frosted_col, frost_depth);
     }
 
     // Card-wide uniform light/dark appearance mode passed from CPU crop analysis
@@ -1764,20 +1765,30 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // ════════════════════════════════════════════
-    // 5. RAZOR-SHARP PERIMETER GLASS SPECULAR (ZERO 20PX HALO / ZERO DOUBLE CONTAINERS)
+    // 5. 3D DIRECTIONAL LIQUID SPECULAR & BLINN-PHONG GLOSS
     // ════════════════════════════════════════════
     let top_facing = max(-grad_2d.y, 0.0);
     let left_facing = max(-grad_2d.x, 0.0);
+    let bot_facing = max(grad_2d.y, 0.0);
+
+    // 3D Directional Key Light from Top-Left (-0.35, -0.75, 0.55)
+    let L = normalize(vec3<f32>(-0.35, -0.75, 0.55));
+    let H = normalize(L + vec3<f32>(0.0, 0.0, 1.0));
+    let gloss_spec = pow(max(dot(N, H), 0.0), 28.0) * edge_curv * 1.25 * params.specular_strength;
 
     // 1. Razor-thin outer 1.5px specular crest (Top & Top-Left arc)
     let hairline = smoothstep(1.5, 0.1, inside);
     let top_spec = hairline * (pow(top_facing, 1.3) * 1.15 + left_facing * 0.50) * params.specular_strength;
 
-    // 2. Crisp 2.0px ambient silhouette rim sheen
-    let rim_sheen = smoothstep(2.5, 0.2, inside) * (1.0 - cos_th) * 0.25 * params.fresnel_strength;
+    // 2. Ambient Fresnel Silhouette Sheen along the curved meniscus
+    let fresnel_edge = pow(1.0 - cos_th, 3.0) * edge_curv * 0.35 * params.fresnel_strength;
 
-    // Master specular composition: pure, single-body crystal glass with zero inner border halos
-    col += vec3<f32>(top_spec + rim_sheen);
+    // 3. Bottom bounce reflection (gives bottom edge translucent glassy depth)
+    let L_bounce = normalize(vec3<f32>(0.0, 0.85, 0.50));
+    let bot_bounce = pow(max(dot(N, L_bounce), 0.0), 16.0) * bot_facing * edge_curv * 0.25;
+
+    // Master specular composition: pure, authentic liquid glass gloss
+    col += vec3<f32>(top_spec + gloss_spec + fresnel_edge + bot_bounce);
 
     var side_bevel_flare = 0.0;
     var side_rim_flare = 0.0;
