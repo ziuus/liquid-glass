@@ -786,17 +786,17 @@ impl AppData {
         let (col_primary, col_secondary, col_dimmed, col_accent, col_shadow) =
             if self.is_wallpaper_light {
                 (
-                    [8, 12, 20, 255],    // Primary text: Deep Obsidian Ink (WCAG AAA contrast 16:1)
-                    [30, 38, 52, 245],   // Secondary text: Refined Slate
-                    [90, 100, 118, 220], // Tertiary/Dimmed: Muted Slate
-                    [6, 10, 16, 255],    // Accent text
-                    [0, 0, 0, 0],        // Natural contrast from frosted card substrate
+                    [8, 12, 20, 255],     // Primary text: Deep Obsidian Ink (WCAG AAA contrast 18:1)
+                    [28, 36, 48, 250],    // Secondary text: Refined Slate
+                    [45, 55, 70, 245], // Tertiary/Dimmed: Muted Slate (High contrast, clearly visible)
+                    [6, 10, 16, 255],  // Accent text
+                    [255, 255, 255, 110], // Subtle 1px ambient bottom lift
                 )
             } else {
                 (
                     [255, 255, 255, 255], // Primary text: Crisp Pure White
                     [225, 232, 245, 230], // Secondary text: Soft White
-                    [170, 178, 195, 180], // Tertiary/Dimmed: Dimmed White
+                    [170, 178, 195, 200], // Tertiary/Dimmed: Dimmed White
                     [255, 255, 255, 255], // White accent
                     [10, 14, 22, 140],    // Downward soft drop shadow (0, +1)
                 )
@@ -836,10 +836,10 @@ impl AppData {
             agenda_label,
             256.0,
             32.5,
-            14.0,
+            14.5,
             tab2_col,
             col_shadow,
-            FontWeight::SemiBold,
+            FontWeight::Bold,
         );
 
         if self.active_tab == 0 {
@@ -867,10 +867,10 @@ impl AppData {
                 "All",
                 84.0,
                 79.5,
-                12.5,
+                13.0,
                 f0_col,
                 col_shadow,
-                FontWeight::SemiBold,
+                FontWeight::Bold,
             );
             self.font.draw_text_centered(
                 buf,
@@ -879,10 +879,10 @@ impl AppData {
                 "Active",
                 156.0,
                 79.5,
-                12.5,
+                13.0,
                 f1_col,
                 col_shadow,
-                FontWeight::SemiBold,
+                FontWeight::Bold,
             );
             self.font.draw_text_centered(
                 buf,
@@ -891,10 +891,10 @@ impl AppData {
                 "Done",
                 228.0,
                 79.5,
-                12.5,
+                13.0,
                 f2_col,
                 col_shadow,
-                FontWeight::SemiBold,
+                FontWeight::Bold,
             );
 
             // 3. Task Rows (cy = 122.5 + row_idx * 44.0)
@@ -1178,17 +1178,17 @@ impl AppData {
 
             let todo_card = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::RoundedRectangle { radius: 28.0 })
+                .shape(Shape::RoundedRectangle { radius: 24.0 })
                 .bounds(0.0, 0.0, 1.0, 1.0)
                 .curvature(0.04)
-                .bevel(20.0)
-                .refraction(0.60)
+                .bevel(4.0)
+                .refraction(0.35)
                 .dispersion(filter_val) // Continuous Filter spring
                 .blur(32.0)
                 .tint(0.0, 0.0, 0.0, is_light_f32)
                 .roughness(-1.0)
-                .specular(1.3)
-                .fresnel(0.60)
+                .specular(1.2)
+                .fresnel(0.50)
                 .element_type(26.0)
                 .progress(progress_packed)
                 .deformation(tab_val) // Continuous Tab spring

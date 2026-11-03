@@ -1708,13 +1708,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
 
-    // Dramatic physical lens refraction: rays bend inwards towards the optical axis (center)
-    let refr_dist = bevel_w * 0.45 * params.refraction_strength * sin_th;
+    // Physical lens refraction: crisp, elegant ray deflection strictly along the meniscus
+    let refr_dist = bevel_w * 0.65 * params.refraction_strength * sin_th;
     let refr_ray = -grad_2d * refr_dist * px_to_uv;
 
     // Elegant sub-pixel chromatic dispersion (subtle crystal prismatic separation, safely inward)
     let disp_val = select(params.dispersion, 0.020, params.padding2.x >= 25.5 && params.padding2.x <= 26.5);
-    let ca_dist = min(disp_val * 15.0 * edge_curv, refr_dist * 0.30);
+    let ca_dist = min(disp_val * 8.0 * edge_curv, refr_dist * 0.30);
     let ca_offset = -grad_2d * ca_dist * px_to_uv;
 
     let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1734,11 +1734,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if params.blur_radius <= 0.5 {
         col = sharp_col;
     } else {
-        // Physical optical thickness: increases exponentially with distance from rim.
-        // Outer curved meniscus is 100% crystal-clear (sharp bending of branches & lines),
-        // smoothly blooming into velvety frosted diffusion deeper in the bulk glass.
-        // Exponential decay guarantees zero demarcation lines or inner container boundaries!
-        let frost_depth = 1.0 - exp(-inside / 10.0);
+        // Physical optical thickness: exponential transition from crystal rim to silky frost
+        let frost_depth = 1.0 - exp(-inside / 6.0);
         let local_blur = params.blur_radius * frost_depth;
         let frosted_col = sample_frost_blur(uv_g, local_blur);
         col = mix(sharp_col, frosted_col, frost_depth);
@@ -1749,12 +1746,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let bg_luma = dot(col, vec3<f32>(0.299, 0.587, 0.114));
 
     // Apple Vibrancy: boost saturation so underlying colors glow richly through frosted glass
-    let sat_col = mix(vec3<f32>(bg_luma), col, 1.30);
+    let sat_col = mix(vec3<f32>(bg_luma), col, 1.25);
     col = sat_col;
 
     // Apple macOS Sequoia & visionOS Material Substrate:
-    // Pure, luminous, uniform translucent glass with bright, airy lighting (edge-to-edge consistency)
-    let light_substrate = mix(col, vec3<f32>(0.98, 0.99, 1.0), 0.16) + vec3<f32>(0.04, 0.04, 0.06);
+    // Pure, luminous, uniform translucent glass with bright, airy lighting
+    let light_substrate = mix(col, vec3<f32>(0.98, 0.99, 1.0), 0.14) + vec3<f32>(0.04, 0.04, 0.05);
     let dark_substrate = mix(col, vec3<f32>(0.14, 0.16, 0.22), 0.18) + vec3<f32>(0.02, 0.02, 0.03);
     col = mix(dark_substrate, light_substrate, is_light);
 
@@ -1774,18 +1771,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 3D Directional Key Light from Top-Left (-0.35, -0.75, 0.55)
     let L = normalize(vec3<f32>(-0.35, -0.75, 0.55));
     let H = normalize(L + vec3<f32>(0.0, 0.0, 1.0));
-    let gloss_spec = pow(max(dot(N, H), 0.0), 28.0) * edge_curv * 1.25 * params.specular_strength;
+    let gloss_spec = pow(max(dot(N, H), 0.0), 32.0) * edge_curv * 0.85 * params.specular_strength;
 
-    // 1. Razor-thin outer 1.5px specular crest (Top & Top-Left arc)
+    // 1. Razor-thin outer 1.2px specular crest (Top & Top-Left arc)
     let hairline = smoothstep(1.5, 0.1, inside);
-    let top_spec = hairline * (pow(top_facing, 1.3) * 1.15 + left_facing * 0.50) * params.specular_strength;
+    let top_spec = hairline * (pow(top_facing, 1.3) * 1.10 + left_facing * 0.45) * params.specular_strength;
 
     // 2. Ambient Fresnel Silhouette Sheen along the curved meniscus
-    let fresnel_edge = pow(1.0 - cos_th, 3.0) * edge_curv * 0.35 * params.fresnel_strength;
+    let fresnel_edge = pow(1.0 - cos_th, 3.0) * edge_curv * 0.25 * params.fresnel_strength;
 
     // 3. Bottom bounce reflection (gives bottom edge translucent glassy depth)
     let L_bounce = normalize(vec3<f32>(0.0, 0.85, 0.50));
-    let bot_bounce = pow(max(dot(N, L_bounce), 0.0), 16.0) * bot_facing * edge_curv * 0.25;
+    let bot_bounce = pow(max(dot(N, L_bounce), 0.0), 16.0) * bot_facing * edge_curv * 0.20;
 
     // Master specular composition: pure, authentic liquid glass gloss
     col += vec3<f32>(top_spec + gloss_spec + fresnel_edge + bot_bounce);

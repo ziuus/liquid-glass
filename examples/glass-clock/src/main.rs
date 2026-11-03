@@ -409,9 +409,9 @@ impl AppData {
         // Apple macOS Sequoia Typography: Deep Obsidian Slate on Light Mode, Pure Crisp White on Dark Mode
         let (col_primary, col_secondary, col_shadow) = if self.is_wallpaper_light {
             (
-                [22, 26, 36, 255], // Deep obsidian slate
-                [65, 72, 88, 235], // Secondary slate
-                [0, 0, 0, 0],      // Natural contrast from frosted card substrate
+                [10, 14, 22, 255],    // Deep obsidian ink (WCAG AAA 18:1 contrast)
+                [26, 34, 46, 255],    // High-contrast secondary slate (100% visible)
+                [255, 255, 255, 110], // Subtle 1px ambient bottom lift
             )
         } else {
             (
@@ -470,8 +470,8 @@ impl AppData {
             &full_date_str,
             168.0,
             47.0,
-            13.0,
-            col_secondary,
+            14.5,
+            col_primary,
             col_shadow,
             FontWeight::Bold,
         );
@@ -505,7 +505,7 @@ impl AppData {
             ampm,
             end_x + 8.0,
             time_baseline - 6.0,
-            14.0,
+            15.0,
             col_secondary,
             col_shadow,
             FontWeight::Bold,
@@ -519,7 +519,7 @@ impl AppData {
             &bat_str,
             144.0,
             171.0,
-            12.5,
+            13.5,
             col_secondary,
             col_shadow,
             FontWeight::Bold,
@@ -554,20 +554,20 @@ impl AppData {
 
             let is_light_f32 = if self.is_wallpaper_light { 1.0 } else { 0.0 };
 
-            // Authentic Liquid Glass with physical optical meniscus lens (bevel = 20.0px)
+            // Authentic Liquid Glass with sleek 4px precision glass meniscus
             let clock_card = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::RoundedRectangle { radius: 28.0 })
+                .shape(Shape::RoundedRectangle { radius: 24.0 })
                 .bounds(0.0, 0.0, 1.0, 1.0)
                 .curvature(0.04)
-                .bevel(20.0)
-                .refraction(0.65)
-                .dispersion(0.025)
+                .bevel(4.0)
+                .refraction(0.35)
+                .dispersion(0.020)
                 .blur(32.0)
                 .tint(0.0, 0.0, 0.0, is_light_f32)
                 .roughness(self.battery_level)
-                .specular(1.3)
-                .fresnel(0.60)
+                .specular(1.2)
+                .fresnel(0.50)
                 .element_type(25.0)
                 .progress(time_val)
                 .deformation(date_val)
