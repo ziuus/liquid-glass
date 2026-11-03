@@ -1243,7 +1243,7 @@ fn is_buffer_light(buf: &[u8]) -> bool {
             count += 1;
         }
     }
-    total_lum.checked_div(count).is_some_and(|avg| avg > 130)
+    total_lum.checked_div(count).is_some_and(|avg| avg > 72)
 }
 
 fn get_theme_accent() -> [f32; 4] {

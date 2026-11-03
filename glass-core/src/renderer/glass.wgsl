@@ -108,11 +108,16 @@ fn sample_frost_blur(uv: vec2<f32>, radius: f32) -> vec3<f32> {
     var col = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb * 0.18;
     var total_w = 0.18;
 
+    // Optical boundary constraint: limit sample radius to distance from texture border
+    // to prevent clamp stretching / barcode scanline artifacts
+    let max_safe_rad = min(uv, vec2<f32>(1.0) - uv) * 0.90;
+    let safe_rad_uv = min(rad_uv, max_safe_rad);
+
     for (var i = 0.0; i < 16.0; i += 1.0) {
         let t = (i + 0.5) / 16.0;
         let r = sqrt(t);
         let theta = i * golden_angle;
-        let offset = vec2<f32>(r * cos(theta), r * sin(theta)) * rad_uv;
+        let offset = vec2<f32>(r * cos(theta), r * sin(theta)) * safe_rad_uv;
         let sample_uv = clamp(uv + offset, vec2<f32>(0.001), vec2<f32>(0.999));
         let s = textureSampleLevel(background_texture, background_sampler, sample_uv, 0.0).rgb;
         let w = exp(-r * r * 2.2);
@@ -1713,9 +1718,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let refr_dist = bevel_w * 0.25 * params.refraction_strength * sin_th;
     let refr_ray = -grad_2d * refr_dist * px_to_uv;
 
-    // Elegant sub-pixel chromatic dispersion (max 1.5px spread, pristine crystal optics)
+    // Elegant sub-pixel chromatic dispersion (subtle crystal prismatic separation, safely inward)
     let disp_val = select(params.dispersion, 0.020, params.padding2.x >= 25.5 && params.padding2.x <= 26.5);
-    let ca_dist = clamp(disp_val * 40.0, 0.0, 1.5) * edge_curv;
+    let ca_dist = min(disp_val * 12.0 * edge_curv, refr_dist * 0.30);
     let ca_offset = -grad_2d * ca_dist * px_to_uv;
 
     let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1726,7 +1731,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 4. CLEAR CRYSTAL MENISCUS TO SILKY FROST TRANSITION
     // ════════════════════════════════════════════
     // Continuous silky frosted diffusion across the glass body (zero abrupt demarcation lines)
-    let frost = smoothstep(1.0, bevel_w, inside);
+    let frost = pow(smoothstep(0.5, bevel_w, inside), 1.2);
     let local_blur = params.blur_radius * frost;
 
     // Outer crystal rim sample with spectral chromatic separation
@@ -1748,13 +1753,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let bg_luma = dot(col, vec3<f32>(0.299, 0.587, 0.114));
 
     // Apple Vibrancy: boost saturation so underlying colors glow richly through frosted glass
-    let sat_col = mix(vec3<f32>(bg_luma), col, 1.25);
+    let sat_col = mix(vec3<f32>(bg_luma), col, 1.30);
     col = sat_col;
 
     // Apple macOS Sequoia & visionOS Material Substrate:
-    // Pure, luminous, translucent glass that lets wallpaper beauty glow through
-    let light_substrate = mix(col, vec3<f32>(0.98, 0.98, 1.0), 0.22 * frost);
-    let dark_substrate = mix(col, vec3<f32>(0.08, 0.10, 0.14), 0.45 * frost);
+    // Pure, luminous, translucent glass with bright, airy lighting and soft pastel gradients
+    let light_substrate = mix(col, vec3<f32>(0.98, 0.99, 1.0), 0.16 * frost) + vec3<f32>(0.04, 0.04, 0.06) * frost;
+    let dark_substrate = mix(col, vec3<f32>(0.14, 0.16, 0.22), 0.18 * frost) + vec3<f32>(0.02, 0.02, 0.03) * frost;
     col = mix(dark_substrate, light_substrate, is_light);
 
     // Optional custom tint absorption (e.g. blue tint in music card or lavender tint)
@@ -1777,25 +1782,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // 1. Outer 1.2px razor crest specular highlight (Top & Top-Left arc)
     let hairline = smoothstep(1.5, 0.1, inside);
-    let top_spec = hairline * (pow(top_facing, 1.4) * 0.95 + left_facing * 0.40) * params.specular_strength;
+    let top_spec = hairline * (pow(top_facing, 1.3) * 1.05 + left_facing * 0.45) * params.specular_strength;
 
-    // 2. Inner chamfer meniscus caustic line
-    let inner_line = smoothstep(bevel_w + 1.2, bevel_w - 1.2, inside) * smoothstep(bevel_w - 3.0, bevel_w, inside);
-    let inner_spec = inner_line * pow(top_facing, 1.8) * 0.45 * params.specular_strength;
+    // 2. Ambient Fresnel Silhouette Sheen (Icy glass perimeter reflection)
+    let fresnel_edge = pow(1.0 - cos_th, 3.0) * edge_curv * 0.30 * params.fresnel_strength;
 
-    // 3. Ambient Fresnel Silhouette Sheen (Icy glass perimeter reflection)
-    let fresnel_edge = pow(1.0 - cos_th, 3.5) * edge_curv * 0.35 * params.fresnel_strength;
-
-    // 4. Bottom bounce reflection (gives bottom edge translucent glassy depth)
+    // 3. Bottom bounce reflection (gives bottom edge translucent glassy depth)
     let L_bounce = normalize(vec3<f32>(0.0, 0.85, 0.50));
-    let bot_bounce = pow(max(dot(N, L_bounce), 0.0), 16.0) * bot_facing * edge_curv * 0.30;
+    let bot_bounce = pow(max(dot(N, L_bounce), 0.0), 16.0) * bot_facing * edge_curv * 0.25;
 
-    // 5. Bottom edge contact occlusion (grounds the card, subtle ambient shadow)
-    let bot_occlusion = hairline * bot_facing * 0.25;
-    col = col * (1.0 - bot_occlusion);
-
-    // Master specular composition
-    col += vec3<f32>(top_spec + inner_spec + gloss_spec + fresnel_edge + bot_bounce);
+    // Master specular composition: pure, clean crystal meniscus with zero inner creases or bottom smudges
+    col += vec3<f32>(top_spec + gloss_spec + fresnel_edge + bot_bounce);
 
     var side_bevel_flare = 0.0;
     var side_rim_flare = 0.0;

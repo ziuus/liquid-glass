@@ -734,7 +734,7 @@ fn is_buffer_light(buf: &[u8]) -> bool {
             count += 1;
         }
     }
-    total_lum.checked_div(count).is_some_and(|avg| avg > 130)
+    total_lum.checked_div(count).is_some_and(|avg| avg > 72)
 }
 
 fn init_wallpaper_1080p() -> (Option<Arc<Vec<u8>>>, Option<String>) {
