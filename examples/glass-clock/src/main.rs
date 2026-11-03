@@ -459,41 +459,31 @@ impl AppData {
             _ => "Dec",
         };
         let date_str = format!("{} {:02}", month_str, now.day());
+        let full_date_str = format!("{}, {}", wday_str, date_str);
         let bat_str = format!("{:.0}%", self.battery_level);
 
-        // 1. Top Row (cy = 53.0): Day Text & Battery Text
+        // 1. Top Centered Date Capsule (cy = 47.0)
         self.font.draw_text_centered(
             buf,
             self.width,
             self.height,
-            wday_str,
-            96.0,
-            53.0,
-            13.5,
+            &full_date_str,
+            168.0,
+            47.0,
+            13.0,
             col_secondary,
             col_shadow,
             FontWeight::Bold,
         );
 
-        self.font.draw_text_centered(
-            buf,
-            self.width,
-            self.height,
-            &bat_str,
-            249.0,
-            53.0,
-            13.5,
-            col_secondary,
-            col_shadow,
-            FontWeight::Bold,
-        );
-
-        // 2. Hero Clock (cy = 105.0): perfectly centered Quicksand typography
+        // 2. Hero Digital Clock (cy = 109.0): mathematically centered Quicksand typography
         let time_baseline = self
             .font
-            .vertical_center_baseline(105.0, 52.0, FontWeight::Bold);
-        let time_w = self.font.measure_text(&time_str, 52.0, FontWeight::Bold);
-        let time_x = 142.0 - time_w * 0.5;
+            .vertical_center_baseline(109.0, 56.0, FontWeight::Bold);
+        let time_w = self.font.measure_text(&time_str, 56.0, FontWeight::Bold);
+        let ampm_w = self.font.measure_text(ampm, 14.0, FontWeight::Bold);
+        let total_w = time_w + 8.0 + ampm_w;
+        let time_x = 160.0 - total_w * 0.5;
         let end_x = self.font.draw_text_with_shadow(
             buf,
             self.width,
@@ -501,7 +491,7 @@ impl AppData {
             &time_str,
             time_x,
             time_baseline,
-            52.0,
+            56.0,
             col_primary,
             col_shadow,
             FontWeight::Bold,
@@ -513,23 +503,23 @@ impl AppData {
             self.width,
             self.height,
             ampm,
-            end_x + 6.0,
-            time_baseline - 4.0,
+            end_x + 8.0,
+            time_baseline - 6.0,
             14.0,
             col_secondary,
             col_shadow,
             FontWeight::Bold,
         );
 
-        // 3. Bottom Row (cy = 163.0): Date Text
+        // 3. Bottom Centered Battery Capsule (cy = 171.0)
         self.font.draw_text_centered(
             buf,
             self.width,
             self.height,
-            &date_str,
-            96.0,
-            163.0,
-            13.5,
+            &bat_str,
+            144.0,
+            171.0,
+            12.5,
             col_secondary,
             col_shadow,
             FontWeight::Bold,
@@ -564,20 +554,20 @@ impl AppData {
 
             let is_light_f32 = if self.is_wallpaper_light { 1.0 } else { 0.0 };
 
-            // Glass Surface using shader element_type 25.0 (Clock Face)
+            // Authentic Liquid Glass with physical optical meniscus lens (bevel = 20.0px)
             let clock_card = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::RoundedRectangle { radius: 26.0 })
+                .shape(Shape::RoundedRectangle { radius: 28.0 })
                 .bounds(0.0, 0.0, 1.0, 1.0)
-                .curvature(0.02)
-                .bevel(5.5)
-                .refraction(0.35)
-                .dispersion(0.0)
-                .blur(28.0)
+                .curvature(0.04)
+                .bevel(20.0)
+                .refraction(0.65)
+                .dispersion(0.025)
+                .blur(32.0)
                 .tint(0.0, 0.0, 0.0, is_light_f32)
                 .roughness(self.battery_level)
-                .specular(1.0)
-                .fresnel(0.35)
+                .specular(1.3)
+                .fresnel(0.60)
                 .element_type(25.0)
                 .progress(time_val)
                 .deformation(date_val)

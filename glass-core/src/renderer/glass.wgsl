@@ -1020,99 +1020,70 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let pill_rim_col = mix(vec3<f32>(1.0, 1.0, 1.0) * 0.35, vec3<f32>(0.72, 0.76, 0.82), is_light);
 
         // ════════════════════════════════════════════
-        // 1. TOP ROW (y = -56.0): Frosted Day Pill & Battery Pill
+        // 1. TOP CENTER PILL (y = -62.0): Frosted Date Capsule [ 🗓️ Tue, Nov 3 ]
         // ════════════════════════════════════════════
-        let top_y = -56.0;
-        
-        // ── 1a. Left Day Pill (cx = -76.0, half = 52.0x13.0, r = 13.0) ──
-        let p_day_pill = local_p - vec2<f32>(-76.0, top_y);
-        let d_day_pill = rr_sdf(p_day_pill, vec2<f32>(52.0, 13.0), 13.0);
-        let mask_day_fill = (1.0 - smoothstep(-0.4, 0.4, d_day_pill)) * 0.08;
-        let mask_day_rim = smoothstep(1.1, 0.0, abs(d_day_pill)) * 0.25;
-        
-        // Status indicator dot (cx = -114.0, cy = top_y, r = 3.0)
-        let p_dot = local_p - vec2<f32>(-114.0, top_y);
-        let d_dot = length(p_dot) - 3.2;
-        let mask_dot = 1.0 - smoothstep(-0.35, 0.35, d_dot);
-        let dot_glow = exp(-max(d_dot, 0.0) * 0.45) * 0.75;
+        let top_y = -62.0;
+        let p_top_pill = local_p - vec2<f32>(0.0, top_y);
+        let d_top_pill = rr_sdf(p_top_pill, vec2<f32>(66.0, 14.0), 14.0);
+        let mask_top_fill = (1.0 - smoothstep(-0.4, 0.4, d_top_pill)) * mix(0.12, 0.22, is_light);
+        let mask_top_rim = smoothstep(1.1, 0.0, abs(d_top_pill)) * 0.35;
 
-        // ── 1b. Right Battery Pill (cx = 76.0, half = 46.0x13.0, r = 13.0) ──
-        let p_bat_pill = local_p - vec2<f32>(76.0, top_y);
-        let d_bat_pill = rr_sdf(p_bat_pill, vec2<f32>(46.0, 13.0), 13.0);
-        let mask_bat_fill = (1.0 - smoothstep(-0.4, 0.4, d_bat_pill)) * 0.08;
-        let mask_bat_rim = smoothstep(1.1, 0.0, abs(d_bat_pill)) * 0.25;
-
-        // Lightning Bolt Icon (cx = 48.0, cy = top_y)
-        let p_bolt = local_p - vec2<f32>(48.0, top_y);
-        let s_b0 = dist_segment(p_bolt, vec2<f32>(1.2, -4.5), vec2<f32>(-1.8, -0.5));
-        let s_b1 = dist_segment(p_bolt, vec2<f32>(-1.8, -0.5), vec2<f32>(0.8, -0.5));
-        let s_b2 = dist_segment(p_bolt, vec2<f32>(0.8, -0.5), vec2<f32>(-1.2, 4.5));
-        let d_bolt = min(min(s_b0, s_b1), s_b2) - 0.75;
-        let mask_bolt = 1.0 - smoothstep(-0.35, 0.35, d_bolt);
-
-        // Day and Battery text rendered via dynamic Quicksand overlay
-        let mask_day_letters = 0.0;
-        let mask_bnum = 0.0;
-
-        // ════════════════════════════════════════════
-        // 2. HERO DIGITAL CLOCK: Rendered via dynamic Quicksand overlay
-        // ════════════════════════════════════════════
-        let time_y = -4.0;
-        let mask_time_digits = 0.0;
-        let mask_time_colon = 0.0;
-        let mask_ampm = 0.0;
-
-        // ════════════════════════════════════════════
-        // 3. BOTTOM ROW (y = 54.0): Frosted Date Pill & Battery Fill Track
-        // ════════════════════════════════════════════
-        let bot_y = 54.0;
-        
-        // ── 3a. Left Date Pill (cx = -76.0, half = 52.0x13.0, r = 13.0) ──
-        let p_date_pill = local_p - vec2<f32>(-76.0, bot_y);
-        let d_date_pill = rr_sdf(p_date_pill, vec2<f32>(52.0, 13.0), 13.0);
-        let mask_date_fill = (1.0 - smoothstep(-0.4, 0.4, d_date_pill)) * 0.08;
-        let mask_date_rim = smoothstep(1.1, 0.0, abs(d_date_pill)) * 0.25;
-        
-        // Calendar Icon (cx = -114.0, cy = bot_y)
-        let p_cal = local_p - vec2<f32>(-114.0, bot_y);
+        // Calendar Icon (cx = -50.0, cy = top_y)
+        let p_cal = local_p - vec2<f32>(-50.0, top_y);
         let d_cal_box = rr_sdf(p_cal, vec2<f32>(4.2, 4.0), 1.2);
         let mask_cal_outline = smoothstep(0.4, -0.4, abs(d_cal_box) - 0.75);
         let d_pin0 = dist_segment(p_cal, vec2<f32>(-2.2, -4.5), vec2<f32>(-2.2, -3.2)) - 0.6;
         let d_pin1 = dist_segment(p_cal, vec2<f32>(2.2, -4.5), vec2<f32>(2.2, -3.2)) - 0.6;
         let mask_cal_pins = 1.0 - smoothstep(-0.35, 0.35, min(d_pin0, d_pin1));
         let mask_cal_icon = max(mask_cal_outline, mask_cal_pins);
-        
-        let mask_date_text = 0.0;
-        
-        // ── 3b. Right Battery Progress Track (cx = 76.0, half = 46.0x5.0, r = 5.0) ──
-        let p_track = local_p - vec2<f32>(76.0, bot_y);
-        let d_track = rr_sdf(p_track, vec2<f32>(46.0, 5.0), 5.0);
-        let mask_track_bg = (1.0 - smoothstep(-0.4, 0.4, d_track)) * 0.08;
-        let mask_track_rim = smoothstep(1.0, 0.0, abs(d_track)) * 0.25;
-        
-        let max_bar_w = 88.0;
+
+        // ════════════════════════════════════════════
+        // 2. HERO DIGITAL CLOCK: Centered at (0.0, 0.0) via Quicksand overlay
+        // ════════════════════════════════════════════
+
+        // ════════════════════════════════════════════
+        // 3. BOTTOM CENTER PILL (y = 62.0): Frosted Battery Capsule [ ⚡ 58% • Capsule ]
+        // ════════════════════════════════════════════
+        let bot_y = 62.0;
+        let p_bot_pill = local_p - vec2<f32>(0.0, bot_y);
+        let d_bot_pill = rr_sdf(p_bot_pill, vec2<f32>(66.0, 14.0), 14.0);
+        let mask_bot_fill = (1.0 - smoothstep(-0.4, 0.4, d_bot_pill)) * mix(0.12, 0.22, is_light);
+        let mask_bot_rim = smoothstep(1.1, 0.0, abs(d_bot_pill)) * 0.35;
+
+        // Lightning Bolt Icon (cx = -50.0, cy = bot_y)
+        let p_bolt = local_p - vec2<f32>(-50.0, bot_y);
+        let s_b0 = dist_segment(p_bolt, vec2<f32>(1.2, -4.5), vec2<f32>(-1.8, -0.5));
+        let s_b1 = dist_segment(p_bolt, vec2<f32>(-1.8, -0.5), vec2<f32>(0.8, -0.5));
+        let s_b2 = dist_segment(p_bolt, vec2<f32>(0.8, -0.5), vec2<f32>(-1.2, 4.5));
+        let d_bolt = min(min(s_b0, s_b1), s_b2) - 0.75;
+        let mask_bolt = 1.0 - smoothstep(-0.35, 0.35, d_bolt);
+
+        // Mini Liquid Battery Bar inside bottom capsule (cx = 24.0, cy = bot_y, w = 36.0, h = 6.0)
+        let p_track = local_p - vec2<f32>(24.0, bot_y);
+        let d_track = rr_sdf(p_track, vec2<f32>(18.0, 4.0), 4.0);
+        let mask_track_bg = (1.0 - smoothstep(-0.4, 0.4, d_track)) * 0.15;
+        let mask_track_rim = smoothstep(0.9, 0.0, abs(d_track)) * 0.30;
+
+        let max_bar_w = 34.0;
         let bar_w = (bat_val / 100.0) * max_bar_w;
-        let bar_cx = 32.0 + bar_w * 0.5;
-        let d_bar_fill = rr_sdf(local_p - vec2<f32>(bar_cx, bot_y), vec2<f32>(max(bar_w * 0.5, 1.0), 3.5), 3.5);
+        let bar_cx = 24.0 - 17.0 + bar_w * 0.5;
+        let d_bar_fill = rr_sdf(local_p - vec2<f32>(bar_cx, bot_y), vec2<f32>(max(bar_w * 0.5, 1.0), 3.0), 3.0);
         let mask_bar_fill = 1.0 - smoothstep(-0.35, 0.35, d_bar_fill);
         let bar_glow = exp(-max(d_bar_fill, 0.0) * 0.6) * 0.35;
 
         // ════════════════════════════════════════════
         // 4. MASTER COMPOSITE FOR CLOCK WIDGET
         // ════════════════════════════════════════════
-        let shadow_time = 0.0;
+        let glyph_light = mix(text_primary, vec3<f32>(1.0, 1.0, 1.0), 0.20);
         let primary_glyphs = mask_cal_icon;
 
-        let digit_sheen = clamp(1.0 - (local_p.y - (time_y - 12.0)) / 24.0, 0.0, 1.0);
-        let glyph_light = mix(text_primary, vec3<f32>(1.0, 1.0, 1.0), digit_sheen * 0.20);
+        // Inset Frosted Glass Pills (Top Date Capsule & Bottom Battery Capsule)
+        let pill_fills = max(max(mask_top_fill, mask_bot_fill), mask_track_bg);
+        let pill_rims = max(max(mask_top_rim, mask_bot_rim), mask_track_rim);
 
-        // Inset Frosted Glass Pills (Day, Battery, Date, Battery Track)
-        let pill_fills = max(max(mask_day_fill, mask_bat_fill), max(mask_date_fill, mask_track_bg));
-        let pill_rims = max(max(mask_day_rim, mask_bat_rim), max(mask_date_rim, mask_track_rim));
-
-        // Accent elements (Status dot, lightning bolt, battery liquid bar)
-        let accent_glyphs = max(max(mask_dot, mask_bolt), mask_bar_fill);
-        let total_glow = max(dot_glow, bar_glow);
+        // Accent elements (Lightning bolt & Battery liquid bar)
+        let accent_glyphs = max(mask_bolt, mask_bar_fill);
+        let total_glow = bar_glow;
 
         if accent_glyphs > 0.05 {
             app.glyph_mask = accent_glyphs;
@@ -1122,9 +1093,6 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         } else if primary_glyphs > 0.02 {
             app.glyph_mask = primary_glyphs;
             app.glyph_color = glyph_light;
-        } else if shadow_time > 0.04 {
-            app.glyph_mask = shadow_time;
-            app.glyph_color = mix(vec3<f32>(0.02, 0.03, 0.05), vec3<f32>(1.0, 1.0, 1.0) * 0.40, is_light);
         } else if pill_rims > 0.05 {
             app.glyph_mask = pill_rims;
             app.glyph_color = pill_rim_col;
@@ -1714,8 +1682,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let mask = 1.0 - smoothstep(-1.0, 0.1, sdf);
     let inside = max(-sdf, 0.0);
 
-    // True Apple VisionOS / macOS Micro-Chamfer (2.5px width)
-    let bevel_w = clamp(params.bevel, 1.5, 3.2);
+    // Authentic Physical Liquid Glass Meniscus (up to 48px curved optical lens)
+    let bevel_w = clamp(params.bevel, 1.5, 48.0);
     let t = clamp(inside / bevel_w, 0.0, 1.0); // 0 at outer edge, 1 at interior flat face
     let edge = 1.0 - t; // 1 at outer edge, 0 at interior flat face
 
@@ -1725,7 +1693,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let d_dy = rr_sdf(local_px + vec2<f32>(0.0, eps_sdf), half_size, r) - rr_sdf(local_px - vec2<f32>(0.0, eps_sdf), half_size, r);
     let grad_2d = normalize(vec2<f32>(d_dx, d_dy));
 
-    // Continuous 3D surface normal: micro-chamfer bevel profile (planar inside >= 2.5px)
+    // Continuous 3D surface normal: curved water-droplet meniscus profile
+    // theta is the angle between surface normal and +Z axis (0 at flat face, ~pi/2 at crest)
     let theta = edge * 1.5707963;
     let sin_th = sin(theta);
     let cos_th = cos(theta);
@@ -1733,30 +1702,41 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let N_2d = N.xy;
 
     // ════════════════════════════════════════════
-    // 3. PHYSICAL SNELL'S LAW REFRACTION & PRISMATIC CAUSTICS
+    // 3. PHYSICAL 3D SNELL'S LAW REFRACTION & SPECTRAL CHROMATIC DISPERSION
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
 
-    // True physical optical deflection along the molded glass meniscus bevel
-    let refr_dist = 6.5 * params.refraction_strength * sin_th;
-    let refr_ray = -grad_2d * refr_dist * px_to_uv;
+    // Physical Snell's law refraction vector through thick optical glass
+    let ior_base = max(params.ior, 1.45);
+    let eta = 1.0 / ior_base;
+    let cos_i = clamp(N.z, 0.0, 1.0);
+    let sin2_t = eta * eta * (1.0 - cos_i * cos_i);
+    let cos_t = sqrt(max(1.0 - sin2_t, 0.0));
+    let refr_factor = (eta * cos_i - cos_t);
+    let refr_dir_xy = -grad_2d * sin_th * refr_factor;
 
-    // Sub-pixel optical crystal dispersion at the outer bevel
-    let ca_dist = clamp(params.dispersion * 15.0, 0.0, 1.2) * pow(edge, 2.5);
-    let ca_offset = -grad_2d * ca_dist * px_to_uv;
+    // Magnification & optical displacement across glass slab thickness
+    let glass_thickness = bevel_w * 2.2 * params.refraction_strength;
+    let refr_ray = refr_dir_xy * glass_thickness * px_to_uv;
+
+    // Cauchy spectral dispersion: red refracts less, blue refracts more
+    let disp_val = select(params.dispersion, 0.022, params.padding2.x >= 25.5 && params.padding2.x <= 26.5);
+    let ca_amount = disp_val * 80.0 * pow(edge, 1.3);
+    let ca_offset = -grad_2d * ca_amount * px_to_uv;
 
     let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
     let uv_g = clamp(uv + refr_ray, vec2<f32>(0.001), vec2<f32>(0.999));
     let uv_b = clamp(uv + refr_ray + ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
 
     // ════════════════════════════════════════════
-    // 4. DEEP SILKY FROST + APPLE MATERIAL SUBSTRATE
+    // 4. CLEAR CRYSTAL MENISCUS TO SILKY FROST TRANSITION
     // ════════════════════════════════════════════
-    // Full interior frosted blur smoothly reaching the chamfer edge
-    let frost = smoothstep(0.0, 2.0, inside);
+    // Outer curved meniscus (inside < bevel_w * 0.50) is 100% CRYSTAL CLEAR refractive glass!
+    // Interior flat body smoothly transitions into silky translucent frosted diffusion.
+    let frost = smoothstep(bevel_w * 0.50, bevel_w * 1.0, inside);
     let local_blur = params.blur_radius * frost;
 
-    // Outer crystal rim sample
+    // Outer crystal rim sample with spectral chromatic separation
     let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
     let sharp_g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
     let sharp_b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
@@ -1771,21 +1751,24 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // Card-wide uniform light/dark appearance mode passed from CPU crop analysis
-    // (Falls back to local blur luminance if tint.w is negative)
     let is_light = select(smoothstep(0.48, 0.58, dot(col, vec3<f32>(0.299, 0.587, 0.114))), params.tint.w, params.tint.w >= 0.0);
     let bg_luma = dot(col, vec3<f32>(0.299, 0.587, 0.114));
 
-    // Apple Vibrancy: boost saturation so wallpaper colors shine warmly through frosted glass
-    let sat_col = mix(vec3<f32>(bg_luma), col, 1.25);
+    // Apple Vibrancy: boost saturation so underlying colors glow richly through frosted glass
+    let sat_col = mix(vec3<f32>(bg_luma), col, 1.30);
     col = sat_col;
 
     // Apple macOS Sequoia & visionOS Material Substrate:
-    // Guarantees high-contrast readability on ANY wallpaper.
-    // In Light Mode: 50% clean translucent milk-glass sheet (white + slight warmth)
-    // In Dark Mode: 42% deep obsidian-tinted glass sheet
-    let light_substrate = mix(col, vec3<f32>(0.96, 0.97, 0.99), 0.50);
-    let dark_substrate = mix(col, vec3<f32>(0.08, 0.10, 0.14), 0.42);
+    // Outer crystal meniscus stays transparent; interior body receives clean, luminous substrate
+    let light_substrate = mix(col, vec3<f32>(0.97, 0.98, 1.0), 0.32 * frost);
+    let dark_substrate = mix(col, vec3<f32>(0.08, 0.10, 0.15), 0.58 * frost);
     col = mix(dark_substrate, light_substrate, is_light);
+
+    // Optional custom tint absorption (e.g. blue tint in music card or lavender tint)
+    if length(params.tint.xyz) > 0.01 {
+        let tint_absorb = mix(vec3<f32>(1.0), params.tint.xyz, 0.40 * frost);
+        col *= tint_absorb;
+    }
 
     // ════════════════════════════════════════════
     // 5. 3D DIRECTIONAL LIQUID SPECULAR & BLINN-PHONG GLOSS
@@ -1794,25 +1777,32 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let left_facing = max(-grad_2d.x, 0.0);
     let bot_facing = max(grad_2d.y, 0.0);
 
-    // 3D Directional Key Light for Liquid Glass Gloss
+    // 3D Directional Key Light from Top-Left (-0.35, -0.75, 0.55)
     let L = normalize(vec3<f32>(-0.35, -0.75, 0.55));
     let H = normalize(L + vec3<f32>(0.0, 0.0, 1.0));
-    let gloss_spec = pow(max(dot(N, H), 0.0), 28.0) * edge * 0.85 * params.specular_strength;
+    let gloss_spec = pow(max(dot(N, H), 0.0), 28.0) * edge * 1.10 * params.specular_strength;
 
-    // 1. Outer 1px razor crest specular highlight (Top & Top-Left only)
+    // 1. Outer 1.2px razor crest specular highlight (Top & Top-Left arc)
     let hairline = smoothstep(1.5, 0.1, inside);
     let top_spec = hairline * (pow(top_facing, 1.4) * 0.95 + left_facing * 0.40) * params.specular_strength;
 
-    // 2. Inner 1px chamfer refraction line (Iconic Apple double-line reflection)
-    let inner_line = smoothstep(3.2, 1.8, inside) * smoothstep(0.8, 2.0, inside);
-    let inner_spec = inner_line * pow(top_facing, 1.8) * 0.35 * params.specular_strength;
+    // 2. Inner chamfer meniscus caustic line
+    let inner_line = smoothstep(bevel_w + 1.2, bevel_w - 1.2, inside) * smoothstep(bevel_w - 3.0, bevel_w, inside);
+    let inner_spec = inner_line * pow(top_facing, 1.8) * 0.45 * params.specular_strength;
 
-    // 3. Bottom edge contact occlusion (grounds the card, NO white bottom stroke!)
-    let bot_occlusion = hairline * bot_facing * 0.30;
+    // 3. Ambient Fresnel Silhouette Sheen (Icy glass perimeter reflection)
+    let fresnel_edge = pow(1.0 - cos_th, 3.5) * edge * 0.35 * params.fresnel_strength;
+
+    // 4. Bottom bounce reflection (gives bottom edge translucent glassy depth)
+    let L_bounce = normalize(vec3<f32>(0.0, 0.85, 0.50));
+    let bot_bounce = pow(max(dot(N, L_bounce), 0.0), 16.0) * bot_facing * edge * 0.30;
+
+    // 5. Bottom edge contact occlusion (grounds the card, subtle ambient shadow)
+    let bot_occlusion = hairline * bot_facing * 0.25;
     col = col * (1.0 - bot_occlusion);
 
-    // Master specular composition - ZERO NOISE / MICRO-GRAIN for crystal clarity!
-    col += vec3<f32>(top_spec + inner_spec + gloss_spec);
+    // Master specular composition
+    col += vec3<f32>(top_spec + inner_spec + gloss_spec + fresnel_edge + bot_bounce);
 
     var side_bevel_flare = 0.0;
     var side_rim_flare = 0.0;
