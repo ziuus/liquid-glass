@@ -786,11 +786,11 @@ impl AppData {
         let (col_primary, col_secondary, col_dimmed, col_accent, col_shadow) =
             if self.is_wallpaper_light {
                 (
-                    [22, 26, 36, 255],    // Primary text: Deep Obsidian (WCAG AAA contrast 14:1)
-                    [65, 72, 88, 235],    // Secondary text: Refined Slate
-                    [130, 138, 155, 210], // Tertiary/Dimmed: Subtle Slate
-                    [14, 18, 26, 255],    // Accent text
-                    [0, 0, 0, 0],         // Natural contrast from frosted card substrate
+                    [8, 12, 20, 255],    // Primary text: Deep Obsidian Ink (WCAG AAA contrast 16:1)
+                    [30, 38, 52, 245],   // Secondary text: Refined Slate
+                    [90, 100, 118, 220], // Tertiary/Dimmed: Muted Slate
+                    [6, 10, 16, 255],    // Accent text
+                    [0, 0, 0, 0],        // Natural contrast from frosted card substrate
                 )
             } else {
                 (
@@ -925,7 +925,7 @@ impl AppData {
                 let (text_col, weight) = if task.done {
                     (col_dimmed, FontWeight::Regular)
                 } else {
-                    (col_primary, FontWeight::SemiBold)
+                    (col_primary, FontWeight::Bold)
                 };
 
                 // Truncate task text if too long for display

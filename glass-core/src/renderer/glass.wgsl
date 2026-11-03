@@ -1025,8 +1025,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let top_y = -62.0;
         let p_top_pill = local_p - vec2<f32>(0.0, top_y);
         let d_top_pill = rr_sdf(p_top_pill, vec2<f32>(66.0, 14.0), 14.0);
-        let mask_top_fill = (1.0 - smoothstep(-0.4, 0.4, d_top_pill)) * mix(0.12, 0.22, is_light);
-        let mask_top_rim = smoothstep(1.1, 0.0, abs(d_top_pill)) * 0.35;
+        let mask_top_fill = (1.0 - smoothstep(-0.4, 0.4, d_top_pill)) * mix(0.04, 0.08, is_light);
+        let mask_top_rim = smoothstep(1.0, 0.0, abs(d_top_pill)) * mix(0.15, 0.22, is_light);
 
         // Calendar Icon (cx = -50.0, cy = top_y)
         let p_cal = local_p - vec2<f32>(-50.0, top_y);
@@ -1047,8 +1047,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let bot_y = 62.0;
         let p_bot_pill = local_p - vec2<f32>(0.0, bot_y);
         let d_bot_pill = rr_sdf(p_bot_pill, vec2<f32>(66.0, 14.0), 14.0);
-        let mask_bot_fill = (1.0 - smoothstep(-0.4, 0.4, d_bot_pill)) * mix(0.12, 0.22, is_light);
-        let mask_bot_rim = smoothstep(1.1, 0.0, abs(d_bot_pill)) * 0.35;
+        let mask_bot_fill = (1.0 - smoothstep(-0.4, 0.4, d_bot_pill)) * mix(0.04, 0.08, is_light);
+        let mask_bot_rim = smoothstep(1.0, 0.0, abs(d_bot_pill)) * mix(0.15, 0.22, is_light);
 
         // Lightning Bolt Icon (cx = -50.0, cy = bot_y)
         let p_bolt = local_p - vec2<f32>(-50.0, bot_y);
@@ -1217,8 +1217,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
                 let is_row_hover = (hover_row >= f32(i) - 0.1 && hover_row <= f32(i) + 0.1);
                 let hover_boost = select(0.0, 0.12, is_row_hover);
 
-                let fill = (1.0 - smoothstep(-0.4, 0.4, d_row)) * mix(0.10 + hover_boost, 0.60 + hover_boost, is_light) * task_view_weight;
-                let rim = smoothstep(1.0, 0.0, abs(d_row)) * mix(0.18 + hover_boost, 0.28 + hover_boost, is_light) * task_view_weight;
+                let fill = (1.0 - smoothstep(-0.4, 0.4, d_row)) * mix(0.05 + hover_boost, 0.10 + hover_boost, is_light) * task_view_weight;
+                let rim = smoothstep(1.0, 0.0, abs(d_row)) * mix(0.12, 0.18, is_light) * task_view_weight;
                 rows_fill = max(rows_fill, fill);
                 rows_rim = max(rows_rim, rim);
 
@@ -1227,8 +1227,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
                 // Checkbox (cx = -135.0, cy = row_y)
                 let p_box = local_p - vec2<f32>(-135.0, row_y);
                 let d_box = rr_sdf(p_box, vec2<f32>(8.5, 8.5), 4.5);
-                let c_rim = smoothstep(1.2, 0.0, abs(d_box)) * mix(0.32, 0.45, is_light) * task_view_weight;
-                let c_bg = (1.0 - smoothstep(-0.4, 0.4, d_box)) * mix(0.08, 0.18, is_light) * task_view_weight;
+                let c_rim = smoothstep(1.0, 0.0, abs(d_box)) * mix(0.18, 0.28, is_light) * task_view_weight;
+                let c_bg = (1.0 - smoothstep(-0.4, 0.4, d_box)) * mix(0.04, 0.08, is_light) * task_view_weight;
                 check_rims = max(check_rims, max(c_rim, c_bg));
 
                 if is_item_done {
@@ -1241,8 +1241,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
                 // Daily Tag Badge (cx = 124.0, cy = row_y, half = 22.0x7.5, r = 7.5)
                 let p_dtag = local_p - vec2<f32>(124.0, row_y);
                 let d_dtag = rr_sdf(p_dtag, vec2<f32>(22.0, 7.5), 7.5);
-                daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * 0.06 * task_view_weight);
-                daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * 0.20 * task_view_weight);
+                daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * 0.04 * task_view_weight);
+                daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * 0.15 * task_view_weight);
             }
 
             // ════════════════════════════════════════════
@@ -1251,14 +1251,14 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             let bot_y = 185.0;
             let p_add_bar = local_p - vec2<f32>(0.0, bot_y);
             let d_add_bar = rr_sdf(p_add_bar, vec2<f32>(156.0, 17.0), 17.0);
-            mask_add_fill = (1.0 - smoothstep(-0.4, 0.4, d_add_bar)) * mix(0.12, 0.45, is_light) * task_view_weight;
-            mask_add_rim = smoothstep(1.1, 0.0, abs(d_add_bar)) * mix(0.35, 0.35, is_light) * task_view_weight;
+            mask_add_fill = (1.0 - smoothstep(-0.4, 0.4, d_add_bar)) * mix(0.06, 0.12, is_light) * task_view_weight;
+            mask_add_rim = smoothstep(1.0, 0.0, abs(d_add_bar)) * mix(0.20, 0.28, is_light) * task_view_weight;
 
             // Add Button '+' at cx = 135.0, cy = bot_y
             let p_plus = local_p - vec2<f32>(135.0, bot_y);
             let d_plus_bg = length(p_plus) - 11.0;
-            let plus_fill = (1.0 - smoothstep(-0.4, 0.4, d_plus_bg)) * mix(0.12, 0.85, is_light) * task_view_weight;
-            let plus_rim = smoothstep(1.0, 0.0, abs(d_plus_bg)) * 0.32 * task_view_weight;
+            let plus_fill = (1.0 - smoothstep(-0.4, 0.4, d_plus_bg)) * mix(0.08, 0.18, is_light) * task_view_weight;
+            let plus_rim = smoothstep(1.0, 0.0, abs(d_plus_bg)) * 0.25 * task_view_weight;
             mask_add_fill = max(mask_add_fill, plus_fill);
             mask_add_rim = max(mask_add_rim, plus_rim);
 
@@ -1709,23 +1709,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
 
-    // Physical Snell's law refraction vector through thick optical glass
-    let ior_base = max(params.ior, 1.48);
-    let eta = 1.0 / ior_base;
-    let cos_i = clamp(N.z, 0.0, 1.0);
-    let sin2_t = eta * eta * (1.0 - cos_i * cos_i);
-    let cos_t = sqrt(max(1.0 - sin2_t, 0.0));
-    let refr_factor = (eta * cos_i - cos_t);
-    let refr_dir_xy = -grad_2d * sin_th * refr_factor;
+    // Smooth physical lens refraction: rays bend inwards towards the optical axis (center)
+    let refr_dist = bevel_w * 0.25 * params.refraction_strength * sin_th;
+    let refr_ray = -grad_2d * refr_dist * px_to_uv;
 
-    // Magnification & optical displacement across glass slab thickness
-    let glass_thickness = bevel_w * 2.4 * params.refraction_strength;
-    let refr_ray = refr_dir_xy * glass_thickness * px_to_uv;
-
-    // Cauchy spectral dispersion: red refracts less, blue refracts more
-    let disp_val = select(params.dispersion, 0.022, params.padding2.x >= 25.5 && params.padding2.x <= 26.5);
-    let ca_amount = disp_val * 75.0 * edge_curv;
-    let ca_offset = -grad_2d * ca_amount * px_to_uv;
+    // Elegant sub-pixel chromatic dispersion (max 1.5px spread, pristine crystal optics)
+    let disp_val = select(params.dispersion, 0.020, params.padding2.x >= 25.5 && params.padding2.x <= 26.5);
+    let ca_dist = clamp(disp_val * 40.0, 0.0, 1.5) * edge_curv;
+    let ca_offset = -grad_2d * ca_dist * px_to_uv;
 
     let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
     let uv_g = clamp(uv + refr_ray, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1734,9 +1725,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     // 4. CLEAR CRYSTAL MENISCUS TO SILKY FROST TRANSITION
     // ════════════════════════════════════════════
-    // Outer curved meniscus (inside < bevel_w * 0.45) is 100% CRYSTAL CLEAR refractive glass!
-    // Interior flat body smoothly transitions into silky translucent frosted diffusion.
-    let frost = smoothstep(bevel_w * 0.45, bevel_w * 0.95, inside);
+    // Continuous silky frosted diffusion across the glass body (zero abrupt demarcation lines)
+    let frost = smoothstep(1.0, bevel_w, inside);
     let local_blur = params.blur_radius * frost;
 
     // Outer crystal rim sample with spectral chromatic separation
@@ -1758,13 +1748,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let bg_luma = dot(col, vec3<f32>(0.299, 0.587, 0.114));
 
     // Apple Vibrancy: boost saturation so underlying colors glow richly through frosted glass
-    let sat_col = mix(vec3<f32>(bg_luma), col, 1.30);
+    let sat_col = mix(vec3<f32>(bg_luma), col, 1.25);
     col = sat_col;
 
     // Apple macOS Sequoia & visionOS Material Substrate:
-    // Outer crystal meniscus stays transparent; interior body receives clean, luminous substrate
-    let light_substrate = mix(col, vec3<f32>(0.97, 0.98, 1.0), 0.32 * frost);
-    let dark_substrate = mix(col, vec3<f32>(0.07, 0.09, 0.14), 0.60 * frost);
+    // Pure, luminous, translucent glass that lets wallpaper beauty glow through
+    let light_substrate = mix(col, vec3<f32>(0.98, 0.98, 1.0), 0.22 * frost);
+    let dark_substrate = mix(col, vec3<f32>(0.08, 0.10, 0.14), 0.45 * frost);
     col = mix(dark_substrate, light_substrate, is_light);
 
     // Optional custom tint absorption (e.g. blue tint in music card or lavender tint)
