@@ -86,7 +86,6 @@ struct AppData {
     pointer: Option<wl_pointer::WlPointer>,
     keyboard: Option<wl_keyboard::WlKeyboard>,
     cursor_pos: [f32; 2],
-    cursor_velocity: [f32; 2],
     is_hovered: bool,
     is_dragging: bool,
     drag_grab_offset: [i32; 2],
@@ -462,13 +461,9 @@ impl PointerHandler for AppData {
                 }
                 PointerEventKind::Motion { .. } => {
                     had_event = true;
-                    let old_x = self.cursor_pos[0];
-                    let old_y = self.cursor_pos[1];
                     let new_x = event.position.0 as f32 / self.width as f32;
                     let new_y = event.position.1 as f32 / self.height as f32;
 
-                    self.cursor_velocity[0] = (new_x - old_x) * 100.0;
-                    self.cursor_velocity[1] = (new_y - old_y) * 100.0;
                     self.cursor_pos = [new_x, new_y];
 
                     if self.is_dragging {
@@ -1239,7 +1234,6 @@ impl AppData {
 
             let _accent = get_theme_accent();
             let (px, py) = (self.cursor_pos[0], self.cursor_pos[1]);
-            let (vx, vy) = (self.cursor_velocity[0], self.cursor_velocity[1]);
 
             // Pass continuous spring-animated values to shader
             let tab_val = self.tab_spring.value;
@@ -1253,21 +1247,16 @@ impl AppData {
                 .bounds(0.0, 0.0, 1.0, 1.0)
                 .curvature(0.035)
                 .bevel(22.0)
-                .refraction(0.48)
+                .refraction(0.70)
                 .dispersion(filter_val) // Continuous Filter spring
-                .blur(28.0)
-                .tint(0.0, 0.0, 0.0, is_light_f32)
+                .blur(5.0)
+                .tint(0.0, progress_packed, 0.0, is_light_f32)
                 .roughness(-1.0)
-                .specular(1.35)
-                .fresnel(0.55)
+                .specular(1.45)
+                .fresnel(0.80)
                 .element_type(26.0)
-                .progress(progress_packed)
                 .deformation(tab_val) // Continuous Tab spring
-                .pointer_pos(px, py)
-                .pointer_velocity(vx, vy);
-
-            self.cursor_velocity[0] *= 0.85;
-            self.cursor_velocity[1] *= 0.85;
+                .pointer_pos(px, py);
 
             let surfaces = vec![todo_card];
             let _ = renderer.render(&surfaces);
@@ -1513,7 +1502,6 @@ fn main() {
         pointer: None,
         keyboard: None,
         cursor_pos: [-10.0, -10.0],
-        cursor_velocity: [0.0, 0.0],
         is_hovered: false,
         is_dragging: false,
         drag_grab_offset: [0, 0],

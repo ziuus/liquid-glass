@@ -1,11 +1,7 @@
-mod blur;
-
 use bytemuck::{Pod, Zeroable};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::sync::Arc;
 use std::time::Instant;
-
-pub use blur::BlurPipeline;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
@@ -25,9 +21,10 @@ struct GlassUniforms {
     deformation: f32,
     corner_radius: f32,
     pointer_pos: [f32; 2],
-    pointer_velocity: [f32; 2],
     surface_size: [f32; 2],
-    padding2: [f32; 2],
+    is_light: f32,
+    padding: f32,
+    _pad: [f32; 2],
 }
 
 pub struct GlassRenderer {
@@ -469,12 +466,13 @@ impl GlassRenderer {
                 },
                 corner_radius,
                 pointer_pos: glass.pointer_pos,
-                pointer_velocity: glass.pointer_velocity,
                 surface_size: [
                     self.surface_config.width as f32,
                     self.surface_config.height as f32,
                 ],
-                padding2: [glass.element_type, glass.progress],
+                is_light: params.tint[3].max(0.0),
+                padding: glass.element_type,
+                _pad: [0.0, 0.0],
             };
 
             let offset = i as u32 * padded_size as u32;

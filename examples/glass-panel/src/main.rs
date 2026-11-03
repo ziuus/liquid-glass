@@ -46,7 +46,6 @@ struct AppData {
 
     pointer: Option<wl_pointer::WlPointer>,
     cursor_pos: [f32; 2],
-    cursor_velocity: [f32; 2],
     is_pressed: bool,
     is_dragging: bool,
     drag_start_pos: [i32; 2],
@@ -266,7 +265,6 @@ impl PointerHandler for AppData {
                     if self.width > 0 && self.height > 0 {
                         let nx = (event.position.0 as f32 / self.width as f32).clamp(0.0, 1.0);
                         let ny = (event.position.1 as f32 / self.height as f32).clamp(0.0, 1.0);
-                        self.cursor_velocity = [nx - self.cursor_pos[0], ny - self.cursor_pos[1]];
                         self.cursor_pos = [nx, ny];
                     }
 
@@ -316,7 +314,6 @@ impl PointerHandler for AppData {
                     had_event = true;
                     if !self.is_dragging {
                         self.cursor_pos = [-10.0, -10.0];
-                        self.cursor_velocity = [0.0, 0.0];
                         self.is_pressed = false;
                     }
                 }
@@ -405,8 +402,6 @@ impl AppData {
         if let Some(renderer) = &mut self.renderer {
             let px = self.cursor_pos[0];
             let py = self.cursor_pos[1];
-            let vx = self.cursor_velocity[0];
-            let vy = self.cursor_velocity[1];
 
             let dt = 1.0f32 / 60.0f32;
 
@@ -447,10 +442,7 @@ impl AppData {
             // Active rendering while playing music, dragging, cursor moving, or spring settling
             let spring_moving = (self.hover_play_pos - target_play).abs() > 0.003
                 || self.hover_play_vel.abs() > 0.003;
-            let cursor_moving =
-                self.cursor_velocity[0].abs() > 0.0005 || self.cursor_velocity[1].abs() > 0.0005;
-            let active =
-                self.is_playing || self.is_dragging || in_box || spring_moving || cursor_moving;
+            let active = self.is_playing || self.is_dragging || in_box || spring_moving;
 
             let b0 = [
                 spec[0] - spec[2] * 0.5,
@@ -472,19 +464,14 @@ impl AppData {
                 .blur(22.0)
                 .tint(
                     play_flag,
-                    self.track_progress,
+                    if self.is_pressed { 1.0 } else { 0.0 },
                     self.hover_play_pos,
                     self.elapsed_sec,
                 )
                 .specular(0.80)
                 .fresnel(0.55)
                 .element_type(35.0)
-                .progress(if self.is_pressed { 1.0 } else { 0.0 })
-                .pointer_pos(px, py)
-                .pointer_velocity(vx, vy);
-
-            self.cursor_velocity[0] *= 0.85;
-            self.cursor_velocity[1] *= 0.85;
+                .pointer_pos(px, py);
 
             let surfaces = vec![island];
             let _ = renderer.render(&surfaces);
@@ -613,7 +600,6 @@ fn main() {
 
         pointer: None,
         cursor_pos: [-10.0, -10.0],
-        cursor_velocity: [0.0, 0.0],
         is_pressed: false,
         is_dragging: false,
         drag_start_pos: [pos_x, pos_y],

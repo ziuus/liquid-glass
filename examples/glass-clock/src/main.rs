@@ -48,7 +48,6 @@ struct AppData {
 
     pointer: Option<wl_pointer::WlPointer>,
     cursor_pos: [f32; 2],
-    cursor_velocity: [f32; 2],
     is_hovered: bool,
     is_dragging: bool,
     drag_start_pos: [i32; 2],
@@ -293,14 +292,12 @@ impl PointerHandler for AppData {
                     if !self.is_dragging {
                         self.is_hovered = false;
                         self.cursor_pos = [-10.0, -10.0];
-                        self.cursor_velocity = [0.0, 0.0];
                     }
                 }
                 PointerEventKind::Motion { .. } => {
                     had_event = true;
                     let nx = (event.position.0 as f32) / (self.width as f32);
                     let ny = (event.position.1 as f32) / (self.height as f32);
-                    self.cursor_velocity = [nx - self.cursor_pos[0], ny - self.cursor_pos[1]];
                     self.cursor_pos = [nx, ny];
 
                     if self.is_dragging {
@@ -577,7 +574,6 @@ impl AppData {
             let _accent = get_theme_accent();
 
             let (px, py) = (self.cursor_pos[0], self.cursor_pos[1]);
-            let (vx, vy) = (self.cursor_velocity[0], self.cursor_velocity[1]);
 
             let is_light_f32 = if self.is_wallpaper_light { 1.0 } else { 0.0 };
 
@@ -588,21 +584,16 @@ impl AppData {
                 .bounds(0.0, 0.0, 1.0, 1.0)
                 .curvature(0.035)
                 .bevel(22.0)
-                .refraction(0.48)
-                .dispersion(0.024)
-                .blur(28.0)
-                .tint(0.0, 0.0, 0.0, is_light_f32)
+                .refraction(0.75)
+                .dispersion(0.045)
+                .blur(5.0)
+                .tint(0.0, time_val, 0.0, is_light_f32)
                 .roughness(self.battery_level)
-                .specular(1.35)
-                .fresnel(0.55)
+                .specular(1.50)
+                .fresnel(0.85)
                 .element_type(25.0)
-                .progress(time_val)
                 .deformation(date_val)
-                .pointer_pos(px, py)
-                .pointer_velocity(vx, vy);
-
-            self.cursor_velocity[0] *= 0.85;
-            self.cursor_velocity[1] *= 0.85;
+                .pointer_pos(px, py);
 
             let surfaces = vec![clock_card];
             let _ = renderer.render(&surfaces);
@@ -828,7 +819,6 @@ fn main() {
 
         pointer: None,
         cursor_pos: [-10.0, -10.0],
-        cursor_velocity: [0.0, 0.0],
         is_hovered: false,
         is_dragging: false,
         drag_start_pos: [pos_x, pos_y],

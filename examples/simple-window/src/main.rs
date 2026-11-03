@@ -23,7 +23,6 @@ async fn run() {
         .unwrap();
 
     let mut cursor_pos = [0.5, 0.5];
-    let mut cursor_velocity = [0.0, 0.0];
 
     // Build the UI using glass-ui components
     let mut widget = GlassWidget::new();
@@ -71,7 +70,6 @@ async fn run() {
                     let size = window.inner_size();
                     let nx = position.x as f32 / size.width as f32;
                     let ny = position.y as f32 / size.height as f32;
-                    cursor_velocity = [nx - cursor_pos[0], ny - cursor_pos[1]];
                     cursor_pos = [nx, ny];
 
                     widget.on_pointer_move(nx, ny);
@@ -95,10 +93,7 @@ async fn run() {
                     let mut surfaces = widget.collect_surfaces();
                     for s in surfaces.iter_mut() {
                         s.pointer_pos = cursor_pos;
-                        s.pointer_velocity = cursor_velocity;
                     }
-                    cursor_velocity[0] *= 0.85;
-                    cursor_velocity[1] *= 0.85;
 
                     match renderer.render(&surfaces) {
                         Ok(_) => {}

@@ -17,28 +17,29 @@ struct VertexOutput {
 struct GlassUniforms {
     bounds: vec4<f32>,
     tint: vec4<f32>,
-    
+
     ior: f32,
     roughness: f32,
     refraction_strength: f32,
     dispersion: f32,
-    
+
     fresnel_strength: f32,
     specular_strength: f32,
     blur_radius: f32,
     curvature: f32,
-    
+
     bevel: f32,
     time: f32,
     deformation: f32,
     corner_radius: f32,
-    
+
     pointer_pos: vec2<f32>,
-    pointer_velocity: vec2<f32>,
-    
+
     surface_size: vec2<f32>,
-    padding2: vec2<f32>, // x = element_type (0=base, 1=header, 2=wave, 3=gauge, 4=disc, 5=prev, 6=play, 7=next, 8=slider), y = progress
-};
+    is_light: f32,
+    padding: f32, // element_type (0=base, 1=header, 2=wave, 3=gauge, 4=disc, 5=prev, 6=play, 7=next, 8=slider)
+    _pad: vec2<f32>,
+}
 
 @group(0) @binding(0) var<uniform> params: GlassUniforms;
 @group(1) @binding(0) var background_texture: texture_2d<f32>;
@@ -60,8 +61,14 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
         default: {}
     }
     
-    out.uv = local_uv;
-    out.clip_position = vec4<f32>(local_uv.x * 2.0 - 1.0, 1.0 - local_uv.y * 2.0, 0.0, 1.0);
+    // Transform local_uv to surface bounds (clipped quad optimization)
+    let bounds_uv = vec2<f32>(
+        params.bounds.x + local_uv.x * params.bounds.z,
+        params.bounds.y + local_uv.y * params.bounds.w
+    );
+    
+    out.uv = bounds_uv;
+    out.clip_position = vec4<f32>(bounds_uv.x * 2.0 - 1.0, 1.0 - bounds_uv.y * 2.0, 0.0, 1.0);
     return out;
 }
 
@@ -1001,11 +1008,11 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let neutral_accent = mix(vec3<f32>(0.96, 0.98, 1.0), vec3<f32>(0.11, 0.14, 0.18), is_light);
         let primary_accent = select(neutral_accent, accent_raw, has_accent);
 
-        let text_primary = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.06, 0.08, 0.12), is_light);
-        let text_dim = mix(vec3<f32>(0.65, 0.68, 0.75), vec3<f32>(0.45, 0.48, 0.54), is_light);
-        let text_secondary = mix(vec3<f32>(0.88, 0.91, 0.96), vec3<f32>(0.25, 0.28, 0.34), is_light);
+        let text_primary = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.0, 0.02, 0.05), is_light);
+        let text_dim = mix(vec3<f32>(0.92, 0.94, 0.97), vec3<f32>(0.22, 0.26, 0.32), is_light);
+        let text_secondary = mix(vec3<f32>(0.98, 0.99, 1.0), vec3<f32>(0.32, 0.36, 0.42), is_light);
         let pill_frost_col = vec3<f32>(1.0, 1.0, 1.0);
-        let pill_rim_col = mix(vec3<f32>(1.0, 1.0, 1.0) * 0.35, vec3<f32>(0.65, 0.68, 0.75), is_light);
+        let pill_rim_col = mix(vec3<f32>(1.0, 1.0, 1.0) * 0.50, vec3<f32>(0.55, 0.58, 0.65), is_light);
 
         // Smooth continuous sliding active tab pill using params.deformation (0.0 = Tasks, 1.0 = Agenda)
         let tab_t = clamp(params.deformation, 0.0, 1.0);
@@ -1080,8 +1087,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             let filt_w = select(mix(30.0, 34.0, f_t), mix(34.0, 30.0, f_t - 1.0), f_t > 1.0);
             let p_filt = local_p - vec2<f32>(filt_cx, filt_y);
             let d_filt = rr_sdf(p_filt, vec2<f32>(filt_w, 10.0), 10.0);
-            mask_all_fill = (1.0 - smoothstep(-0.4, 0.4, d_filt)) * mix(0.12, 0.45, is_light) * task_view_weight;
-            mask_all_rim = smoothstep(1.0, 0.0, abs(d_filt)) * mix(0.25, 0.35, is_light) * task_view_weight;
+            mask_all_fill = (1.0 - smoothstep(-0.4, 0.4, d_filt)) * mix(0.15, 0.55, is_light) * task_view_weight;
+            mask_all_rim = smoothstep(1.0, 0.0, abs(d_filt)) * mix(0.40, 0.55, is_light) * task_view_weight;
 
             // Refresh Icon ↻
             let p_ref = local_p - vec2<f32>(120.0, filt_y);
@@ -1127,27 +1134,27 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
                     check_marks = max(check_marks, (1.0 - smoothstep(-0.35, 0.35, d_cm)) * task_view_weight);
                 }
 
-                // Daily Tag Badge (cx = 124.0, cy = row_y, half = 22.0x7.5, r = 7.5)
+                // Daily Tag Badge (cx = 124.0, cy = row_y, half = 22.0x7.5, r = 7.5) - maximum visibility
                 let p_dtag = local_p - vec2<f32>(124.0, row_y);
                 let d_dtag = rr_sdf(p_dtag, vec2<f32>(22.0, 7.5), 7.5);
-                daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * 0.04 * task_view_weight);
-                daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * 0.15 * task_view_weight);
+                daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * 0.08 * task_view_weight);
+                daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * 0.30 * task_view_weight);
             }
 
             // ════════════════════════════════════════════
-            // 4. BOTTOM ADD BAR (y = +185.0)
+            // 4. BOTTOM ADD BAR (y = +185.0) - maximum visibility
             // ════════════════════════════════════════════
             let bot_y = 185.0;
             let p_add_bar = local_p - vec2<f32>(0.0, bot_y);
             let d_add_bar = rr_sdf(p_add_bar, vec2<f32>(156.0, 17.0), 17.0);
-            mask_add_fill = (1.0 - smoothstep(-0.4, 0.4, d_add_bar)) * mix(0.06, 0.12, is_light) * task_view_weight;
-            mask_add_rim = smoothstep(1.0, 0.0, abs(d_add_bar)) * mix(0.20, 0.28, is_light) * task_view_weight;
+            mask_add_fill = (1.0 - smoothstep(-0.4, 0.4, d_add_bar)) * mix(0.10, 0.18, is_light) * task_view_weight;
+            mask_add_rim = smoothstep(1.0, 0.0, abs(d_add_bar)) * mix(0.35, 0.45, is_light) * task_view_weight;
 
-            // Add Button '+' at cx = 135.0, cy = bot_y
+            // Add Button '+' at cx = 135.0, cy = bot_y - maximum visibility
             let p_plus = local_p - vec2<f32>(135.0, bot_y);
             let d_plus_bg = length(p_plus) - 11.0;
-            let plus_fill = (1.0 - smoothstep(-0.4, 0.4, d_plus_bg)) * mix(0.08, 0.18, is_light) * task_view_weight;
-            let plus_rim = smoothstep(1.0, 0.0, abs(d_plus_bg)) * 0.25 * task_view_weight;
+            let plus_fill = (1.0 - smoothstep(-0.4, 0.4, d_plus_bg)) * mix(0.12, 0.25, is_light) * task_view_weight;
+            let plus_rim = smoothstep(1.0, 0.0, abs(d_plus_bg)) * 0.40 * task_view_weight;
             mask_add_fill = max(mask_add_fill, plus_fill);
             mask_add_rim = max(mask_add_rim, plus_rim);
 
@@ -1183,19 +1190,19 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
                 let tb_fill = (1.0 - smoothstep(-0.4, 0.4, d_tbadge)) * 0.10 * agenda_view_weight;
                 check_rims = max(check_rims, max(tb_rim, tb_fill));
 
-                // Right Status Badge: TODAY (cx = 124.0, cy = row_y)
+                // Right Status Badge: TODAY (cx = 124.0, cy = row_y) - maximum visibility
                 let p_dtag = local_p - vec2<f32>(124.0, row_y);
                 let d_dtag = rr_sdf(p_dtag, vec2<f32>(22.0, 7.5), 7.5);
-                daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * 0.08 * agenda_view_weight);
-                daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * 0.22 * agenda_view_weight);
+                daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * 0.12 * agenda_view_weight);
+                daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * 0.35 * agenda_view_weight);
             }
 
-            // Bottom Status Bar (y = +185.0): CALENDAR • EVENTS
+            // Bottom Status Bar (y = +185.0): CALENDAR • EVENTS - maximum visibility
             let bot_y = 185.0;
             let p_add_bar = local_p - vec2<f32>(0.0, bot_y);
             let d_add_bar = rr_sdf(p_add_bar, vec2<f32>(156.0, 17.0), 17.0);
-            mask_add_fill = max(mask_add_fill, (1.0 - smoothstep(-0.4, 0.4, d_add_bar)) * mix(0.12, 0.08, is_light) * agenda_view_weight);
-            mask_add_rim = max(mask_add_rim, smoothstep(1.1, 0.0, abs(d_add_bar)) * mix(0.35, 0.22, is_light) * agenda_view_weight);
+            mask_add_fill = max(mask_add_fill, (1.0 - smoothstep(-0.4, 0.4, d_add_bar)) * mix(0.18, 0.15, is_light) * agenda_view_weight);
+            mask_add_rim = max(mask_add_rim, smoothstep(1.1, 0.0, abs(d_add_bar)) * mix(0.45, 0.35, is_light) * agenda_view_weight);
         }
 
         // ════════════════════════════════════════════
@@ -1545,6 +1552,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     // CLEAN GEOMETRIC CONTOUR (ZERO SQUARE SHADOW BOX)
     // ════════════════════════════════════════════
+    // Convert surface-space UV (from vertex shader) to local bounds-relative coordinates
+    let local_uv = vec2<f32>(
+        (uv.x - params.bounds.x) / params.bounds.z,
+        (uv.y - params.bounds.y) / params.bounds.w
+    );
+    
     let bounds_px = vec4<f32>(
         params.bounds.x * params.surface_size.x,
         params.bounds.y * params.surface_size.y,
@@ -1594,17 +1607,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let N_2d = N.xy;
 
     // ════════════════════════════════════════════
-    // 3. PHYSICAL 3D SNELL'S LAW REFRACTION & SPECTRAL CHROMATIC DISPERSION
+    // 3. PHYSICAL 3D SNELL'S LAW REFRACTION & CAUCHY SPECTRAL DISPERSION
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
 
-    // Physical lens refraction: stronger optical deflection matching media control capsule reference
-    let refr_dist = bevel_w * 0.85 * params.refraction_strength * sin_th;
+    // Physical lens displacement: strong optical ray bending near the curved bevel
+    let refr_dist = bevel_w * 1.10 * params.refraction_strength * sin_th;
     let refr_ray = -grad_2d * refr_dist * px_to_uv;
 
-    // Enhanced sub-pixel chromatic dispersion (visible edge aberration matching Jack White player reference)
-    let disp_val = select(params.dispersion, 0.035, params.padding2.x >= 25.5 && params.padding2.x <= 26.5);
-    let ca_dist = min(disp_val * 14.0 * edge_curv, refr_dist * 0.48);
+    // Cauchy chromatic dispersion: color splitting (R/G/B channel offset) strictly at curved edges
+    let disp_factor = max(params.dispersion, 0.032);
+    let ca_dist = disp_factor * 22.0 * edge_curv * sin_th;
     let ca_offset = -grad_2d * ca_dist * px_to_uv;
 
     let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1612,9 +1625,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv_b = clamp(uv + refr_ray + ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
 
     // ════════════════════════════════════════════
-    // 4. TRUE PHYSICAL LIQUID GLASS TRANSMISSION (CRYSTAL RIM -> SILKY BULK)
+    // 4. TRUE PHYSICAL LIQUID GLASS TRANSMISSION
     // ════════════════════════════════════════════
-    // Sharp crystal refraction sample at the outer meniscus rim
+    // Pure optical refraction sampled across separated RGB channels
     let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
     let sharp_g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
     let sharp_b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
@@ -1624,62 +1637,73 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if params.blur_radius <= 0.5 {
         col = sharp_col;
     } else {
-        // Physical liquid glass: crystal clear outer rim, smoothly transitioning into frosted interior (two spheres mockup reference)
-        let frost_transition = smoothstep(bevel_w * 0.40, bevel_w * 1.05, inside);
+        // Crystal-clear outer meniscus bevel, softly transitioning into silky interior
+        let frost_transition = smoothstep(bevel_w * 0.45, bevel_w * 1.05, inside);
         let local_blur = params.blur_radius * frost_transition;
         let frosted_col = sample_frost_blur(uv_g, local_blur);
-        col = mix(sharp_col, frosted_col, frost_transition);
+        col = mix(sharp_col, frosted_col, frost_transition * 0.82);
     }
 
     // Card-wide uniform light/dark appearance mode passed from CPU crop analysis
-    let is_light = select(smoothstep(0.48, 0.58, dot(col, vec3<f32>(0.299, 0.587, 0.114))), params.tint.w, params.tint.w >= 0.0);
+    let is_light = params.is_light;
     let bg_luma = dot(col, vec3<f32>(0.299, 0.587, 0.114));
 
-    // Apple Vibrancy: boost saturation so underlying colors glow richly through frosted glass
-    let sat_col = mix(vec3<f32>(bg_luma), col, 1.30);
+    // Apple Vibrancy: boost saturation so underlying colors glow richly through liquid glass
+    let sat_col = mix(vec3<f32>(bg_luma), col, 1.25);
     col = sat_col;
 
-    // Apple macOS Sequoia & visionOS Material Substrate:
-    // Pure, luminous, uniform translucent glass with bright, airy lighting
-    let light_substrate = mix(col, vec3<f32>(0.99, 0.995, 1.0), 0.08);
-    let dark_substrate = mix(col, vec3<f32>(0.12, 0.14, 0.18), 0.15);
+    // Translucent glass substrate (subtle physical luminance, not flat white/black paint)
+    let light_substrate = mix(col, vec3<f32>(0.99, 0.995, 1.0), 0.06);
+    let dark_substrate = mix(col, vec3<f32>(0.12, 0.14, 0.18), 0.12);
     col = mix(dark_substrate, light_substrate, is_light);
 
-    // Optional custom tint absorption (e.g. blue tint in music card or lavender tint)
+    // Optional custom tint absorption (Beer-Lambert attenuation)
     if length(params.tint.xyz) > 0.01 {
-        let tint_absorb = mix(vec3<f32>(1.0), params.tint.xyz, 0.40);
+        let tint_absorb = mix(vec3<f32>(1.0), params.tint.xyz, 0.35);
         col *= tint_absorb;
     }
 
     // ════════════════════════════════════════════
-    // 5. 3D DIRECTIONAL LIQUID SPECULAR & BLINN-PHONG GLOSS
+    // 5. VOLUMETRIC INNER SHADOW (BOTTOM-RIGHT EXTINCTION)
     // ════════════════════════════════════════════
-    let top_facing = max(-grad_2d.y, 0.0);
-    let left_facing = max(-grad_2d.x, 0.0);
-    let bot_facing = max(grad_2d.y, 0.0);
+    // Opposite to the top-left virtual light source, the bottom and right curved edges
+    // occlude direct light, producing grounded, thick physical acrylic / resin volume.
+    let shadow_dir = normalize(vec2<f32>(0.50, 0.72));
+    let shadow_facing = max(dot(grad_2d, shadow_dir), 0.0);
+    let inner_shadow = pow(shadow_facing, 1.5) * pow(edge, 1.2) * mix(0.42, 0.28, is_light);
+    col *= (1.0 - inner_shadow);
 
-    // 3D Directional Key Light from Top-Left (-0.35, -0.75, 0.55) - dramatic top-edge lighting
-    let L = normalize(vec3<f32>(-0.35, -0.75, 0.55));
-    let H = normalize(L + vec3<f32>(0.0, 0.0, 1.0));
-    let gloss_spec = pow(max(dot(N, H), 0.0), 36.0) * pow(edge, 1.5) * 1.02 * params.specular_strength;
+    // ════════════════════════════════════════════
+    // 6. SCHLICK FRESNEL TERM (VIEWING ANGLE REFLECTION)
+    // ════════════════════════════════════════════
+    // Center is highly transparent (N.z ~ 1.0); curved edges become denser & reflective
+    let cos_theta = max(N.z, 0.0);
+    let F0 = 0.045; // Refractive index of crown glass / acrylic resin (n = 1.52)
+    let fresnel = F0 + (1.0 - F0) * pow(1.0 - cos_theta, 4.0);
+    let fresnel_gleam = vec3<f32>(0.98, 0.99, 1.0) * (fresnel * pow(edge, 1.2) * 0.70 * params.fresnel_strength);
+    col += fresnel_gleam;
 
-    // 1. Razor-thin outer 1.8px specular crest (Top & Top-Left arc) - dramatic, razor-sharp
-    let hairline = smoothstep(1.8, 0.2, inside);
-    let top_spec = hairline * (pow(top_facing, 1.6) * 1.45 + left_facing * 0.55) * params.specular_strength;
+    // ════════════════════════════════════════════
+    // 7. DIRECTIONAL SPECULAR HIGHLIGHTS (TOP-LEFT VIRTUAL LIGHT)
+    // ════════════════════════════════════════════
+    // Virtual key light from top-left: direction (-0.45, -0.68, 0.58)
+    let L = normalize(vec3<f32>(-0.45, -0.68, 0.58));
+    let V = vec3<f32>(0.0, 0.0, 1.0);
+    let R = reflect(-L, N);
+    let R_dot_V = max(dot(R, V), 0.0);
 
-    // 2. Ambient Fresnel Silhouette Sheen along the curved meniscus (mobile music cards reference)
-    let fresnel_edge = pow(1.0 - cos_th, 3.5) * edge_curv * 0.35 * params.fresnel_strength;
+    // Sharp concentrated specular streak along the curved lip
+    let sharp_spec = pow(R_dot_V, 52.0) * pow(edge, 1.2) * 1.90 * params.specular_strength;
+    // Broad glossy sheen
+    let broad_spec = pow(R_dot_V, 14.0) * pow(edge, 1.5) * 0.50 * params.specular_strength;
 
-    // 3. Bottom bounce reflection (gives bottom edge translucent glassy depth)
-    let L_bounce = normalize(vec3<f32>(0.0, 0.85, 0.50));
-    let bot_bounce = pow(max(dot(N, L_bounce), 0.0), 16.0) * bot_facing * edge_curv * 0.22;
+    // Razor-sharp 1.5px outer specular crest on the top & left arc
+    let top_left_dir = normalize(vec2<f32>(-0.45, -0.68));
+    let top_left_facing = max(dot(-grad_2d, top_left_dir), 0.0);
+    let hairline = smoothstep(1.5, 0.2, inside);
+    let crest_spec = hairline * pow(top_left_facing, 1.4) * 1.75 * params.specular_strength;
 
-    // Master specular composition: pure, authentic liquid glass gloss
-    col += vec3<f32>(top_spec + gloss_spec + fresnel_edge + bot_bounce);
-
-    // Soft ambient glow for ethereal appearance (mobile music cards reference)
-    let soft_glow = edge_curv * 0.08 * (1.0 - is_light * 0.4);
-    col += vec3<f32>(soft_glow);
+    col += vec3<f32>(sharp_spec + broad_spec + crest_spec);
 
     var side_bevel_flare = 0.0;
     var side_rim_flare = 0.0;
@@ -1704,7 +1728,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     // 9. CONTROLS, FLUID EMISSION & GLYPHS
     // ════════════════════════════════════════════
-    let app = render_element_appearance(local_px, half_size, params.padding2.x, params.padding2.y, params.time, params.tint, is_light);
+    let app = render_element_appearance(local_px, half_size, params.padding, params.tint.y, params.time, params.tint, is_light);
 
     // ════════════════════════════════════════════
     // 10. MASTER COMPOSITE
