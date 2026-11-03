@@ -1687,15 +1687,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let t = clamp(inside / bevel_w, 0.0, 1.0); // 0 at outer edge, 1 at interior flat face
     let edge = 1.0 - t; // 1 at outer edge, 0 at interior flat face
 
+    // Smooth sigmoidal cubic meniscus profile (natural fluid meniscus roll-off)
+    let edge_curv = edge * edge * (3.0 - 2.0 * edge);
+
     // Exact analytical 2D outward unit normal of the rounded rectangle
-    let eps_sdf = 0.5;
+    let eps_sdf = 0.75;
     let d_dx = rr_sdf(local_px + vec2<f32>(eps_sdf, 0.0), half_size, r) - rr_sdf(local_px - vec2<f32>(eps_sdf, 0.0), half_size, r);
     let d_dy = rr_sdf(local_px + vec2<f32>(0.0, eps_sdf), half_size, r) - rr_sdf(local_px - vec2<f32>(0.0, eps_sdf), half_size, r);
-    let grad_2d = normalize(vec2<f32>(d_dx, d_dy));
+    let g_len = length(vec2<f32>(d_dx, d_dy));
+    let grad_2d = select(vec2<f32>(0.0, -1.0), vec2<f32>(d_dx, d_dy) / g_len, g_len > 0.0001);
 
     // Continuous 3D surface normal: curved water-droplet meniscus profile
-    // theta is the angle between surface normal and +Z axis (0 at flat face, ~pi/2 at crest)
-    let theta = edge * 1.5707963;
+    let theta = edge_curv * 1.5707963;
     let sin_th = sin(theta);
     let cos_th = cos(theta);
     let N = normalize(vec3<f32>(grad_2d * sin_th, cos_th));
@@ -1707,7 +1710,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
 
     // Physical Snell's law refraction vector through thick optical glass
-    let ior_base = max(params.ior, 1.45);
+    let ior_base = max(params.ior, 1.48);
     let eta = 1.0 / ior_base;
     let cos_i = clamp(N.z, 0.0, 1.0);
     let sin2_t = eta * eta * (1.0 - cos_i * cos_i);
@@ -1716,12 +1719,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let refr_dir_xy = -grad_2d * sin_th * refr_factor;
 
     // Magnification & optical displacement across glass slab thickness
-    let glass_thickness = bevel_w * 2.2 * params.refraction_strength;
+    let glass_thickness = bevel_w * 2.4 * params.refraction_strength;
     let refr_ray = refr_dir_xy * glass_thickness * px_to_uv;
 
     // Cauchy spectral dispersion: red refracts less, blue refracts more
     let disp_val = select(params.dispersion, 0.022, params.padding2.x >= 25.5 && params.padding2.x <= 26.5);
-    let ca_amount = disp_val * 80.0 * pow(edge, 1.3);
+    let ca_amount = disp_val * 75.0 * edge_curv;
     let ca_offset = -grad_2d * ca_amount * px_to_uv;
 
     let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1731,9 +1734,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     // 4. CLEAR CRYSTAL MENISCUS TO SILKY FROST TRANSITION
     // ════════════════════════════════════════════
-    // Outer curved meniscus (inside < bevel_w * 0.50) is 100% CRYSTAL CLEAR refractive glass!
+    // Outer curved meniscus (inside < bevel_w * 0.45) is 100% CRYSTAL CLEAR refractive glass!
     // Interior flat body smoothly transitions into silky translucent frosted diffusion.
-    let frost = smoothstep(bevel_w * 0.50, bevel_w * 1.0, inside);
+    let frost = smoothstep(bevel_w * 0.45, bevel_w * 0.95, inside);
     let local_blur = params.blur_radius * frost;
 
     // Outer crystal rim sample with spectral chromatic separation
@@ -1761,7 +1764,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Apple macOS Sequoia & visionOS Material Substrate:
     // Outer crystal meniscus stays transparent; interior body receives clean, luminous substrate
     let light_substrate = mix(col, vec3<f32>(0.97, 0.98, 1.0), 0.32 * frost);
-    let dark_substrate = mix(col, vec3<f32>(0.08, 0.10, 0.15), 0.58 * frost);
+    let dark_substrate = mix(col, vec3<f32>(0.07, 0.09, 0.14), 0.60 * frost);
     col = mix(dark_substrate, light_substrate, is_light);
 
     // Optional custom tint absorption (e.g. blue tint in music card or lavender tint)
@@ -1780,7 +1783,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 3D Directional Key Light from Top-Left (-0.35, -0.75, 0.55)
     let L = normalize(vec3<f32>(-0.35, -0.75, 0.55));
     let H = normalize(L + vec3<f32>(0.0, 0.0, 1.0));
-    let gloss_spec = pow(max(dot(N, H), 0.0), 28.0) * edge * 1.10 * params.specular_strength;
+    let gloss_spec = pow(max(dot(N, H), 0.0), 32.0) * edge_curv * 1.15 * params.specular_strength;
 
     // 1. Outer 1.2px razor crest specular highlight (Top & Top-Left arc)
     let hairline = smoothstep(1.5, 0.1, inside);
@@ -1791,11 +1794,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let inner_spec = inner_line * pow(top_facing, 1.8) * 0.45 * params.specular_strength;
 
     // 3. Ambient Fresnel Silhouette Sheen (Icy glass perimeter reflection)
-    let fresnel_edge = pow(1.0 - cos_th, 3.5) * edge * 0.35 * params.fresnel_strength;
+    let fresnel_edge = pow(1.0 - cos_th, 3.5) * edge_curv * 0.35 * params.fresnel_strength;
 
     // 4. Bottom bounce reflection (gives bottom edge translucent glassy depth)
     let L_bounce = normalize(vec3<f32>(0.0, 0.85, 0.50));
-    let bot_bounce = pow(max(dot(N, L_bounce), 0.0), 16.0) * bot_facing * edge * 0.30;
+    let bot_bounce = pow(max(dot(N, L_bounce), 0.0), 16.0) * bot_facing * edge_curv * 0.30;
 
     // 5. Bottom edge contact occlusion (grounds the card, subtle ambient shadow)
     let bot_occlusion = hairline * bot_facing * 0.25;

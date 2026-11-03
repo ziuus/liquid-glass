@@ -1,11 +1,13 @@
-//! High-craft Quicksand font rendering engine for Liquid Glass UI overlays.
+//! High-craft Inter font rendering engine for Liquid Glass UI overlays.
+//!
+//! Provides clean, professional, neo-grotesque typography matching Apple SF Pro.
 
 use ab_glyph::{point, Font, FontRef, PxScale, ScaleFont};
 
-const FONT_BOLD: &[u8] = include_bytes!("../../../assets/fonts/Quicksand-Bold.ttf");
-const FONT_SEMIBOLD: &[u8] = include_bytes!("../../../assets/fonts/Quicksand-SemiBold.ttf");
-const FONT_MEDIUM: &[u8] = include_bytes!("../../../assets/fonts/Quicksand-Medium.ttf");
-const FONT_REGULAR: &[u8] = include_bytes!("../../../assets/fonts/Quicksand-Regular.ttf");
+const FONT_BOLD: &[u8] = include_bytes!("../../../assets/fonts/Inter-Bold.ttf");
+const FONT_SEMIBOLD: &[u8] = include_bytes!("../../../assets/fonts/Inter-SemiBold.ttf");
+const FONT_MEDIUM: &[u8] = include_bytes!("../../../assets/fonts/Inter-Medium.ttf");
+const FONT_REGULAR: &[u8] = include_bytes!("../../../assets/fonts/Inter-Regular.ttf");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FontWeight {
@@ -15,27 +17,29 @@ pub enum FontWeight {
     Regular,
 }
 
-pub struct QuicksandFont {
+pub struct UIFont {
     bold: FontRef<'static>,
     semibold: FontRef<'static>,
     medium: FontRef<'static>,
     regular: FontRef<'static>,
 }
 
-impl Default for QuicksandFont {
+/// Backward compatibility alias for QuicksandFont.
+pub type QuicksandFont = UIFont;
+
+impl Default for UIFont {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl QuicksandFont {
+impl UIFont {
     pub fn new() -> Self {
         Self {
-            bold: FontRef::try_from_slice(FONT_BOLD).expect("Valid Quicksand-Bold font"),
-            semibold: FontRef::try_from_slice(FONT_SEMIBOLD)
-                .expect("Valid Quicksand-SemiBold font"),
-            medium: FontRef::try_from_slice(FONT_MEDIUM).expect("Valid Quicksand-Medium font"),
-            regular: FontRef::try_from_slice(FONT_REGULAR).expect("Valid Quicksand-Regular font"),
+            bold: FontRef::try_from_slice(FONT_BOLD).expect("Valid Inter-Bold font"),
+            semibold: FontRef::try_from_slice(FONT_SEMIBOLD).expect("Valid Inter-SemiBold font"),
+            medium: FontRef::try_from_slice(FONT_MEDIUM).expect("Valid Inter-Medium font"),
+            regular: FontRef::try_from_slice(FONT_REGULAR).expect("Valid Inter-Regular font"),
         }
     }
 
