@@ -1611,13 +1611,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
 
-    // Physical lens displacement: strong optical ray bending near the curved bevel
-    let refr_dist = bevel_w * 1.10 * params.refraction_strength * sin_th;
+    // Physical lens displacement: subtle, natural optical ray deflection along the curved meniscus
+    let refr_dist = bevel_w * 0.45 * params.refraction_strength * sin_th;
     let refr_ray = -grad_2d * refr_dist * px_to_uv;
 
-    // Cauchy chromatic dispersion: color splitting (R/G/B channel offset) strictly at curved edges
-    let disp_factor = max(params.dispersion, 0.032);
-    let ca_dist = disp_factor * 22.0 * edge_curv * sin_th;
+    // Cauchy chromatic dispersion: subtle edge color splitting strictly at curved perimeter
+    let ca_dist = params.dispersion * 8.0 * edge_curv * sin_th;
     let ca_offset = -grad_2d * ca_dist * px_to_uv;
 
     let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));

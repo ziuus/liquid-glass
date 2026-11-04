@@ -406,15 +406,15 @@ impl AppData {
         // Apple macOS Sequoia Typography: Deep Obsidian Slate on Light Mode, Pure Crisp White on Dark Mode
         let (col_primary, col_secondary, col_shadow) = if self.is_wallpaper_light {
             (
-                [10, 14, 22, 255],    // Deep obsidian ink (WCAG AAA 18:1 contrast)
-                [26, 34, 46, 255],    // High-contrast secondary slate (100% visible)
-                [255, 255, 255, 110], // Subtle 1px ambient bottom lift
+                [0, 0, 0, 255], // Pure black primary text
+                [0, 0, 0, 255], // Pure black secondary text & icons
+                [0, 0, 0, 0],   // Zero shadow, zero halo, 100% clean
             )
         } else {
             (
                 [255, 255, 255, 255],
-                [225, 232, 245, 230],
-                [10, 14, 22, 140],
+                [255, 255, 255, 255],
+                [0, 0, 0, 0], // Clean text without drop shadow
             )
         };
 
@@ -582,15 +582,15 @@ impl AppData {
                 .material(Material::LiquidGlass)
                 .shape(Shape::RoundedRectangle { radius: 28.0 })
                 .bounds(0.0, 0.0, 1.0, 1.0)
-                .curvature(0.035)
-                .bevel(12.0)
-                .refraction(0.35)
-                .dispersion(0.015)
-                .blur(8.0)
+                .curvature(0.02)
+                .bevel(10.0)
+                .refraction(0.20)
+                .dispersion(0.010)
+                .blur(6.0)
                 .tint(0.0, 0.0, 0.0, is_light_f32)
                 .roughness(self.battery_level)
-                .specular(0.65)
-                .fresnel(0.40)
+                .specular(0.50)
+                .fresnel(0.30)
                 .element_type(25.0)
                 .deformation(date_val)
                 .pointer_pos(px, py);
