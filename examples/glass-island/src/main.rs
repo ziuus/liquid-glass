@@ -30,6 +30,7 @@ use smithay_client_toolkit::{
 use std::fs::OpenOptions;
 use std::io::Read;
 use std::os::fd::{AsFd, AsRawFd};
+use std::process::Command;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -135,6 +136,7 @@ pub struct AppData {
     wallpaper_mgr: WallpaperManager,
     primary_output: Option<wl_output::WlOutput>,
     is_wallpaper_light: bool,
+    last_desktop_grab: Instant,
 }
 
 struct WaylandWindow {
@@ -159,6 +161,34 @@ impl HasDisplayHandle for WaylandWindow {
         let raw = WaylandDisplayHandle::new(std::ptr::NonNull::new(self.display).unwrap());
         unsafe { Ok(DisplayHandle::borrow_raw(RawDisplayHandle::Wayland(raw))) }
     }
+}
+
+fn capture_desktop_under_island(x: i32, y: i32, width: u32, height: u32) -> Option<Vec<u8>> {
+    let geom = format!("{},{} {}x{}", x, y, width, height);
+    let output = Command::new("grim")
+        .args(["-g", &geom, "-t", "ppm", "-"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let data = output.stdout;
+    let header_marker = b"255\n";
+    let pos = data.windows(4).position(|w| w == header_marker)?;
+    let raw_rgb = &data[pos + 4..];
+    let expected_rgb_len = (width * height * 3) as usize;
+    if raw_rgb.len() < expected_rgb_len {
+        return None;
+    }
+
+    let mut rgba = Vec::with_capacity((width * height * 4) as usize);
+    for chunk in raw_rgb[..expected_rgb_len].as_chunks::<3>().0 {
+        rgba.push(chunk[0]);
+        rgba.push(chunk[1]);
+        rgba.push(chunk[2]);
+        rgba.push(255);
+    }
+    Some(rgba)
 }
 
 impl AppData {
@@ -226,7 +256,7 @@ impl AppData {
     }
 
     fn update_physics(&mut self, dt: f32) -> bool {
-        let spring_k = 320.0f32; // snappy Apple spring
+        let spring_k = 320.0f32;
         let damping = 26.0f32;
 
         let force_w = -spring_k * (self.current_w - self.target_w) - damping * self.vel_w;
@@ -272,7 +302,7 @@ impl AppData {
             }
         }
 
-        // Advance simulated / live music
+        // Advance live/simulated music playback
         if self.music.is_playing {
             self.music.elapsed_sec += dt;
             if self.music.elapsed_sec >= self.music.duration_sec {
@@ -292,15 +322,12 @@ impl AppData {
         self.last_music_poll = Instant::now();
 
         // Query playerctl if available
-        if let Ok(out) = std::process::Command::new("playerctl")
-            .args(["status"])
-            .output()
-        {
+        if let Ok(out) = Command::new("playerctl").args(["status"]).output() {
             if out.status.success() {
                 let status_str = String::from_utf8_lossy(&out.stdout).trim().to_lowercase();
                 self.music.is_playing = status_str.contains("playing");
 
-                if let Ok(meta_out) = std::process::Command::new("playerctl")
+                if let Ok(meta_out) = Command::new("playerctl")
                     .args([
                         "metadata",
                         "--format",
@@ -330,7 +357,24 @@ impl AppData {
         }
     }
 
-    fn check_wallpaper(&mut self) {
+    fn check_desktop_backdrop(&mut self) {
+        // Sample real desktop surface under the island every 800ms (or on demand)
+        // so if there is a dark code editor or browser underneath, it refracts THAT window,
+        // eliminating the double-transparent wallpaper bug permanently!
+        if self.last_desktop_grab.elapsed() > Duration::from_millis(800) {
+            self.last_desktop_grab = Instant::now();
+            if let Some(desktop_rgba) =
+                capture_desktop_under_island(self.pos_x, self.pos_y, self.width, self.height)
+            {
+                self.is_wallpaper_light = is_buffer_light(&desktop_rgba);
+                if let Some(r) = &mut self.renderer {
+                    r.update_background(self.width, self.height, &desktop_rgba);
+                }
+                return;
+            }
+        }
+
+        // Fallback to wallpaper update if grim fails
         if self.wallpaper_mgr.check_update() {
             if let (Some(cache), Some(renderer)) =
                 (self.wallpaper_mgr.cached_buffer(), &mut self.renderer)
@@ -367,8 +411,8 @@ impl AppData {
         } else {
             [180, 190, 210, 220]
         };
-        let col_accent = [90, 155, 255, 255]; // Electric cobalt blue
-        let col_green = [70, 215, 120, 255]; // Spotify/Dynamic green
+        let col_accent = [90, 155, 255, 255];
+        let col_green = [70, 215, 120, 255];
         let col_shadow = [0, 0, 0, 0];
 
         let island_cx = (self.width as f32) * 0.5;
@@ -379,7 +423,7 @@ impl AppData {
 
         match self.mode {
             IslandMode::CompactPill => {
-                // Left: Rotating Vinyl / Disc icon or Music Note
+                // Left: Rotating Vinyl Disc icon with pulsing glow when playing
                 let disc_cx = island_cx - island_w * 0.5 + 24.0;
                 UIFont::draw_rounded_rect_fill(
                     buf,
@@ -396,7 +440,6 @@ impl AppData {
                         col_dim
                     },
                 );
-                // Center music note / wave
                 self.font.draw_text_centered(
                     buf,
                     self.width,
@@ -410,7 +453,7 @@ impl AppData {
                     FontWeight::Bold,
                 );
 
-                // Center: Track Title or "Liquid Glass"
+                // Center: Track Title
                 let title = if self.music.title.len() > 14 {
                     format!("{}...", &self.music.title[..12])
                 } else {
@@ -452,7 +495,7 @@ impl AppData {
                 }
             }
             IslandMode::MusicExpanded => {
-                // Header: App badge
+                // Header: NOW PLAYING
                 let header_y = island_top + 22.0;
                 self.font.draw_text(
                     buf,
@@ -467,7 +510,7 @@ impl AppData {
                 );
 
                 // Vinyl Album Disc
-                let disc_cx = island_cx - island_w * 0.5 + 48.0;
+                let disc_cx = island_cx - island_w * 0.5 + 50.0;
                 let disc_cy = island_top + 68.0;
                 UIFont::draw_rounded_rect_fill(
                     buf,
@@ -475,9 +518,9 @@ impl AppData {
                     self.height,
                     disc_cx,
                     disc_cy,
-                    48.0,
-                    48.0,
-                    24.0,
+                    46.0,
+                    46.0,
+                    23.0,
                     if is_light {
                         [25, 30, 42, 255]
                     } else {
@@ -498,9 +541,9 @@ impl AppData {
                 );
 
                 // Track details
-                let title_x = island_cx - island_w * 0.5 + 86.0;
-                let title = if self.music.title.len() > 22 {
-                    format!("{}...", &self.music.title[..20])
+                let title_x = island_cx - island_w * 0.5 + 88.0;
+                let title = if self.music.title.len() > 20 {
+                    format!("{}...", &self.music.title[..18])
                 } else {
                     self.music.title.clone()
                 };
@@ -740,7 +783,7 @@ impl AppData {
                     let cx = start_x + (idx as f32) * item_w;
                     let cy = island_top + 62.0;
 
-                    // Hover/app container pill
+                    // Container pill
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
@@ -790,13 +833,12 @@ impl AppData {
     fn draw(&mut self) -> bool {
         self.check_ipc();
         self.check_music();
-        self.check_wallpaper();
+        self.check_desktop_backdrop();
 
         self.render_ui_overlay();
 
         if let Some(renderer) = &mut self.renderer {
             if self.current_alpha <= 0.01 {
-                // Clear render if invisible
                 let spec: [f32; 4] = [0.5, 0.0, 0.01, 0.01];
                 let island = GlassSurface::new()
                     .material(Material::LiquidGlass)
@@ -816,7 +858,7 @@ impl AppData {
 
             let is_light = if self.is_wallpaper_light { 1.0 } else { 0.0 };
 
-            // Authentic Liquid Glass with corner Snell refraction and thin specular line
+            // Pure Liquid Glass with element_type = 25.0 (Clean canvas with zero hardcoded shader overlaps)
             let island = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
@@ -834,7 +876,7 @@ impl AppData {
                     self.current_alpha,
                     is_light,
                 )
-                .element_type(35.0)
+                .element_type(25.0)
                 .pointer_pos(self.cursor_pos[0], self.cursor_pos[1]);
 
             let _ = renderer.render(&[island]);
@@ -861,11 +903,9 @@ impl AppData {
 
         match self.mode {
             IslandMode::CompactPill => {
-                // Expanding on click
                 self.set_mode(IslandMode::MusicExpanded);
             }
             IslandMode::MusicExpanded => {
-                // Check transport clicks
                 let ctrl_y = island_top + 68.0;
                 let play_cx = island_cx + island_w * 0.5 - 64.0;
                 let prev_cx = play_cx - 44.0;
@@ -876,41 +916,31 @@ impl AppData {
                 let d_next = ((lx - next_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt();
 
                 if d_play <= 22.0 {
-                    let _ = std::process::Command::new("playerctl")
-                        .args(["play-pause"])
-                        .spawn();
+                    let _ = Command::new("playerctl").args(["play-pause"]).spawn();
                     self.music.is_playing = !self.music.is_playing;
                 } else if d_prev <= 20.0 {
-                    let _ = std::process::Command::new("playerctl")
-                        .args(["previous"])
-                        .spawn();
+                    let _ = Command::new("playerctl").args(["previous"]).spawn();
                 } else if d_next <= 20.0 {
-                    let _ = std::process::Command::new("playerctl")
-                        .args(["next"])
-                        .spawn();
+                    let _ = Command::new("playerctl").args(["next"]).spawn();
                 } else if ly > island_top + 80.0 {
-                    // Click on progress bar -> seek
                     let bar_w = island_w - 64.0;
                     let bar_left = island_cx - bar_w * 0.5;
                     let ratio = ((lx - bar_left) / bar_w).clamp(0.0, 1.0);
                     self.music.progress = ratio;
                     self.music.elapsed_sec = ratio * self.music.duration_sec;
                     let pos_str = format!("{:.1}", self.music.elapsed_sec);
-                    let _ = std::process::Command::new("playerctl")
+                    let _ = Command::new("playerctl")
                         .args(["position", &pos_str])
                         .spawn();
                 } else if lx < island_cx - island_w * 0.5 + 80.0 {
-                    // Tap left edge to shrink back
                     self.set_mode(IslandMode::CompactPill);
                 }
             }
             IslandMode::Notification => {
-                // Clicking notification dismisses or opens app
                 self.active_notif = None;
                 self.set_mode(IslandMode::CompactPill);
             }
             IslandMode::QuickAccess => {
-                // Check app launches
                 let apps = [
                     ("foot", "Terminal"),
                     ("brave", "Browser"),
@@ -925,7 +955,7 @@ impl AppData {
                     let cx = start_x + (idx as f32) * item_w;
                     let cy = island_top + 62.0;
                     if (lx - cx).abs() <= item_w * 0.45 && (ly - cy).abs() <= 25.0 {
-                        let _ = std::process::Command::new(cmd).spawn();
+                        let _ = Command::new(cmd).spawn();
                         self.set_mode(IslandMode::CompactPill);
                         break;
                     }
@@ -1037,7 +1067,12 @@ impl LayerShellHandler for AppData {
                     pollster::block_on(GlassRenderer::new(window.clone(), self.width, self.height))
                         .expect("Failed to initialize GlassRenderer for Dynamic Island");
 
-                if let Some(cache) = self.wallpaper_mgr.cached_buffer() {
+                if let Some(desktop_rgba) =
+                    capture_desktop_under_island(self.pos_x, self.pos_y, self.width, self.height)
+                {
+                    self.is_wallpaper_light = is_buffer_light(&desktop_rgba);
+                    renderer.update_background(self.width, self.height, &desktop_rgba);
+                } else if let Some(cache) = self.wallpaper_mgr.cached_buffer() {
                     let crop = WallpaperManager::get_wallpaper_crop(
                         cache,
                         self.pos_x as u32,
@@ -1258,10 +1293,7 @@ try:
 except Exception:
     pass
 "#;
-        let child = std::process::Command::new("python3")
-            .arg("-c")
-            .arg(script)
-            .spawn();
+        let child = Command::new("python3").arg("-c").arg(script).spawn();
         if let Ok(mut c) = child {
             let _ = c.wait();
         }
@@ -1358,6 +1390,7 @@ fn main() {
         wallpaper_mgr,
         primary_output: None,
         is_wallpaper_light: false,
+        last_desktop_grab: Instant::now() - Duration::from_secs(10),
     };
 
     let surface = app_data.compositor_state.create_surface(&qh);
