@@ -1593,50 +1593,49 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     
     // ════════════════════════════════════════════
-    // 2. TRUE SOLID VOLUME LIQUID DOME PROFILE
+    // 2. ANALYTIC CONVEX SQUIRCLE BEZEL & 3D NORMAL
     // ════════════════════════════════════════════
-    let inside = max(-sdf, 0.0);
+    let depth = max(-sdf, 0.0);
+    let bezel = clamp(params.bevel, 16.0, 28.0); // Liquid edge thickness
+    let t = clamp(depth / bezel, 0.0, 1.0);      // 0.0 at outer rim, 1.0 at flat interior
+    let u = 1.0 - t;
 
-    // Meniscus roll-off width (outer lip curvature)
-    let bevel_w = clamp(params.bevel, 14.0, 26.0);
+    // Height profile: convex liquid squircle curve (0.0 at rim -> 1.0 at flat interior)
+    let h = sqrt(max(1.0 - u * u, 0.0));
 
-    // Exact analytical gradient of a blurred solid filled plateau:
-    // Gaussian falloff centered at the outer boundary, strictly monotonic decay into the center.
-    // 100% flat (slope = 0.0) across the entire solid interior — zero hollow trough, zero inner ridge.
-    let sigma = bevel_w * 0.42;
-    let dist_norm = inside / sigma;
-    let edge_slope = exp(-0.5 * dist_norm * dist_norm) * smoothstep(bevel_w, bevel_w - 3.0, inside);
-
-    // Sub-pixel lip fade at extreme outer perimeter (prevents hard clipping wall)
-    let lip_fade = smoothstep(0.0, 2.0, inside);
+    // Analytic slope: dh/d(depth) = u / (bezel * sqrt(1.0 - u^2))
+    // Strictly zero at t = 1.0 (flat interior), physically bounded contact angle at rim
+    let dh_dt = u / max(sqrt(1.0 - u * u), 0.28);
+    let slope = dh_dt / bezel;
 
     // Exact analytical 2D outward unit normal of rounded rectangle
     let grad_2d = rr_normal(local_px, half_size, r);
 
-    // 3D Surface Normal from solid blurred dome:
-    // Surface scale controls steepness of outer liquid lip; strictly (0, 0, 1) in center
-    let surface_scale = 1.35;
-    let N = normalize(vec3<f32>(grad_2d * (edge_slope * surface_scale), 1.0));
+    // 3D Surface Normal from convex liquid bubble:
+    // Strictly (0, 0, 1) in the flat interior, outward tilt along curved rim
+    let N = normalize(vec3<f32>(grad_2d * (slope * 22.0), 1.0));
     let N_2d = N.xy;
 
     // ════════════════════════════════════════════
     // 3. PHYSICAL 3D SNELL'S LAW REFRACTION & CAUCHY DISPERSION
     // ════════════════════════════════════════════
+    // Refract incoming eye ray (0, 0, -1) through surface normal N with acrylic index n = 1.52
+    let eta = 1.0 / 1.52;
+    let R = refract(vec3<f32>(0.0, 0.0, -1.0), N, eta);
+
+    // Physical background offset: (R.xy / -R.z) * thickness * h
+    // 0 at contact line (zero thickness), peaks along curved rim, 0 in flat center
+    let thickness_px = 16.0;
+    let offset_px = (R.xy / max(-R.z, 0.001)) * (thickness_px * h);
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
+    let base_uv = uv + offset_px * px_to_uv;
 
-    // Physical lens displacement: Thickness * tan(theta)
-    // Pure transmissive optical lensing (gentle 2.5-3.0px deflection preserves background clarity)
-    let refr_profile = smoothstep(0.0, 8.0, inside) * edge_slope;
-    let refr_px = bevel_w * 0.22 * params.refraction_strength * refr_profile;
-    let refr_ray = -N_2d * refr_px * px_to_uv;
+    // Cauchy chromatic dispersion along optical ray
+    let ca_offset = R.xy * (params.dispersion * 12.0 * px_to_uv);
 
-    // Cauchy chromatic dispersion along the curved perimeter
-    let ca_dist = params.dispersion * 3.5 * refr_profile * px_to_uv;
-    let ca_offset = -N_2d * ca_dist;
-
-    let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
-    let uv_g = clamp(uv + refr_ray, vec2<f32>(0.001), vec2<f32>(0.999));
-    let uv_b = clamp(uv + refr_ray + ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
+    let uv_r = clamp(base_uv - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
+    let uv_g = clamp(base_uv, vec2<f32>(0.001), vec2<f32>(0.999));
+    let uv_b = clamp(base_uv + ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
 
     // ════════════════════════════════════════════
     // 4. TRUE PHYSICAL LIQUID GLASS TRANSMISSION
@@ -1651,23 +1650,23 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if params.blur_radius <= 0.5 {
         col = sharp_col;
     } else {
-        // Uniform physical transmission across the entire solid liquid volume
-        let frosted_col = sample_frost_blur(uv_g, params.blur_radius * 0.75);
-        col = mix(sharp_col, frosted_col, 0.35);
+        // Keep rim crisp for sharp optical lensing; soft frost diffusion only in flat center
+        let frosted_col = sample_frost_blur(uv_g, params.blur_radius * 0.65);
+        let frost_mix = mix(0.06, 0.28, t);
+        col = mix(sharp_col, frosted_col, frost_mix);
     }
 
-    // Card-wide uniform light/dark appearance mode passed from CPU crop analysis
+    // Material contrast & vibrancy boost (1.4x saturation eliminates milky/frosted appearance)
     let is_light = params.is_light;
     let bg_luma = dot(col, vec3<f32>(0.299, 0.587, 0.114));
+    let sat_boost = mix(1.42, 1.30, is_light);
+    let sat_col = mix(vec3<f32>(bg_luma), col, sat_boost);
+    let contrast_col = sat_col * sat_col * (3.0 - 2.0 * sat_col);
+    col = mix(sat_col, contrast_col, 0.22);
 
-    // Apple Vibrancy: subtle saturation boost only on dark backgrounds, neutral on light
-    let sat_mult = mix(1.20, 1.0, is_light);
-    let sat_col = mix(vec3<f32>(bg_luma), col, sat_mult);
-    col = sat_col;
-
-    // Translucent glass substrate (subtle physical luminance, 100% transmissive, zero artificial darkening)
+    // Translucent glass substrate (subtle physical luminance, not flat gray paint)
     let light_substrate = mix(col, vec3<f32>(0.99, 0.995, 1.0), 0.03);
-    let dark_substrate = mix(col, vec3<f32>(0.20, 0.22, 0.26), 0.08);
+    let dark_substrate = mix(col, vec3<f32>(0.18, 0.20, 0.24), 0.07);
     col = mix(dark_substrate, light_substrate, is_light);
 
     // Optional custom tint absorption (Beer-Lambert attenuation)
@@ -1680,17 +1679,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 5. DIRECTIONAL 3D LIGHT SOURCE & GEOMETRY
     // ════════════════════════════════════════════
     // Virtual key light coming from top-left, elevated in front of screen
-    let light_dir_3d = normalize(vec3<f32>(-0.45, -0.65, 0.70));
+    let light_dir_3d = normalize(vec3<f32>(-0.45, -0.65, 0.75));
     let view_dir_3d = vec3<f32>(0.0, 0.0, 1.0);
     let half_vector = normalize(light_dir_3d + view_dir_3d);
 
-    // 2D directional vectors for rim orientation:
     let light_vec_2d = normalize(vec2<f32>(-0.45, -0.65));
-
-    // Light-facing factor along the 2D rim
     let light_facing = max(dot(N_2d, light_vec_2d), 0.0);
 
-    // Fresnel grazing factor: pow(1.0 - dot(N, V), power)
+    // Fresnel grazing factor: pow(1.0 - dot(N, V), 3.0)
     let N_dot_V = max(dot(N, view_dir_3d), 0.0);
     let fresnel_grazing = pow(1.0 - N_dot_V, 3.0);
 
@@ -1700,7 +1696,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Pure additive environmental Fresnel reflection: grounds all edges with light, never crushes transmission
     let F0 = 0.045; // Refractive index of acrylic resin / liquid meniscus (n = 1.52)
     let fresnel = F0 + (1.0 - F0) * fresnel_grazing;
-    let ambient_rim = fresnel * edge_slope * lip_fade * mix(0.40, 0.22, is_light) * params.fresnel_strength;
+    let ambient_rim = fresnel * (1.0 - t) * mix(0.40, 0.22, is_light) * params.fresnel_strength;
     col += vec3<f32>(0.97, 0.985, 1.0) * ambient_rim;
 
     // ════════════════════════════════════════════
@@ -1708,10 +1704,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     let N_dot_H = max(dot(N, half_vector), 0.0);
 
-    // Softened gloss spread with natural Fresnel falloff as surface turns away
-    let spec_lobe_crest = pow(N_dot_H, 26.0) * 1.4;
-    let spec_lobe_broad = pow(N_dot_H, 12.0) * 0.7;
-    let spec_gloss = (spec_lobe_crest + spec_lobe_broad) * (0.30 + 0.70 * fresnel_grazing) * light_facing * lip_fade * mix(1.35, 0.60, is_light) * params.specular_strength;
+    // Specular highlight isolated to top-left light source with natural Fresnel falloff
+    let spec_lobe_crest = pow(N_dot_H, 24.0) * 1.5;
+    let spec_lobe_broad = pow(N_dot_H, 10.0) * 0.7;
+    let spec_gloss = (spec_lobe_crest + spec_lobe_broad) * (0.30 + 0.70 * fresnel_grazing) * light_facing * (1.0 - t) * mix(1.35, 0.60, is_light) * params.specular_strength;
 
     col += vec3<f32>(spec_gloss);
 
@@ -1731,8 +1727,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let prox_curve = prox * prox;
 
         // Subtle, elegant edge response
-        side_bevel_flare = pow(edge_slope, 1.6) * pow(bevel_facing, 3.0) * prox_curve * lip_fade * 0.55 * params.specular_strength;
-        side_rim_flare = pow(edge_slope, 2.0) * pow(bevel_facing, 2.2) * prox * lip_fade * 0.70 * params.specular_strength;
+        side_bevel_flare = pow(1.0 - t, 1.6) * pow(bevel_facing, 3.0) * prox_curve * 0.55 * params.specular_strength;
+        side_rim_flare = pow(1.0 - t, 2.0) * pow(bevel_facing, 2.2) * prox * 0.70 * params.specular_strength;
     }
 
     // ════════════════════════════════════════════
