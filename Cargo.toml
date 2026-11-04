@@ -4,6 +4,7 @@ members = [
     "examples/glass-panel",
     "examples/glass-clock",
     "examples/glass-todo",
+    "examples/glass-island",
     "examples/simple-window",
     "examples/simple-demo",
     "examples/sdl-widget",

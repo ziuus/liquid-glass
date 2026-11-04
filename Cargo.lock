@@ -734,6 +734,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "glass-island"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "env_logger",
+ "glass-core",
+ "glass-platform",
+ "glass-ui",
+ "image",
+ "libc",
+ "log",
+ "pollster",
+ "raw-window-handle",
+ "serde",
+ "serde_json",
+ "smithay-client-toolkit",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
+]
+
+[[package]]
 name = "glass-panel"
 version = "0.1.0"
 dependencies = [
