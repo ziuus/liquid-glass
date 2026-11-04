@@ -1625,13 +1625,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
 
     // Physical lens displacement: Thickness * tan(theta)
-    // Smooth, non-inverting optical warp (d(offset)/dx < 0.4 prevents caustic fold artifacts)
-    let refr_profile = smoothstep(0.0, 9.0, inside) * edge_slope;
-    let refr_px = bevel_w * 0.35 * params.refraction_strength * refr_profile;
+    // Pure transmissive optical lensing (gentle 2.5-3.0px deflection preserves background clarity)
+    let refr_profile = smoothstep(0.0, 8.0, inside) * edge_slope;
+    let refr_px = bevel_w * 0.22 * params.refraction_strength * refr_profile;
     let refr_ray = -N_2d * refr_px * px_to_uv;
 
     // Cauchy chromatic dispersion along the curved perimeter
-    let ca_dist = params.dispersion * 5.0 * refr_profile * px_to_uv;
+    let ca_dist = params.dispersion * 3.5 * refr_profile * px_to_uv;
     let ca_offset = -N_2d * ca_dist;
 
     let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1665,9 +1665,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let sat_col = mix(vec3<f32>(bg_luma), col, sat_mult);
     col = sat_col;
 
-    // Translucent glass substrate (subtle physical luminance, not flat white/black paint)
-    let light_substrate = mix(col, vec3<f32>(0.99, 0.995, 1.0), 0.04);
-    let dark_substrate = mix(col, vec3<f32>(0.12, 0.14, 0.18), 0.12);
+    // Translucent glass substrate (subtle physical luminance, 100% transmissive, zero artificial darkening)
+    let light_substrate = mix(col, vec3<f32>(0.99, 0.995, 1.0), 0.03);
+    let dark_substrate = mix(col, vec3<f32>(0.20, 0.22, 0.26), 0.08);
     col = mix(dark_substrate, light_substrate, is_light);
 
     // Optional custom tint absorption (Beer-Lambert attenuation)
@@ -1686,26 +1686,22 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // 2D directional vectors for rim orientation:
     let light_vec_2d = normalize(vec2<f32>(-0.45, -0.65));
-    let shadow_vec_2d = -light_vec_2d;
 
-    // Light-facing & opposing-facing factors along the 2D rim
+    // Light-facing factor along the 2D rim
     let light_facing = max(dot(N_2d, light_vec_2d), 0.0);
-    let opp_facing = max(dot(N_2d, shadow_vec_2d), 0.0);
 
     // Fresnel grazing factor: pow(1.0 - dot(N, V), power)
     let N_dot_V = max(dot(N, view_dir_3d), 0.0);
-    let fresnel_grazing = pow(1.0 - N_dot_V, 2.8);
+    let fresnel_grazing = pow(1.0 - N_dot_V, 3.0);
 
     // ════════════════════════════════════════════
-    // 6. OPPOSING EDGE DEFINITION & AMBIENT RIM
+    // 6. DIELECTRIC FRESNEL REFLECTION (ZERO SUBTRACTIVE DARKENING)
     // ════════════════════════════════════════════
-    // 1. Subtle Fresnel ambient occlusion / ground darkening on the opposing unlit side (bottom-right)
-    let ground_darken = opp_facing * fresnel_grazing * edge_slope * lip_fade * mix(0.28, 0.15, is_light);
-    col *= (1.0 - ground_darken);
-
-    // 2. Ambient environmental reflection along all curved edges
-    let ambient_rim = fresnel_grazing * edge_slope * lip_fade * mix(0.35, 0.20, is_light) * params.fresnel_strength;
-    col += vec3<f32>(0.96, 0.98, 1.0) * ambient_rim;
+    // Pure additive environmental Fresnel reflection: grounds all edges with light, never crushes transmission
+    let F0 = 0.045; // Refractive index of acrylic resin / liquid meniscus (n = 1.52)
+    let fresnel = F0 + (1.0 - F0) * fresnel_grazing;
+    let ambient_rim = fresnel * edge_slope * lip_fade * mix(0.40, 0.22, is_light) * params.fresnel_strength;
+    col += vec3<f32>(0.97, 0.985, 1.0) * ambient_rim;
 
     // ════════════════════════════════════════════
     // 7. DIRECTIONAL 3D VOLUMETRIC SPECULAR HIGHLIGHTS
@@ -1713,8 +1709,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let N_dot_H = max(dot(N, half_vector), 0.0);
 
     // Softened gloss spread with natural Fresnel falloff as surface turns away
-    let spec_lobe_crest = pow(N_dot_H, 28.0) * 1.5;
-    let spec_lobe_broad = pow(N_dot_H, 14.0) * 0.8;
+    let spec_lobe_crest = pow(N_dot_H, 26.0) * 1.4;
+    let spec_lobe_broad = pow(N_dot_H, 12.0) * 0.7;
     let spec_gloss = (spec_lobe_crest + spec_lobe_broad) * (0.30 + 0.70 * fresnel_grazing) * light_facing * lip_fade * mix(1.35, 0.60, is_light) * params.specular_strength;
 
     col += vec3<f32>(spec_gloss);
