@@ -1684,26 +1684,24 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     col += fresnel_gleam;
 
     // ════════════════════════════════════════════
-    // 7. DIRECTIONAL SPECULAR HIGHLIGHTS (TOP-LEFT VIRTUAL LIGHT)
+    // 7. DIRECTIONAL SPECULAR HIGHLIGHTS (TOP-LEFT EXTENDED LIGHT)
     // ════════════════════════════════════════════
-    // Virtual key light from top-left: direction (-0.45, -0.68, 0.58)
-    let L = normalize(vec3<f32>(-0.45, -0.68, 0.58));
-    let V = vec3<f32>(0.0, 0.0, 1.0);
-    let R = reflect(-L, N);
-    let R_dot_V = max(dot(R, V), 0.0);
-
-    // Sharp concentrated specular streak along the curved lip
-    let sharp_spec = pow(R_dot_V, 52.0) * pow(edge, 1.2) * 1.90 * params.specular_strength;
-    // Broad glossy sheen
-    let broad_spec = pow(R_dot_V, 14.0) * pow(edge, 1.5) * 0.50 * params.specular_strength;
-
-    // Razor-sharp 1.5px outer specular crest on the top & left arc
+    // Virtual studio key light from top-left: direction (-0.45, -0.68)
     let top_left_dir = normalize(vec2<f32>(-0.45, -0.68));
     let top_left_facing = max(dot(-grad_2d, top_left_dir), 0.0);
-    let hairline = smoothstep(1.5, 0.2, inside);
-    let crest_spec = hairline * pow(top_left_facing, 1.4) * 1.75 * params.specular_strength;
 
-    col += vec3<f32>(sharp_spec + broad_spec + crest_spec);
+    // 1. Razor-sharp 1.5px outer meniscus boundary crest on top & left perimeter
+    let hairline = smoothstep(1.5, 0.2, inside);
+    let rim_crest = hairline * pow(top_left_facing, 1.3) * 1.85 * params.specular_strength;
+
+    // 2. Smooth continuous specular sheen along the curved bevel lip (zero detached blob)
+    let lip_profile = pow(edge, 1.5) * smoothstep(0.0, 0.35, 1.0 - edge);
+    let lip_spec = lip_profile * pow(top_left_facing, 1.8) * 1.15 * params.specular_strength;
+
+    // 3. Subtle ambient surface gloss along the top-left curved quadrant
+    let ambient_gloss = pow(edge, 2.2) * top_left_facing * 0.30 * params.specular_strength;
+
+    col += vec3<f32>(rim_crest + lip_spec + ambient_gloss);
 
     var side_bevel_flare = 0.0;
     var side_rim_flare = 0.0;
