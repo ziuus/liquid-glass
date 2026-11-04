@@ -1669,8 +1669,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let dark_substrate = mix(col, vec3<f32>(0.18, 0.20, 0.24), 0.07);
     col = mix(dark_substrate, light_substrate, is_light);
 
-    // Optional custom tint absorption (Beer-Lambert attenuation)
-    if length(params.tint.xyz) > 0.01 {
+    // Optional custom tint absorption (Beer-Lambert attenuation for generic glass cards)
+    if params.padding <= 0.0 && length(params.tint.xyz) > 0.01 && max(max(params.tint.x, params.tint.y), params.tint.z) <= 1.0 {
         let tint_absorb = mix(vec3<f32>(1.0), params.tint.xyz, 0.35);
         col *= tint_absorb;
     }
