@@ -694,13 +694,21 @@ fn get_active_wallpaper_path() -> Option<String> {
 
 fn dirs_cache_awww() -> Option<String> {
     let home = std::env::var("HOME").ok()?;
-    let dir = format!("{}/.cache/awww/0.12.1/eDP-1", home);
-    if let Ok(bytes) = std::fs::read(&dir) {
-        let s = String::from_utf8_lossy(&bytes);
-        for part in s.split(|c: char| c == '\0' || c.is_whitespace()) {
-            let trimmed = part.trim();
-            if trimmed.starts_with('/') && std::path::Path::new(trimmed).exists() {
-                return Some(trimmed.to_string());
+    let cache_dir = format!("{}/.cache/awww", home);
+    if let Ok(entries) = std::fs::read_dir(cache_dir) {
+        for version_entry in entries.flatten() {
+            if let Ok(mon_entries) = std::fs::read_dir(version_entry.path()) {
+                for mon_entry in mon_entries.flatten() {
+                    if let Ok(bytes) = std::fs::read(mon_entry.path()) {
+                        let s = String::from_utf8_lossy(&bytes);
+                        for part in s.split(|c: char| c == '\0' || c.is_whitespace()) {
+                            let trimmed = part.trim();
+                            if trimmed.starts_with('/') && std::path::Path::new(trimmed).exists() {
+                                return Some(trimmed.to_string());
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -708,10 +716,12 @@ fn dirs_cache_awww() -> Option<String> {
 }
 
 fn load_wallpaper_image(path: Option<&str>) -> Option<Arc<Vec<u8>>> {
+    let active_detected = get_active_wallpaper_path();
     let candidates = [
         path,
-        Some("/home/zius/Pictures/wallpaper/surreal-cherry-5120x2880-26233.jpg"),
+        active_detected.as_deref(),
         Some("/home/zius/Pictures/wallpaper/scott-webb-hDyO6rr3kqk-unsplash.jpg"),
+        Some("/home/zius/Pictures/wallpaper/surreal-cherry-5120x2880-26233.jpg"),
         Some("/home/zius/Pictures/wallpaper/Fantasy-Landscape3.png"),
     ];
 
@@ -719,9 +729,18 @@ fn load_wallpaper_image(path: Option<&str>) -> Option<Arc<Vec<u8>>> {
         if let Ok(img) = image::open(candidate) {
             log::info!("Loaded wallpaper: {}", candidate);
             let rgba = img.to_rgba8();
-            let resized =
-                image::imageops::resize(&rgba, 1920, 1080, image::imageops::FilterType::Triangle);
-            return Some(Arc::new(resized.into_raw()));
+            let (ow, oh) = (rgba.width() as f32, rgba.height() as f32);
+
+            // Exactly match awww --resize crop --crop-gravity center
+            let scale = (1920.0 / ow).max(1080.0 / oh);
+            let sw = (ow * scale).round() as u32;
+            let sh = (oh * scale).round() as u32;
+            let scaled =
+                image::imageops::resize(&rgba, sw, sh, image::imageops::FilterType::Triangle);
+            let left = sw.saturating_sub(1920) / 2;
+            let top = sh.saturating_sub(1080) / 2;
+            let cropped = image::imageops::crop_imm(&scaled, left, top, 1920, 1080).to_image();
+            return Some(Arc::new(cropped.into_raw()));
         }
     }
 
