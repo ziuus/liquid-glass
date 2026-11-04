@@ -1148,11 +1148,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
                     check_marks = max(check_marks, (1.0 - smoothstep(-0.35, 0.35, d_cm)) * task_view_weight);
                 }
 
-                // Daily Tag Badge (cx = 124.0, cy = row_y, half = 22.0x7.5, r = 7.5) - maximum visibility
-                let p_dtag = local_p - vec2<f32>(124.0, row_y);
-                let d_dtag = rr_sdf(p_dtag, vec2<f32>(22.0, 7.5), 7.5);
-                daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * 0.08 * task_view_weight);
-                daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * 0.30 * task_view_weight);
+                // Daily Tag Badge (cx = 124.0, cy = row_y, half = 22.0x7.5, r = 7.5) - rendered via overlay when present
+                // Kept clean in shader background pass
             }
 
             // ════════════════════════════════════════════
@@ -1665,8 +1662,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     col = mix(sat_col, contrast_col, 0.22);
 
     // Translucent glass substrate (subtle physical luminance, not flat gray paint)
+    // Scale dark substrate to zero over dark backdrops (preserving pure transmissive optics)
     let light_substrate = mix(col, vec3<f32>(0.99, 0.995, 1.0), 0.03);
-    let dark_substrate = mix(col, vec3<f32>(0.18, 0.20, 0.24), 0.07);
+    let dark_substrate = col;
     col = mix(dark_substrate, light_substrate, is_light);
 
     // Optional custom tint absorption (Beer-Lambert attenuation for generic glass cards)
@@ -1707,7 +1705,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Specular highlight isolated to top-left light source with natural Fresnel falloff
     let spec_lobe_crest = pow(N_dot_H, 24.0) * 1.5;
     let spec_lobe_broad = pow(N_dot_H, 10.0) * 0.7;
-    let spec_gloss = (spec_lobe_crest + spec_lobe_broad) * (0.30 + 0.70 * fresnel_grazing) * light_facing * (1.0 - t) * mix(1.35, 0.60, is_light) * params.specular_strength;
+    let spec_gloss = (spec_lobe_crest + spec_lobe_broad) * (0.30 + 0.70 * fresnel_grazing) * light_facing * (1.0 - t) * mix(1.85, 0.65, is_light) * params.specular_strength;
 
     col += vec3<f32>(spec_gloss);
 

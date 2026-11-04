@@ -1010,37 +1010,39 @@ impl AppData {
                     );
                 }
 
-                // "DAILY" pill badge centered at cx = 304.0, cy
-                let tag_text = "DAILY";
-                let tag_stroke = if self.is_wallpaper_light {
-                    [45, 55, 70, 160]
-                } else {
-                    [200, 215, 235, 140]
-                };
-                UIFont::draw_rounded_rect_stroke(
-                    buf,
-                    self.width,
-                    self.height,
-                    304.0,
-                    cy,
-                    22.0,
-                    9.0,
-                    5.0,
-                    1.2,
-                    tag_stroke,
-                );
-                self.font.draw_text_centered(
-                    buf,
-                    self.width,
-                    self.height,
-                    tag_text,
-                    304.0,
-                    cy,
-                    10.5,
-                    col_secondary,
-                    col_shadow,
-                    FontWeight::Bold,
-                );
+                // "DAILY" pill badge centered at cx = 304.0, cy (only render if type differs from default or explicitly non-daily)
+                if task.r#type != "daily" && !task.r#type.is_empty() {
+                    let tag_text = task.r#type.to_uppercase();
+                    let tag_stroke = if self.is_wallpaper_light {
+                        [45, 55, 70, 160]
+                    } else {
+                        [200, 215, 235, 140]
+                    };
+                    UIFont::draw_rounded_rect_stroke(
+                        buf,
+                        self.width,
+                        self.height,
+                        304.0,
+                        cy,
+                        22.0,
+                        9.0,
+                        5.0,
+                        1.2,
+                        tag_stroke,
+                    );
+                    self.font.draw_text_centered(
+                        buf,
+                        self.width,
+                        self.height,
+                        &tag_text,
+                        304.0,
+                        cy,
+                        10.5,
+                        col_secondary,
+                        col_shadow,
+                        FontWeight::Bold,
+                    );
+                }
             }
 
             // 4. Bottom Add Task Bar (cy = 412.5)

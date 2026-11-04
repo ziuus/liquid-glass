@@ -466,7 +466,7 @@ impl AppData {
                     play_flag,
                     if self.is_pressed { 1.0 } else { 0.0 },
                     self.hover_play_pos,
-                    self.elapsed_sec,
+                    0.0,
                 )
                 .specular(0.80)
                 .fresnel(0.55)
