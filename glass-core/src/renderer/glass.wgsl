@@ -1606,6 +1606,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Smooth C1 cubic meniscus roll-off (zero in center, completely eliminates diagonal seams)
     let edge_curv = edge * edge * (3.0 - 2.0 * edge);
 
+    // Smooth boundary fade to 0.0 at the outer perimeter:
+    // Prevents hard cutoff / boundary clipping artifacts at the container edge
+    let outer_rim_fade = smoothstep(0.0, 2.5, inside);
+
     // Exact analytical 2D outward unit normal of rounded rectangle
     let grad_2d = rr_normal(local_px, half_size, r);
 
@@ -1622,17 +1626,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
 
-    // Physical lens displacement along curved liquid meniscus (zero in flat center)
-    let refr_dist = bevel_w * 0.70 * params.refraction_strength * sin_th;
+    // Physical lens displacement along curved liquid meniscus (zero in flat center, gentle near boundary)
+    let refr_dist = bevel_w * 0.35 * params.refraction_strength * sin_th;
 
     // Boundary safety falloff: prevents rays from crossing texture borders and stretching into streaks
     let min_edge_dist_px = min(min(uv.x, 1.0 - uv.x) * params.surface_size.x, min(uv.y, 1.0 - uv.y) * params.surface_size.y);
-    let safe_refr_scale = smoothstep(1.5, 12.0, min_edge_dist_px);
+    let safe_refr_scale = smoothstep(2.5, 16.0, min_edge_dist_px) * smoothstep(0.5, 4.0, inside);
 
     let refr_ray = -grad_2d * refr_dist * px_to_uv * safe_refr_scale;
 
     // Cauchy chromatic dispersion along the curved perimeter
-    let ca_dist = params.dispersion * 12.0 * edge_curv * safe_refr_scale;
+    let ca_dist = params.dispersion * 8.0 * edge_curv * safe_refr_scale;
     let ca_offset = -grad_2d * ca_dist * px_to_uv;
 
     let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1698,7 +1702,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 6. VOLUMETRIC INNER SHADOW (BOTTOM-RIGHT EXTINCTION)
     // ════════════════════════════════════════════
     // Soft extinction shadow along bottom and right curved edges (strictly zero in flat center)
-    let inner_shadow_intensity = pow(shadow_facing, 1.2) * edge_curv * mix(0.45, 0.25, is_light);
+    let inner_shadow_intensity = pow(shadow_facing, 1.2) * edge_curv * outer_rim_fade * mix(0.50, 0.28, is_light);
     col *= (1.0 - inner_shadow_intensity);
 
     // ════════════════════════════════════════════
@@ -1708,7 +1712,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let F0 = 0.045; // Refractive index of acrylic resin / liquid meniscus (n = 1.52)
     let fresnel = F0 + (1.0 - F0) * pow(1.0 - cos_theta, 4.0);
     let fresnel_ambient = mix(0.08, 1.0, light_facing);
-    let fresnel_gleam = vec3<f32>(0.98, 0.99, 1.0) * (fresnel * edge_curv * fresnel_ambient * mix(0.60, 0.28, is_light) * params.fresnel_strength);
+    let fresnel_gleam = vec3<f32>(0.98, 0.99, 1.0) * (fresnel * edge_curv * outer_rim_fade * fresnel_ambient * mix(0.60, 0.28, is_light) * params.fresnel_strength);
     col += fresnel_gleam;
 
     // ════════════════════════════════════════════
@@ -1717,13 +1721,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 3D Blinn-Phong specular on the curved liquid meniscus (strictly zero in flat center)
     let N_dot_H = max(dot(N, half_vector), 0.0);
 
-    // 1. Broad, soft liquid specular highlight (exponent 14.0 for soft organic sweep)
-    let spec_soft = pow(N_dot_H, 14.0) * edge_curv * mix(1.20, 0.50, is_light) * params.specular_strength;
+    // Wet liquid specular gloss: tight high-energy glint + focused crest (eliminates milky wash)
+    let wet_glint = pow(N_dot_H, 48.0) * 2.4;
+    let wet_crest = pow(N_dot_H, 22.0) * 0.9;
+    let wet_body  = pow(N_dot_H, 10.0) * 0.2;
+    let spec_gloss = (wet_glint + wet_crest + wet_body) * edge_curv * outer_rim_fade * mix(1.35, 0.60, is_light) * params.specular_strength;
 
-    // 2. Wide ambient surface sheen along the curved perimeter
-    let spec_sheen = pow(N_dot_H, 4.0) * edge_curv * mix(0.25, 0.08, is_light) * params.specular_strength;
-
-    col += vec3<f32>(spec_soft + spec_sheen);
+    col += vec3<f32>(spec_gloss);
 
     var side_bevel_flare = 0.0;
     var side_rim_flare = 0.0;
@@ -1741,8 +1745,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let prox_curve = prox * prox;
 
         // Subtle, elegant edge response
-        side_bevel_flare = pow(edge_curv, 1.6) * pow(bevel_facing, 3.0) * prox_curve * 0.55 * params.specular_strength;
-        side_rim_flare = pow(edge_curv, 2.0) * pow(bevel_facing, 2.2) * prox * 0.70 * params.specular_strength;
+        side_bevel_flare = pow(edge_curv, 1.6) * pow(bevel_facing, 3.0) * prox_curve * outer_rim_fade * 0.55 * params.specular_strength;
+        side_rim_flare = pow(edge_curv, 2.0) * pow(bevel_facing, 2.2) * prox * outer_rim_fade * 0.70 * params.specular_strength;
     }
 
     // ════════════════════════════════════════════
