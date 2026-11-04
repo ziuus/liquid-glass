@@ -1598,29 +1598,27 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let mask = 1.0 - smoothstep(-1.0, 0.1, sdf);
     let inside = max(-sdf, 0.0);
 
-    // Bevel width (meniscus boundary zone): 12px to 24px
-    let bevel_w = clamp(params.bevel, 6.0, 24.0);
-    let t = clamp(inside / bevel_w, 0.0, 1.0); // 0 at outer edge, 1 at interior body
-    let edge = 1.0 - t; // 1 at outer edge, 0 at interior body
+    // Wide, seamless bell-curve edge decay over 42px (eliminates rectangular picture-frame line)
+    let t_bell = clamp(inside / 42.0, 0.0, 1.0);
+    // C1 continuous cosine rolloff: 1.0 at outer rim, smoothly gliding to 0.0 at 42px
+    let edge_bell = 0.5 * (1.0 + cos(t_bell * 3.14159265));
 
     // 1. Continuous convex dome across entire glass surface
     let norm_p = local_px / half_size;
-    let lens_power = max(params.curvature, 0.10); // continuous surface curvature
-    // Gradient of interior convex dome (gentle outward slope across body)
-    let grad_dome = norm_p * lens_power * (1.0 - edge * 0.4);
+    let lens_power = max(params.curvature, 0.12);
+    let grad_dome = norm_p * lens_power;
 
     // 2. Exact analytical perimeter normal of rounded rectangle
     let grad_2d = rr_normal(local_px, half_size, r);
 
-    // 3. Smooth liquid meniscus curve at perimeter (C1 continuous cubic falloff)
-    let edge_curv = edge * edge * (3.0 - 2.0 * edge);
-    let theta = edge_curv * 1.45; // steep rolloff up to ~83 degrees at rim
+    // 3. Smooth liquid meniscus curve at perimeter (feathered bell-curve transition)
+    let theta = pow(edge_bell, 1.4) * 1.35; // smooth max angle ~77 degrees at rim
     let sin_th = sin(theta);
     let cos_th = cos(theta);
 
     // 4. Unified full-surface 3D normal vector
-    // Blends smoothly from dome in center to steep meniscus at outer boundary
-    let N_xy = grad_dome * cos_th + grad_2d * sin_th;
+    // Blends smoothly from dome in center to meniscus at perimeter with zero hard boundary
+    let N_xy = grad_dome * (1.0 - edge_bell * 0.3) + grad_2d * sin_th;
     let N = normalize(vec3<f32>(N_xy, cos_th));
     let N_2d = N.xy;
 
@@ -1629,21 +1627,20 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
 
-    // Interior magnification + meniscus lensing:
-    // Magnifies background across entire card body, with intensified pinch at perimeter
-    let body_disp = length(norm_p) * (params.refraction_strength * 6.0);
-    let rim_disp = bevel_w * (params.refraction_strength * 1.10) * sin_th;
-    let total_refr_dist = (body_disp * (1.0 - edge) + rim_disp * edge);
+    // Continuous full-surface magnification + feathered perimeter refraction
+    let body_disp = length(norm_p) * (params.refraction_strength * 4.5);
+    let rim_disp = 16.0 * (params.refraction_strength * 0.85) * sin_th;
+    let total_refr_dist = body_disp + rim_disp;
 
     // Boundary safety falloff: prevents rays from crossing texture borders and stretching into streaks
     let min_edge_dist_px = min(min(uv.x, 1.0 - uv.x) * params.surface_size.x, min(uv.y, 1.0 - uv.y) * params.surface_size.y);
-    let safe_refr_scale = smoothstep(1.5, 12.0, min_edge_dist_px);
+    let safe_refr_scale = smoothstep(1.5, 14.0, min_edge_dist_px);
 
     let refr_dir = normalize(select(grad_2d, N_xy, length(N_xy) > 0.001));
     let refr_ray = -refr_dir * total_refr_dist * px_to_uv * safe_refr_scale;
 
-    // Cauchy chromatic dispersion along the high-curvature perimeter
-    let ca_dist = params.dispersion * 14.0 * edge_curv * safe_refr_scale;
+    // Cauchy chromatic dispersion along the curved perimeter
+    let ca_dist = params.dispersion * 12.0 * edge_bell * safe_refr_scale;
     let ca_offset = -grad_2d * ca_dist * px_to_uv;
 
     let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1663,11 +1660,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if params.blur_radius <= 0.5 {
         col = sharp_col;
     } else {
-        // Crystal-clear outer meniscus bevel, softly transitioning into silky interior
-        let frost_transition = smoothstep(bevel_w * 0.45, bevel_w * 1.05, inside);
-        let local_blur = params.blur_radius * frost_transition;
-        let frosted_col = sample_frost_blur(uv_g, local_blur);
-        col = mix(sharp_col, frosted_col, frost_transition * 0.82);
+        // Wide, gentle frost fade across 36px (no sharp rectangular blur step)
+        let frost_fade = smoothstep(1.0, 36.0, inside);
+        let frosted_col = sample_frost_blur(uv_g, params.blur_radius * 0.75);
+        col = mix(sharp_col, frosted_col, frost_fade * 0.65);
     }
 
     // Card-wide uniform light/dark appearance mode passed from CPU crop analysis
@@ -1711,19 +1707,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 6. VOLUMETRIC INNER SHADOW (BOTTOM-RIGHT EXTINCTION)
     // ════════════════════════════════════════════
     // Soft, deep extinction shadow along bottom and right curved edges
-    let inner_shadow_intensity = pow(shadow_facing, 1.3) * (0.15 + 0.85 * pow(edge, 1.1)) * mix(0.50, 0.30, is_light);
+    let inner_shadow_intensity = pow(shadow_facing, 1.2) * pow(edge_bell, 1.0) * mix(0.45, 0.25, is_light);
     col *= (1.0 - inner_shadow_intensity);
 
     // ════════════════════════════════════════════
     // 7. DIRECTIONALLY MODULATED SCHLICK FRESNEL TERM
     // ════════════════════════════════════════════
-    // Ambient light is directional: strong where facing the sky/key light, subdued in shadow.
-    // Modulating Fresnel eliminates the artificial "flat 2D white stroke" on the shadow edges!
     let cos_theta = max(N.z, 0.0);
     let F0 = 0.045; // Refractive index of acrylic resin / liquid meniscus (n = 1.52)
     let fresnel = F0 + (1.0 - F0) * pow(1.0 - cos_theta, 4.0);
     let fresnel_ambient = mix(0.08, 1.0, light_facing);
-    let fresnel_gleam = vec3<f32>(0.98, 0.99, 1.0) * (fresnel * pow(edge, 1.2) * fresnel_ambient * mix(0.65, 0.30, is_light) * params.fresnel_strength);
+    let fresnel_gleam = vec3<f32>(0.98, 0.99, 1.0) * (fresnel * pow(edge_bell, 1.2) * fresnel_ambient * mix(0.60, 0.28, is_light) * params.fresnel_strength);
     col += fresnel_gleam;
 
     // ════════════════════════════════════════════
@@ -1732,17 +1726,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 3D Blinn-Phong specular on the curved convex glass body and liquid meniscus
     let N_dot_H = max(dot(N, half_vector), 0.0);
 
-    // 1. Primary specular lip along top-left meniscus
-    let spec_lip = pow(N_dot_H, 24.0) * smoothstep(0.0, 0.30, edge) * mix(1.80, 0.60, is_light) * params.specular_strength;
+    // 1. Broad, soft liquid specular highlight (exponent 12.0 for soft sweep, no sharp cutoff)
+    let spec_soft = pow(N_dot_H, 12.0) * pow(edge_bell, 0.8) * mix(1.10, 0.45, is_light) * params.specular_strength;
 
-    // 2. Continuous volumetric surface sheen across the convex body
-    let spec_sheen = pow(N_dot_H, 6.0) * mix(0.35, 0.10, is_light) * params.specular_strength;
+    // 2. Wide ambient surface sheen across the convex body (exponent 4.0)
+    let spec_sheen = pow(N_dot_H, 4.0) * mix(0.28, 0.10, is_light) * params.specular_strength;
 
-    // 3. Crisp outer meniscus boundary crest on light-facing perimeter
-    let hairline = smoothstep(1.5, 0.3, inside);
-    let rim_crest = hairline * pow(light_facing, 1.5) * mix(1.40, 0.40, is_light) * params.specular_strength;
+    // 3. Soft rim gleam on light-facing perimeter (feathered, NOT a sharp wire)
+    let rim_gleam = pow(edge_bell, 2.0) * pow(light_facing, 1.3) * mix(0.50, 0.20, is_light) * params.specular_strength;
 
-    col += vec3<f32>(spec_lip + spec_sheen + rim_crest);
+    col += vec3<f32>(spec_soft + spec_sheen + rim_gleam);
 
     var side_bevel_flare = 0.0;
     var side_rim_flare = 0.0;
@@ -1760,8 +1753,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let prox_curve = prox * prox;
 
         // Subtle, elegant edge response
-        side_bevel_flare = pow(edge, 1.6) * pow(bevel_facing, 3.0) * prox_curve * 0.55 * params.specular_strength;
-        side_rim_flare = hairline * pow(bevel_facing, 2.2) * prox * 0.70 * params.specular_strength;
+        side_bevel_flare = pow(edge_bell, 1.6) * pow(bevel_facing, 3.0) * prox_curve * 0.55 * params.specular_strength;
+        side_rim_flare = pow(edge_bell, 2.0) * pow(bevel_facing, 2.2) * prox * 0.70 * params.specular_strength;
     }
 
     // ════════════════════════════════════════════

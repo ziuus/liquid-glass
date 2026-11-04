@@ -866,7 +866,7 @@ fn main() {
     let layer_surface = app_data.layer_shell.create_layer_surface(
         &qh,
         surface.clone(),
-        Layer::Bottom,
+        Layer::Top,
         Some("glass_clock"),
         None,
     );
