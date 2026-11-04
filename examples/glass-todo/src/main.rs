@@ -778,7 +778,7 @@ impl AppData {
 
     fn render_ui_overlay(&self, buf: &mut [u8]) {
         // Apple macOS Sequoia Typography: Deep Obsidian Slate on Light Mode, Pure Crisp White on Dark Mode
-        let (col_primary, col_secondary, col_dimmed, col_accent, col_shadow) =
+        let (col_primary, col_secondary, col_dimmed, _col_accent, col_shadow) =
             if self.is_wallpaper_light {
                 (
                     [8, 12, 20, 255],     // Primary text: Deep Obsidian Ink (WCAG AAA contrast 18:1)
@@ -800,12 +800,37 @@ impl AppData {
         // 1. Top Tab Labels: "Tasks ({count})" (cx = 104.0) & "Agenda" (cx = 256.0), cy = 32.5
         let tasks_count = self.todos.tasks.len();
         let tasks_label = format!("Tasks ({})", tasks_count);
-        // Active selected pill has bright near-white fill with dark ink; unselected uses dimmed text
-        let selected_ink = [10, 14, 22, 255];
+        // Active selected pill has bright near-white fill with dark ink; unselected uses regionally-adapted dimmed text
+        let selected_ink = [8, 12, 20, 255];
+
+        let tab1_is_light = self
+            .wallpaper_cache
+            .as_ref()
+            .map_or(self.is_wallpaper_light, |cache| {
+                sample_region_is_light(cache, self.pos_x + 50, self.pos_y + 20, 108, 25)
+            });
+        let tab2_is_light = self
+            .wallpaper_cache
+            .as_ref()
+            .map_or(self.is_wallpaper_light, |cache| {
+                sample_region_is_light(cache, self.pos_x + 220, self.pos_y + 20, 72, 25)
+            });
+
+        let tab1_unselected = if tab1_is_light {
+            [18, 24, 34, 255]
+        } else {
+            [170, 178, 195, 230]
+        };
+        let tab2_unselected = if tab2_is_light {
+            [18, 24, 34, 255]
+        } else {
+            [170, 178, 195, 230]
+        };
+
         let tab1_col = if self.active_tab == 0 {
             selected_ink
         } else {
-            col_dimmed
+            tab1_unselected
         };
         self.font.draw_text_centered(
             buf,
@@ -824,7 +849,7 @@ impl AppData {
         let tab2_col = if self.active_tab == 1 {
             selected_ink
         } else {
-            col_dimmed
+            tab2_unselected
         };
         self.font.draw_text_centered(
             buf,
@@ -841,20 +866,55 @@ impl AppData {
 
         if self.active_tab == 0 {
             // 2. Filter Bar Labels: "All" (cx = 84.0), "Active" (cx = 156.0), "Done" (cx = 228.0), cy = 79.5
+            let f0_is_light = self
+                .wallpaper_cache
+                .as_ref()
+                .map_or(self.is_wallpaper_light, |cache| {
+                    sample_region_is_light(cache, self.pos_x + 60, self.pos_y + 68, 50, 22)
+                });
+            let f1_is_light = self
+                .wallpaper_cache
+                .as_ref()
+                .map_or(self.is_wallpaper_light, |cache| {
+                    sample_region_is_light(cache, self.pos_x + 130, self.pos_y + 68, 55, 22)
+                });
+            let f2_is_light = self
+                .wallpaper_cache
+                .as_ref()
+                .map_or(self.is_wallpaper_light, |cache| {
+                    sample_region_is_light(cache, self.pos_x + 205, self.pos_y + 68, 50, 22)
+                });
+
+            let f0_unselected = if f0_is_light {
+                [18, 24, 34, 255]
+            } else {
+                [170, 178, 195, 230]
+            };
+            let f1_unselected = if f1_is_light {
+                [18, 24, 34, 255]
+            } else {
+                [170, 178, 195, 230]
+            };
+            let f2_unselected = if f2_is_light {
+                [18, 24, 34, 255]
+            } else {
+                [170, 178, 195, 230]
+            };
+
             let f0_col = if self.active_filter == 0 {
                 selected_ink
             } else {
-                col_dimmed
+                f0_unselected
             };
             let f1_col = if self.active_filter == 1 {
                 selected_ink
             } else {
-                col_dimmed
+                f1_unselected
             };
             let f2_col = if self.active_filter == 2 {
                 selected_ink
             } else {
-                col_dimmed
+                f2_unselected
             };
 
             self.font.draw_text_centered(
@@ -919,14 +979,35 @@ impl AppData {
                 let cy = 122.5 + (row_idx as f32) * 44.0;
                 let task = &self.todos.tasks[actual_idx];
 
-                // Regional luminance adaptation: sample the row's specific backdrop slice (44px height)
-                let row_is_light = if let Some(cache) = &self.wallpaper_cache {
-                    let y_start = ((self.pos_y as f32 + cy - 20.0).max(0.0)) as u32;
-                    let row_crop =
-                        get_wallpaper_crop(cache, self.pos_x as u32, y_start, self.width, 40);
-                    is_buffer_light(&row_crop)
+                // Regional luminance adaptation: sample the actual text's bounding box width
+                let text_w = (self.font.measure_text(&task.text, 15.5, FontWeight::Bold) as u32)
+                    .clamp(40, 240);
+                let (mean_lum, spread, mut row_is_light) =
+                    if let Some(cache) = &self.wallpaper_cache {
+                        sample_region_stats(
+                            cache,
+                            self.pos_x + 58,
+                            (self.pos_y as f32 + cy - 13.0).max(0.0) as i32,
+                            text_w,
+                            26,
+                        )
+                    } else {
+                        (0.5, 0.0, self.is_wallpaper_light)
+                    };
+
+                // Diagonal boundary detection: if spread is elevated (row crosses diagonal edge into navy)
+                // or if mean luminance is below 0.15, light ink is strictly required.
+                if spread > 0.06 || mean_lum < 0.15 {
+                    row_is_light = false;
+                } else if mean_lum > 0.21 {
+                    row_is_light = true;
+                }
+
+                // If spread is high (row crosses diagonal edge), apply local scrim shadow
+                let text_shadow_col = if spread > 0.05 {
+                    [10, 14, 22, 180] // Dark scrim under light text ensures readability over both dark navy and lavender
                 } else {
-                    self.is_wallpaper_light
+                    [0, 0, 0, 0]
                 };
 
                 let (row_primary, row_dimmed) = if row_is_light {
@@ -1010,7 +1091,7 @@ impl AppData {
                     cy,
                     15.5,
                     text_col,
-                    col_shadow,
+                    text_shadow_col,
                     weight,
                 );
 
@@ -1064,6 +1145,22 @@ impl AppData {
             }
 
             // 4. Bottom Add Task Bar (cy = 412.5)
+            let add_is_light = self
+                .wallpaper_cache
+                .as_ref()
+                .map_or(self.is_wallpaper_light, |cache| {
+                    sample_region_is_light(cache, self.pos_x + 42, self.pos_y + 400, 200, 26)
+                });
+            let (add_primary, add_dimmed, add_secondary) = if add_is_light {
+                ([8, 12, 20, 255], [45, 55, 70, 245], [18, 24, 34, 250])
+            } else {
+                (
+                    [255, 255, 255, 255],
+                    [170, 178, 195, 200],
+                    [225, 232, 245, 230],
+                )
+            };
+
             if self.is_editing {
                 let input_str = if self.input_buffer.is_empty() {
                     "Type new task..."
@@ -1071,9 +1168,9 @@ impl AppData {
                     &self.input_buffer
                 };
                 let input_col = if self.input_buffer.is_empty() {
-                    col_dimmed
+                    add_dimmed
                 } else {
-                    col_primary
+                    add_primary
                 };
 
                 let end_x = self.font.draw_text_centered_y(
@@ -1105,7 +1202,7 @@ impl AppData {
                         412.5 - 9.0,
                         18.0,
                         2.0,
-                        col_accent,
+                        add_primary,
                     );
                 }
 
@@ -1118,7 +1215,7 @@ impl AppData {
                     295.0,
                     412.5,
                     12.0,
-                    col_dimmed,
+                    add_dimmed,
                     col_shadow,
                     FontWeight::Medium,
                 );
@@ -1131,7 +1228,7 @@ impl AppData {
                     42.0,
                     412.5,
                     15.5,
-                    col_secondary,
+                    add_secondary,
                     col_shadow,
                     FontWeight::SemiBold,
                 );
@@ -1309,8 +1406,9 @@ impl ProvidesRegistryState for AppData {
     registry_handlers![OutputState, SeatState];
 }
 
-fn is_buffer_light(buf: &[u8]) -> bool {
+fn buffer_lum_stats(buf: &[u8]) -> (f32, f32, bool) {
     let mut total_lum = 0.0f64;
+    let mut total_sq = 0.0f64;
     let mut count = 0usize;
     let step = 16 * 4;
     for i in (0..buf.len()).step_by(step) {
@@ -1325,16 +1423,29 @@ fn is_buffer_light(buf: &[u8]) -> bool {
                     ((c + 0.055) / 1.055).powf(2.4)
                 }
             };
-            let lin_lum = 0.2126 * to_lin(r) + 0.7152 * to_lin(g) + 0.0722 * to_lin(b);
-            total_lum += lin_lum;
+            let l = 0.2126 * to_lin(r) + 0.7152 * to_lin(g) + 0.0722 * to_lin(b);
+            total_lum += l;
+            total_sq += l * l;
             count += 1;
         }
     }
     if count > 0 {
-        (total_lum / count as f64) > 0.179
+        let mean = total_lum / count as f64;
+        let var = (total_sq / count as f64 - mean * mean).max(0.0);
+        let spread = var.sqrt();
+        (mean as f32, spread as f32, mean > 0.179)
     } else {
-        false
+        (0.0, 0.0, false)
     }
+}
+
+fn sample_region_stats(cache: &[u8], gx: i32, gy: i32, gw: u32, gh: u32) -> (f32, f32, bool) {
+    let crop = get_wallpaper_crop(cache, gx.max(0) as u32, gy.max(0) as u32, gw, gh);
+    buffer_lum_stats(&crop)
+}
+
+fn is_buffer_light(buf: &[u8]) -> bool {
+    buffer_lum_stats(buf).2
 }
 
 fn get_theme_accent() -> [f32; 4] {
@@ -1479,6 +1590,11 @@ fn get_wallpaper_crop(cache: &[u8], x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {
         crop[dst_start..dst_start + len].copy_from_slice(&cache[src_start..src_start + len]);
     }
     crop
+}
+
+fn sample_region_is_light(cache: &[u8], gx: i32, gy: i32, gw: u32, gh: u32) -> bool {
+    let crop = get_wallpaper_crop(cache, gx.max(0) as u32, gy.max(0) as u32, gw, gh);
+    is_buffer_light(&crop)
 }
 
 fn main() {

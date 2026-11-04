@@ -336,7 +336,8 @@ impl PointerHandler for AppData {
                                         self.width,
                                         self.height,
                                     );
-                                    self.is_wallpaper_light = is_buffer_light(&crop);
+                                    self.is_wallpaper_light =
+                                        is_buffer_light_hysteresis(&crop, self.is_wallpaper_light);
                                     renderer.update_background(self.width, self.height, &crop);
                                 }
                             }
@@ -383,7 +384,8 @@ impl AppData {
                         self.width,
                         self.height,
                     );
-                    self.is_wallpaper_light = is_buffer_light(&crop);
+                    self.is_wallpaper_light =
+                        is_buffer_light_hysteresis(&crop, self.is_wallpaper_light);
                     renderer.update_background(self.width, self.height, &crop);
                 }
                 self.draw();
@@ -758,7 +760,7 @@ fn load_wallpaper_image(path: Option<&str>) -> Option<Arc<Vec<u8>>> {
     Some(Arc::new(fallback))
 }
 
-fn is_buffer_light(buf: &[u8]) -> bool {
+fn is_buffer_light_hysteresis(buf: &[u8], current_state: bool) -> bool {
     let mut total_lum = 0.0f64;
     let mut count = 0usize;
     let step = 16 * 4;
@@ -780,10 +782,19 @@ fn is_buffer_light(buf: &[u8]) -> bool {
         }
     }
     if count > 0 {
-        (total_lum / count as f64) > 0.179
+        let mean = total_lum / count as f64;
+        if current_state {
+            mean > 0.15
+        } else {
+            mean > 0.21
+        }
     } else {
-        false
+        current_state
     }
+}
+
+fn is_buffer_light(buf: &[u8]) -> bool {
+    is_buffer_light_hysteresis(buf, false)
 }
 
 fn init_wallpaper_1080p() -> (Option<Arc<Vec<u8>>>, Option<String>) {

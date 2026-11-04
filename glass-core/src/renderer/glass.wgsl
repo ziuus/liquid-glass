@@ -155,6 +155,7 @@ struct ElementAppearance {
     glyph_color: vec3<f32>,
     fill_mask: f32,
     rim_mask: f32,
+    pill_mask: f32,
     fluid_color: vec3<f32>,
     fluid_glow: f32,
 };
@@ -789,6 +790,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
     app.glyph_color = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.11, 0.14, 0.18), is_light);
     app.fill_mask = 0.0;
     app.rim_mask = 0.0;
+    app.pill_mask = 0.0;
     app.fluid_color = vec3<f32>(1.0, 1.0, 1.0);
     app.fluid_glow = 0.0;
     
@@ -1223,8 +1225,9 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         // ════════════════════════════════════════════
         // 5. MASTER COMPOSITE FOR TODO WIDGET
         // ════════════════════════════════════════════
+        let active_pills = max(mask_tab1_fill, mask_all_fill);
         let all_rims = max(max(mask_track_rim, max(mask_tab1_rim, mask_all_rim)), max(max(rows_rim, check_rims), max(daily_rims, mask_add_rim)));
-        let all_fills = max(max(mask_track_fill, max(mask_tab1_fill, mask_all_fill)), max(max(rows_fill, daily_fills), mask_add_fill));
+        let all_fills = max(mask_track_fill, max(max(rows_fill, daily_fills), mask_add_fill));
 
         let primary_glyphs = max(
             max(mask_tab1_txt, mask_all_txt),
@@ -1232,6 +1235,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         );
         let secondary_glyphs = max(max(mask_tab2_txt, mask_act_txt), max(mask_don_txt, mask_add_txt));
 
+        app.pill_mask = active_pills;
         app.fill_mask = all_fills;
         app.rim_mask = all_rims;
 
@@ -1608,6 +1612,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let dh_dt = u / max(sqrt(1.0 - u * u), 0.28);
     let slope = dh_dt / bezel;
 
+    // Corner identification for focused corner glints & enhanced corner lensing
+    let corner_center = half_size - vec2<f32>(r);
+    let q_corner = abs(local_px) - corner_center;
+    let is_corner = (q_corner.x > 0.0) && (q_corner.y > 0.0);
+
     // Exact analytical 2D outward unit normal of rounded rectangle
     let grad_2d = rr_normal(local_px, half_size, r);
 
@@ -1624,8 +1633,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let R = refract(vec3<f32>(0.0, 0.0, -1.0), N, eta);
 
     // Physical background offset: (R.xy / -R.z) * thickness * h
-    // 0 at contact line (zero thickness), peaks along curved rim, 0 in flat center
-    let thickness_px = 16.0;
+    // Enhanced refraction at corners: glass curvature bends background strongest at rounded corners
+    let corner_refract_boost = select(1.0, 1.65, is_corner);
+    let thickness_px = 18.0 * corner_refract_boost;
     let offset_px = (R.xy / max(-R.z, 0.001)) * (thickness_px * h);
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
     let base_uv = uv + offset_px * px_to_uv;
@@ -1656,17 +1666,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         col = mix(sharp_col, frosted_col, frost_mix);
     }
 
-    // Material contrast & vibrancy boost (1.4x saturation eliminates milky/frosted appearance)
+    // Clean transmissive glass substrate without artificial darkening veils (keeps interior within ±5% of backdrop)
     let is_light = params.is_light;
     let bg_luma = dot(col, vec3<f32>(0.299, 0.587, 0.114));
-    let sat_boost = mix(1.42, 1.30, is_light);
-    let sat_col = mix(vec3<f32>(bg_luma), col, sat_boost);
-    let contrast_col = sat_col * sat_col * (3.0 - 2.0 * sat_col);
-    col = mix(sat_col, contrast_col, 0.22);
+    let sat_boost = mix(1.08, 1.05, is_light);
+    col = mix(vec3<f32>(bg_luma), col, sat_boost);
 
-    // Translucent glass substrate (subtle physical luminance, not flat gray paint)
-    // Scale dark substrate to zero over dark backdrops (preserving pure transmissive optics)
-    let light_substrate = mix(col, vec3<f32>(0.99, 0.995, 1.0), 0.03);
+    // Subtle physical transmission substrate
+    let light_substrate = mix(col, vec3<f32>(0.99, 0.995, 1.0), 0.02);
     let dark_substrate = col;
     col = mix(dark_substrate, light_substrate, is_light);
 
@@ -1692,25 +1699,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let fresnel_grazing = pow(1.0 - N_dot_V, 3.0);
 
     // ════════════════════════════════════════════
-    // 6. DIELECTRIC FRESNEL REFLECTION (ZERO SUBTRACTIVE DARKENING)
+    // 6. DIELECTRIC FRESNEL REFLECTION & CRISP DIRECTIONAL SPECULAR
     // ════════════════════════════════════════════
-    // Pure additive environmental Fresnel reflection: grounds all edges with light, never crushes transmission
-    let F0 = 0.045; // Refractive index of acrylic resin / liquid meniscus (n = 1.52)
-    let fresnel = F0 + (1.0 - F0) * fresnel_grazing;
-    let ambient_rim = fresnel * (1.0 - t) * mix(0.40, 0.22, is_light) * params.fresnel_strength;
-    col += vec3<f32>(0.97, 0.985, 1.0) * ambient_rim;
+    // Thin 1-1.5px specular line: strong at top-left, ~30% at bottom-right, zero wide milky glow
+    let corner_mult = select(1.0, 1.45, is_corner);
+    let edge_spec = smoothstep(1.5, 0.0, depth) * (light_facing * 0.70 + 0.30) * corner_mult;
+    let soft_falloff = smoothstep(3.5, 0.0, depth) * 0.12 * light_facing;
+    let spec_rim = (edge_spec + soft_falloff) * params.specular_strength;
 
-    // ════════════════════════════════════════════
-    // 7. DIRECTIONAL 3D VOLUMETRIC SPECULAR HIGHLIGHTS
-    // ════════════════════════════════════════════
-    let N_dot_H = max(dot(N, half_vector), 0.0);
-
-    // Specular highlight isolated to top-left light source with natural Fresnel falloff
-    let spec_lobe_crest = pow(N_dot_H, 24.0) * 1.5;
-    let spec_lobe_broad = pow(N_dot_H, 10.0) * 0.7;
-    let spec_gloss = (spec_lobe_crest + spec_lobe_broad) * (0.30 + 0.70 * fresnel_grazing) * light_facing * (1.0 - t) * mix(1.85, 0.65, is_light) * params.specular_strength;
-
-    col += vec3<f32>(spec_gloss);
+    col += vec3<f32>(spec_rim);
 
     var side_bevel_flare = 0.0;
     var side_rim_flare = 0.0;
@@ -1748,14 +1745,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     fin += app.fluid_color * (app.fluid_glow * mix(1.0, 0.35, is_light));
     
+    // Dedicated high-contrast selected pill fill (85-90% opacity pure white / light ceramic)
+    let pill_fill_target = vec3<f32>(0.96, 0.97, 1.0);
+    fin = mix(fin, pill_fill_target, app.pill_mask * 0.88);
+
     // Low-alpha neutral fill and hairline: white lift on dark, black dip on light (preserves pure backdrop hue)
     let fill_target = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.0, 0.0, 0.0), is_light);
-    let fill_strength = mix(0.08, 0.05, is_light);
+    let fill_strength = mix(0.12, 0.06, is_light);
     fin = mix(fin, fill_target, app.fill_mask * fill_strength);
 
     // 1px subtle hairline rim highlight
     let rim_target = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.45, 0.48, 0.55), is_light);
-    fin = mix(fin, rim_target, app.rim_mask * mix(0.18, 0.12, is_light));
+    fin = mix(fin, rim_target, app.rim_mask * mix(0.20, 0.14, is_light));
 
     fin = mix(fin, app.glyph_color, app.glyph_mask);
 
