@@ -577,13 +577,15 @@ impl GlassRenderer {
                 occlusion_query_set: None,
             });
 
-            render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(1, &self.bg_bind_group, &[]);
+            if !surfaces.is_empty() {
+                render_pass.set_pipeline(&self.render_pipeline);
+                render_pass.set_bind_group(1, &self.bg_bind_group, &[]);
 
-            for &surface_idx in layer.iter() {
-                let offset = offsets[surface_idx];
-                render_pass.set_bind_group(0, &self.params_bind_group, &[offset]);
-                render_pass.draw(0..6, 0..1);
+                for &surface_idx in layer.iter() {
+                    let offset = offsets[surface_idx];
+                    render_pass.set_bind_group(0, &self.params_bind_group, &[offset]);
+                    render_pass.draw(0..6, 0..1);
+                }
             }
         }
 

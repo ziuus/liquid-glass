@@ -201,9 +201,9 @@ impl AppData {
 
         match new_mode {
             IslandMode::Hidden => {
-                self.target_w = 180.0;
+                self.target_w = 160.0;
                 self.target_h = 10.0;
-                self.target_y = -50.0;
+                self.target_y = -30.0;
                 self.target_alpha = 0.0;
             }
             IslandMode::CompactPill => {
@@ -237,8 +237,7 @@ impl AppData {
     fn toggle(&mut self) {
         match self.mode {
             IslandMode::Hidden => self.set_mode(IslandMode::CompactPill),
-            IslandMode::CompactPill => self.set_mode(IslandMode::QuickAccess),
-            _ => self.set_mode(IslandMode::CompactPill),
+            _ => self.set_mode(IslandMode::Hidden),
         }
     }
 
@@ -279,6 +278,7 @@ impl AppData {
         let settling = (self.current_w - self.target_w).abs() < 0.5
             && (self.current_h - self.target_h).abs() < 0.5
             && (self.current_y - self.target_y).abs() < 0.5
+            && (self.current_alpha - self.target_alpha).abs() < 0.01
             && self.vel_w.abs() < 1.0
             && self.vel_h.abs() < 1.0
             && self.vel_y.abs() < 1.0;
@@ -287,9 +287,11 @@ impl AppData {
             self.current_w = self.target_w;
             self.current_h = self.target_h;
             self.current_y = self.target_y;
+            self.current_alpha = self.target_alpha;
             self.vel_w = 0.0;
             self.vel_h = 0.0;
             self.vel_y = 0.0;
+            self.vel_alpha = 0.0;
         }
 
         // Notification expiration timer
@@ -303,7 +305,7 @@ impl AppData {
         }
 
         // Advance live/simulated music playback
-        if self.music.is_playing {
+        if self.music.is_playing && self.mode != IslandMode::Hidden {
             self.music.elapsed_sec += dt;
             if self.music.elapsed_sec >= self.music.duration_sec {
                 self.music.elapsed_sec = 0.0;
@@ -312,7 +314,7 @@ impl AppData {
                 (self.music.elapsed_sec / self.music.duration_sec).clamp(0.0, 1.0);
         }
 
-        !settling || self.music.is_playing || self.is_hovered
+        !settling || (self.music.is_playing && self.mode != IslandMode::Hidden) || self.is_hovered
     }
 
     fn check_music(&mut self) {
@@ -358,9 +360,6 @@ impl AppData {
     }
 
     fn check_desktop_backdrop(&mut self) {
-        // Sample real desktop surface under the island every 800ms (or on demand)
-        // so if there is a dark code editor or browser underneath, it refracts THAT window,
-        // eliminating the double-transparent wallpaper bug permanently!
         if self.last_desktop_grab.elapsed() > Duration::from_millis(800) {
             self.last_desktop_grab = Instant::now();
             if let Some(desktop_rgba) =
@@ -374,7 +373,6 @@ impl AppData {
             }
         }
 
-        // Fallback to wallpaper update if grim fails
         if self.wallpaper_mgr.check_update() {
             if let (Some(cache), Some(renderer)) =
                 (self.wallpaper_mgr.cached_buffer(), &mut self.renderer)
@@ -423,7 +421,7 @@ impl AppData {
 
         match self.mode {
             IslandMode::CompactPill => {
-                // Left: Rotating Vinyl Disc icon with pulsing glow when playing
+                // Left: Rotating Vinyl Disc icon with pulsing glow when playing (half-dimensions = 11.0, 11.0)
                 let disc_cx = island_cx - island_w * 0.5 + 24.0;
                 UIFont::draw_rounded_rect_fill(
                     buf,
@@ -431,8 +429,8 @@ impl AppData {
                     self.height,
                     disc_cx,
                     island_cy,
-                    22.0,
-                    22.0,
+                    11.0,
+                    11.0,
                     11.0,
                     if self.music.is_playing {
                         col_green
@@ -472,14 +470,14 @@ impl AppData {
                     FontWeight::Bold,
                 );
 
-                // Right: Mini waveform bars
+                // Right: Mini waveform bars (half-width 1.5, half-height 2.0..8.0)
                 let right_x = island_cx + island_w * 0.5 - 28.0;
                 for i in 0..3 {
                     let bx = right_x + (i as f32) * 6.0;
-                    let h = if self.music.is_playing {
-                        10.0 + (i as f32 * 4.0)
+                    let h_half = if self.music.is_playing {
+                        3.0 + (i as f32 * 2.0)
                     } else {
-                        4.0
+                        2.0
                     };
                     UIFont::draw_rounded_rect_fill(
                         buf,
@@ -487,8 +485,8 @@ impl AppData {
                         self.height,
                         bx,
                         island_cy,
-                        3.0,
-                        h,
+                        1.5,
+                        h_half,
                         1.5,
                         col_green,
                     );
@@ -509,7 +507,7 @@ impl AppData {
                     FontWeight::Bold,
                 );
 
-                // Vinyl Album Disc
+                // Vinyl Album Disc (half_w = 23.0, half_h = 23.0)
                 let disc_cx = island_cx - island_w * 0.5 + 50.0;
                 let disc_cy = island_top + 68.0;
                 UIFont::draw_rounded_rect_fill(
@@ -518,8 +516,8 @@ impl AppData {
                     self.height,
                     disc_cx,
                     disc_cy,
-                    46.0,
-                    46.0,
+                    23.0,
+                    23.0,
                     23.0,
                     if is_light {
                         [25, 30, 42, 255]
@@ -527,15 +525,15 @@ impl AppData {
                         [235, 240, 252, 255]
                     },
                 );
-                // Center accent core
+                // Center accent core (half_w = 9.0, half_h = 9.0)
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
                     self.height,
                     disc_cx,
                     disc_cy,
-                    18.0,
-                    18.0,
+                    9.0,
+                    9.0,
                     9.0,
                     col_green,
                 );
@@ -590,15 +588,15 @@ impl AppData {
                     FontWeight::Bold,
                 );
 
-                // Play / Pause Button with circle fill
+                // Play / Pause Button with circle fill (half_w = 18.0, half_h = 18.0)
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
                     self.height,
                     play_cx,
                     ctrl_y,
-                    36.0,
-                    36.0,
+                    18.0,
+                    18.0,
                     18.0,
                     if is_light {
                         [20, 24, 34, 255]
@@ -641,15 +639,15 @@ impl AppData {
                 let bar_y = island_top + 108.0;
                 let bar_w = island_w - 64.0;
                 let bar_x = island_cx;
-                // Track back
+                // Track back (half_w = bar_w * 0.5, half_h = 2.0)
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
                     self.height,
                     bar_x,
                     bar_y,
-                    bar_w,
-                    4.0,
+                    bar_w * 0.5,
+                    2.0,
                     2.0,
                     if is_light {
                         [180, 185, 200, 150]
@@ -667,8 +665,8 @@ impl AppData {
                         self.height,
                         fill_cx,
                         bar_y,
-                        fill_w,
-                        4.0,
+                        fill_w * 0.5,
+                        2.0,
                         2.0,
                         col_accent,
                     );
@@ -676,7 +674,7 @@ impl AppData {
             }
             IslandMode::Notification => {
                 if let Some(notif) = &self.active_notif {
-                    // Left App Icon badge
+                    // Left App Icon badge (half_w = 20.0, half_h = 20.0)
                     let badge_cx = island_cx - island_w * 0.5 + 42.0;
                     UIFont::draw_rounded_rect_fill(
                         buf,
@@ -684,8 +682,8 @@ impl AppData {
                         self.height,
                         badge_cx,
                         island_cy,
-                        40.0,
-                        40.0,
+                        20.0,
+                        20.0,
                         14.0,
                         col_accent,
                     );
@@ -767,7 +765,6 @@ impl AppData {
                     FontWeight::Bold,
                 );
 
-                // App launcher shortcuts
                 let apps = [
                     ("Terminal", "💻"),
                     ("Browser", "🌐"),
@@ -783,15 +780,15 @@ impl AppData {
                     let cx = start_x + (idx as f32) * item_w;
                     let cy = island_top + 62.0;
 
-                    // Container pill
+                    // Container pill (half_w = (item_w - 10) * 0.5, half_h = 25.0)
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
                         self.height,
                         cx,
                         cy,
-                        item_w - 10.0,
-                        50.0,
+                        (item_w - 10.0) * 0.5,
+                        25.0,
                         12.0,
                         if is_light {
                             [240, 243, 250, 160]
@@ -839,18 +836,12 @@ impl AppData {
 
         if let Some(renderer) = &mut self.renderer {
             if self.current_alpha <= 0.01 {
-                let spec: [f32; 4] = [0.5, 0.0, 0.01, 0.01];
-                let island = GlassSurface::new()
-                    .material(Material::LiquidGlass)
-                    .shape(Shape::Capsule)
-                    .bounds(spec[0], spec[1], spec[2], spec[3]);
-                let _ = renderer.render(&[island]);
+                let _ = renderer.render(&[]);
                 return false;
             }
 
             renderer.update_overlay(self.width, self.height, &self.overlay_buffer);
 
-            // Bounds normalized relative to canvas [x, y, w, h]
             let w_norm = self.current_w / (self.width as f32);
             let h_norm = self.current_h / (self.height as f32);
             let x_norm = 0.50 - w_norm * 0.5;
@@ -858,18 +849,17 @@ impl AppData {
 
             let is_light = if self.is_wallpaper_light { 1.0 } else { 0.0 };
 
-            // Pure Liquid Glass with element_type = 25.0 (Clean canvas with zero hardcoded shader overlaps)
             let island = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(x_norm, y_norm, w_norm, h_norm)
                 .curvature(0.06)
-                .bevel(12.0)
-                .refraction(0.55)
-                .dispersion(0.02)
-                .blur(8.0)
-                .specular(0.85)
-                .fresnel(0.60)
+                .bevel(14.0)
+                .refraction(0.75)
+                .dispersion(0.025)
+                .blur(16.0)
+                .specular(1.20)
+                .fresnel(0.75)
                 .tint(
                     if self.music.is_playing { 1.0 } else { 0.0 },
                     if self.is_pressed { 1.0 } else { 0.0 },
@@ -1211,7 +1201,7 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>) {
                             let _ = tx.send(IslandIpcEvent::Toggle);
                         } else if trimmed == "hide" {
                             let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::Hidden));
-                        } else if trimmed == "compact" {
+                        } else if trimmed == "show" || trimmed == "compact" {
                             let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::CompactPill));
                         } else if trimmed == "music" {
                             let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::MusicExpanded));
@@ -1322,7 +1312,6 @@ fn main() {
 
     let wallpaper_mgr = WallpaperManager::new();
 
-    // Canvas size: 540px wide x 160px high at Top Center
     let screen_w: i32 = 1920;
     let width: u32 = 540;
     let height: u32 = 160;
@@ -1345,24 +1334,24 @@ fn main() {
         is_pressed: false,
         is_hovered: false,
 
-        current_w: 210.0,
-        target_w: 210.0,
+        current_w: 160.0,
+        target_w: 160.0,
         vel_w: 0.0,
 
-        current_h: 42.0,
-        target_h: 42.0,
+        current_h: 10.0,
+        target_h: 10.0,
         vel_h: 0.0,
 
-        current_alpha: 1.0,
-        target_alpha: 1.0,
+        current_alpha: 0.0,
+        target_alpha: 0.0,
         vel_alpha: 0.0,
 
-        current_y: 12.0,
-        target_y: 12.0,
+        current_y: -30.0,
+        target_y: -30.0,
         vel_y: 0.0,
 
-        mode: IslandMode::CompactPill,
-        prev_mode: IslandMode::CompactPill,
+        mode: IslandMode::Hidden,
+        prev_mode: IslandMode::Hidden,
 
         music: MusicState {
             title: "Starboy".to_string(),
@@ -1395,7 +1384,6 @@ fn main() {
 
     let surface = app_data.compositor_state.create_surface(&qh);
 
-    // Dynamic Island layer shell surface: Layer::Overlay (always floats above apps)
     let layer_surface = app_data.layer_shell.create_layer_surface(
         &qh,
         surface.clone(),

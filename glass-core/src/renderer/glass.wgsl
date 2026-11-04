@@ -1660,9 +1660,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if params.blur_radius <= 0.5 {
         col = sharp_col;
     } else {
-        // Keep rim crisp for sharp optical lensing; soft frost diffusion only in flat center
-        let frosted_col = sample_frost_blur(uv_g, params.blur_radius * 0.65);
-        let frost_mix = mix(0.06, 0.28, t);
+        // Deep optical diffusion: crisp at the outer specular bevel for Snell refraction,
+        // rich luxurious frosted diffusion throughout interior (scaled by blur_radius)
+        let frosted_col = sample_frost_blur(uv_g, params.blur_radius * 1.35);
+        let frost_mix = mix(0.12, 0.82, t);
         col = mix(sharp_col, frosted_col, frost_mix);
     }
 
