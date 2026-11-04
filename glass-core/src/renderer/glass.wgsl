@@ -78,6 +78,20 @@ fn rr_sdf(p: vec2<f32>, b: vec2<f32>, r: f32) -> f32 {
     return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - r;
 }
 
+fn rr_normal(p: vec2<f32>, b: vec2<f32>, r: f32) -> vec2<f32> {
+    let corner_center = b - vec2<f32>(r);
+    let ap = abs(p);
+    let s = sign(p);
+    let q = ap - corner_center;
+    if q.x > 0.0 && q.y > 0.0 {
+        return s * normalize(q);
+    } else if q.x > q.y {
+        return vec2<f32>(s.x, 0.0);
+    } else {
+        return vec2<f32>(0.0, s.y);
+    }
+}
+
 // ── Authentic Physical Planar Glass Lens with Perimeter Meniscus ──
 fn droplet_height(p: vec2<f32>, b: vec2<f32>, r: f32, z_radius: f32, cur_px: vec2<f32>, cur_vel: vec2<f32>, time: f32, cur_active: f32) -> f32 {
     let d = -rr_sdf(p, b, r);
@@ -1593,11 +1607,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let edge_curv = edge * edge * (3.0 - 2.0 * edge);
 
     // Exact analytical 2D outward unit normal of the rounded rectangle
-    let eps_sdf = 0.75;
-    let d_dx = rr_sdf(local_px + vec2<f32>(eps_sdf, 0.0), half_size, r) - rr_sdf(local_px - vec2<f32>(eps_sdf, 0.0), half_size, r);
-    let d_dy = rr_sdf(local_px + vec2<f32>(0.0, eps_sdf), half_size, r) - rr_sdf(local_px - vec2<f32>(0.0, eps_sdf), half_size, r);
-    let g_len = length(vec2<f32>(d_dx, d_dy));
-    let grad_2d = select(vec2<f32>(0.0, -1.0), vec2<f32>(d_dx, d_dy) / g_len, g_len > 0.0001);
+    let grad_2d = rr_normal(local_px, half_size, r);
 
     // Continuous 3D surface normal: curved water-droplet meniscus profile
     let theta = edge_curv * 1.5707963;
@@ -1611,12 +1621,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
 
-    // Physical lens displacement: subtle, natural optical ray deflection along the curved meniscus
-    let refr_dist = bevel_w * 0.45 * params.refraction_strength * sin_th;
+    // Authentic physical liquid meniscus lens deflection (warping background pixels inwards)
+    // Strong displacement along the curved perimeter (up to 16px) tapering to 0px at interior
+    let refr_dist = bevel_w * 1.15 * params.refraction_strength * sin_th;
     let refr_ray = -grad_2d * refr_dist * px_to_uv;
 
-    // Cauchy chromatic dispersion: subtle edge color splitting strictly at curved perimeter
-    let ca_dist = params.dispersion * 8.0 * edge_curv * sin_th;
+    // Cauchy chromatic dispersion: physical wavelength separation (R bends least, B bends most)
+    let ca_dist = params.dispersion * 16.0 * edge_curv * sin_th;
     let ca_offset = -grad_2d * ca_dist * px_to_uv;
 
     let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1663,51 +1674,60 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         col *= tint_absorb;
     }
 
-    // Directional orientation: Top-left light source vs bottom-right shadow
-    let top_left_dir = normalize(vec2<f32>(-0.45, -0.68));
-    let top_left_facing = max(dot(-grad_2d, top_left_dir), 0.0);
+    // ════════════════════════════════════════════
+    // 5. DIRECTIONAL 3D LIGHT SOURCE & GEOMETRY
+    // ════════════════════════════════════════════
+    // Virtual key light coming from top-left, elevated in front of screen
+    let light_dir_3d = normalize(vec3<f32>(-0.45, -0.65, 0.70));
+    let view_dir_3d = vec3<f32>(0.0, 0.0, 1.0);
+    let half_vector = normalize(light_dir_3d + view_dir_3d);
+
+    // 2D directional vectors for rim orientation:
+    // grad_2d points outward (-X, -Y for top-left; +X, +Y for bottom-right)
+    let light_vec_2d = normalize(vec2<f32>(-0.45, -0.65));
+    let shadow_vec_2d = -light_vec_2d;
+
+    // Light-facing factor: 1.0 at top-left edge, 0.0 at bottom-right edge
+    let light_facing = max(dot(grad_2d, light_vec_2d), 0.0);
+    // Shadow-facing factor: 1.0 at bottom-right edge, 0.0 at top-left edge
+    let shadow_facing = max(dot(grad_2d, shadow_vec_2d), 0.0);
 
     // ════════════════════════════════════════════
-    // 5. VOLUMETRIC INNER SHADOW (BOTTOM-RIGHT EXTINCTION)
+    // 6. VOLUMETRIC INNER SHADOW (BOTTOM-RIGHT EXTINCTION)
     // ════════════════════════════════════════════
-    // Opposite to the top-left virtual light source, the bottom and right curved edges
-    // occlude direct light, producing grounded, thick physical acrylic / resin volume.
-    let shadow_dir = normalize(vec2<f32>(0.50, 0.72));
-    let shadow_facing = max(dot(grad_2d, shadow_dir), 0.0);
-    let inner_shadow = pow(shadow_facing, 1.5) * pow(edge, 1.2) * mix(0.40, 0.22, is_light);
-    col *= (1.0 - inner_shadow);
-
-    // In light mode, crisp 1px perimeter boundary definition so glass does not blur into white fog
-    if is_light > 0.5 {
-        let dark_contour = smoothstep(1.4, 0.2, inside) * (1.0 - top_left_facing * 0.75) * 0.10;
-        col *= (1.0 - dark_contour);
-    }
+    // Bottom and right curved edges occlude direct light, creating rich 3D physical thickness
+    let inner_shadow_intensity = pow(shadow_facing, 1.3) * pow(edge, 1.1) * mix(0.55, 0.35, is_light);
+    col *= (1.0 - inner_shadow_intensity);
 
     // ════════════════════════════════════════════
-    // 6. SCHLICK FRESNEL TERM (VIEWING ANGLE REFLECTION)
+    // 7. DIRECTIONALLY MODULATED SCHLICK FRESNEL TERM
     // ════════════════════════════════════════════
+    // Ambient light is directional: strong where facing the sky/key light, subdued in shadow.
+    // Modulating Fresnel eliminates the artificial "flat 2D white stroke" on the shadow edges!
     let cos_theta = max(N.z, 0.0);
-    let F0 = 0.045; // Refractive index of crown glass / acrylic resin (n = 1.52)
+    let F0 = 0.045; // Refractive index of acrylic resin / liquid meniscus (n = 1.52)
     let fresnel = F0 + (1.0 - F0) * pow(1.0 - cos_theta, 4.0);
-    let fresnel_gleam = vec3<f32>(0.98, 0.99, 1.0) * (fresnel * pow(edge, 1.2) * mix(0.65, 0.20, is_light) * params.fresnel_strength);
+    let fresnel_ambient = mix(0.08, 1.0, light_facing);
+    let fresnel_gleam = vec3<f32>(0.98, 0.99, 1.0) * (fresnel * pow(edge, 1.2) * fresnel_ambient * mix(0.70, 0.35, is_light) * params.fresnel_strength);
     col += fresnel_gleam;
 
     // ════════════════════════════════════════════
-    // 7. DIRECTIONAL SPECULAR HIGHLIGHTS (TOP-LEFT EXTENDED LIGHT)
+    // 8. DIRECTIONAL 3D VOLUMETRIC SPECULAR HIGHLIGHTS
     // ════════════════════════════════════════════
+    // 3D Blinn-Phong specular on the curved liquid meniscus
+    let N_dot_H = max(dot(N, half_vector), 0.0);
 
-    // 1. Razor-sharp 1.2px outer meniscus boundary crest on top & left perimeter
-    let hairline = smoothstep(1.3, 0.2, inside);
-    let rim_crest = hairline * pow(top_left_facing, 1.4) * mix(1.75, 0.50, is_light) * params.specular_strength;
+    // 1. Brilliant primary specular lip along the top-left curved meniscus
+    let spec_lip = pow(N_dot_H, 28.0) * smoothstep(0.0, 0.25, edge) * mix(1.80, 0.60, is_light) * params.specular_strength;
 
-    // 2. Smooth continuous specular sheen along the curved bevel lip (no detached blob)
-    let lip_profile = pow(edge, 1.6) * smoothstep(0.0, 0.40, 1.0 - edge);
-    let lip_spec = lip_profile * pow(top_left_facing, 2.0) * mix(1.10, 0.25, is_light) * params.specular_strength;
+    // 2. Volumetric ambient sheen giving the liquid its thick physical curve
+    let spec_sheen = pow(N_dot_H, 8.0) * pow(edge, 1.4) * mix(0.40, 0.12, is_light) * params.specular_strength;
 
-    // 3. Subtle ambient surface gloss along the top-left curved quadrant
-    let ambient_gloss = pow(edge, 2.4) * top_left_facing * mix(0.30, 0.08, is_light) * params.specular_strength;
+    // 3. Razor outer meniscus boundary crest on light-facing perimeter
+    let hairline = smoothstep(1.5, 0.3, inside);
+    let rim_crest = hairline * pow(light_facing, 1.5) * mix(1.50, 0.45, is_light) * params.specular_strength;
 
-    col += vec3<f32>(rim_crest + lip_spec + ambient_gloss);
+    col += vec3<f32>(spec_lip + spec_sheen + rim_crest);
 
     var side_bevel_flare = 0.0;
     var side_rim_flare = 0.0;
