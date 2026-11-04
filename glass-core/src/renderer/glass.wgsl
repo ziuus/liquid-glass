@@ -1056,8 +1056,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let tab_cx = mix(-76.0, 76.0, tab_t);
         let p_tab = local_p - vec2<f32>(tab_cx, top_y);
         let d_tab = rr_sdf(p_tab, vec2<f32>(74.0, 14.0), 14.0);
-        let mask_tab1_fill = (1.0 - smoothstep(-0.4, 0.4, d_tab)) * mix(0.14, 0.55, is_light);
-        let mask_tab1_rim = smoothstep(1.1, 0.0, abs(d_tab)) * mix(0.32, 0.45, is_light);
+        let mask_tab1_fill = (1.0 - smoothstep(-0.4, 0.4, d_tab)) * mix(0.85, 0.90, is_light);
+        let mask_tab1_rim = smoothstep(1.1, 0.0, abs(d_tab)) * mix(0.40, 0.50, is_light);
         let mask_tab2_fill = 0.0;
         let mask_tab2_rim = 0.0;
         let mask_tab1_txt = 0.0;
@@ -1105,7 +1105,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             let filt_w = select(mix(30.0, 34.0, f_t), mix(34.0, 30.0, f_t - 1.0), f_t > 1.0);
             let p_filt = local_p - vec2<f32>(filt_cx, filt_y);
             let d_filt = rr_sdf(p_filt, vec2<f32>(filt_w, 10.0), 10.0);
-            mask_all_fill = (1.0 - smoothstep(-0.4, 0.4, d_filt)) * mix(0.15, 0.55, is_light) * task_view_weight;
+            mask_all_fill = (1.0 - smoothstep(-0.4, 0.4, d_filt)) * mix(0.85, 0.90, is_light) * task_view_weight;
             mask_all_rim = smoothstep(1.0, 0.0, abs(d_filt)) * mix(0.40, 0.55, is_light) * task_view_weight;
 
             // Refresh Icon ↻
@@ -1131,8 +1131,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
                 let is_row_hover = (hover_row >= f32(i) - 0.1 && hover_row <= f32(i) + 0.1);
                 let hover_boost = select(0.0, 0.12, is_row_hover);
 
-                let fill = (1.0 - smoothstep(-0.4, 0.4, d_row)) * mix(0.05 + hover_boost, 0.10 + hover_boost, is_light) * task_view_weight;
-                let rim = smoothstep(1.0, 0.0, abs(d_row)) * mix(0.12, 0.18, is_light) * task_view_weight;
+                let fill = (1.0 - smoothstep(-0.4, 0.4, d_row)) * mix(0.14 + hover_boost, 0.16 + hover_boost, is_light) * task_view_weight;
+                let rim = smoothstep(1.0, 0.0, abs(d_row)) * mix(0.22, 0.28, is_light) * task_view_weight;
                 rows_fill = max(rows_fill, fill);
                 rows_rim = max(rows_rim, rim);
 
@@ -1378,8 +1378,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             eq_mask = max(eq_mask, 1.0 - smoothstep(-0.35, 0.35, d_bar));
         }
         
-        // ── 3. Subtle Vertical Crystalline Divider (x = -26.0, y = -4.0) ──
-        let d_sep = rr_sdf(local_p - vec2<f32>(-26.0, -4.0), vec2<f32>(0.5, 20.0), 0.5);
+        // ── 3. Subtle Vertical Crystalline Divider (x = -26.0, y = -10.0, h = 14.0, terminates 6px above timeline) ──
+        let d_sep = rr_sdf(local_p - vec2<f32>(-26.0, -10.0), vec2<f32>(0.5, 14.0), 0.5);
         let mask_sep = (1.0 - smoothstep(-0.35, 0.35, d_sep)) * 0.30;
         
         // ── 4. Transport Controls: Prev (x = 4.0), Play (x = 48.0), Next (x = 92.0) at y = -10.0 ──

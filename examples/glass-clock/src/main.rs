@@ -336,6 +336,7 @@ impl PointerHandler for AppData {
                                         self.width,
                                         self.height,
                                     );
+                                    self.is_wallpaper_light = is_buffer_light(&crop);
                                     renderer.update_background(self.width, self.height, &crop);
                                 }
                             }
@@ -758,20 +759,31 @@ fn load_wallpaper_image(path: Option<&str>) -> Option<Arc<Vec<u8>>> {
 }
 
 fn is_buffer_light(buf: &[u8]) -> bool {
-    let mut total_lum = 0u64;
-    let mut count = 0u64;
+    let mut total_lum = 0.0f64;
+    let mut count = 0usize;
     let step = 16 * 4;
     for i in (0..buf.len()).step_by(step) {
         if i + 2 < buf.len() {
-            let r = buf[i] as u64;
-            let g = buf[i + 1] as u64;
-            let b = buf[i + 2] as u64;
-            let lum = (r * 299 + g * 587 + b * 114) / 1000;
-            total_lum += lum;
+            let r = buf[i] as f64 / 255.0;
+            let g = buf[i + 1] as f64 / 255.0;
+            let b = buf[i + 2] as f64 / 255.0;
+            let to_lin = |c: f64| {
+                if c <= 0.04045 {
+                    c / 12.92
+                } else {
+                    ((c + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            let lin_lum = 0.2126 * to_lin(r) + 0.7152 * to_lin(g) + 0.0722 * to_lin(b);
+            total_lum += lin_lum;
             count += 1;
         }
     }
-    total_lum.checked_div(count).is_some_and(|avg| avg > 72)
+    if count > 0 {
+        (total_lum / count as f64) > 0.179
+    } else {
+        false
+    }
 }
 
 fn init_wallpaper_1080p() -> (Option<Arc<Vec<u8>>>, Option<String>) {

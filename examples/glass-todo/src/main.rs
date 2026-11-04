@@ -800,8 +800,10 @@ impl AppData {
         // 1. Top Tab Labels: "Tasks ({count})" (cx = 104.0) & "Agenda" (cx = 256.0), cy = 32.5
         let tasks_count = self.todos.tasks.len();
         let tasks_label = format!("Tasks ({})", tasks_count);
+        // Active selected pill has bright near-white fill with dark ink; unselected uses dimmed text
+        let selected_ink = [10, 14, 22, 255];
         let tab1_col = if self.active_tab == 0 {
-            col_accent
+            selected_ink
         } else {
             col_dimmed
         };
@@ -814,13 +816,13 @@ impl AppData {
             32.5,
             15.5,
             tab1_col,
-            col_shadow,
+            [0, 0, 0, 0],
             FontWeight::Bold,
         );
 
         let agenda_label = "Agenda";
         let tab2_col = if self.active_tab == 1 {
-            col_accent
+            selected_ink
         } else {
             col_dimmed
         };
@@ -833,24 +835,24 @@ impl AppData {
             32.5,
             15.5,
             tab2_col,
-            col_shadow,
+            [0, 0, 0, 0],
             FontWeight::Bold,
         );
 
         if self.active_tab == 0 {
             // 2. Filter Bar Labels: "All" (cx = 84.0), "Active" (cx = 156.0), "Done" (cx = 228.0), cy = 79.5
             let f0_col = if self.active_filter == 0 {
-                col_accent
+                selected_ink
             } else {
                 col_dimmed
             };
             let f1_col = if self.active_filter == 1 {
-                col_accent
+                selected_ink
             } else {
                 col_dimmed
             };
             let f2_col = if self.active_filter == 2 {
-                col_accent
+                selected_ink
             } else {
                 col_dimmed
             };
@@ -864,7 +866,7 @@ impl AppData {
                 79.5,
                 14.0,
                 f0_col,
-                col_shadow,
+                [0, 0, 0, 0],
                 FontWeight::Bold,
             );
             self.font.draw_text_centered(
@@ -876,7 +878,7 @@ impl AppData {
                 79.5,
                 14.0,
                 f1_col,
-                col_shadow,
+                [0, 0, 0, 0],
                 FontWeight::Bold,
             );
             self.font.draw_text_centered(
@@ -888,7 +890,7 @@ impl AppData {
                 79.5,
                 14.0,
                 f2_col,
-                col_shadow,
+                [0, 0, 0, 0],
                 FontWeight::Bold,
             );
 
@@ -917,21 +919,37 @@ impl AppData {
                 let cy = 122.5 + (row_idx as f32) * 44.0;
                 let task = &self.todos.tasks[actual_idx];
 
-                let (text_col, weight) = if task.done {
-                    (col_dimmed, FontWeight::Regular)
+                // Regional luminance adaptation: sample the row's specific backdrop slice (44px height)
+                let row_is_light = if let Some(cache) = &self.wallpaper_cache {
+                    let y_start = ((self.pos_y as f32 + cy - 20.0).max(0.0)) as u32;
+                    let row_crop =
+                        get_wallpaper_crop(cache, self.pos_x as u32, y_start, self.width, 40);
+                    is_buffer_light(&row_crop)
                 } else {
-                    (col_primary, FontWeight::Bold)
+                    self.is_wallpaper_light
+                };
+
+                let (row_primary, row_dimmed) = if row_is_light {
+                    ([8, 12, 20, 255], [45, 55, 70, 245])
+                } else {
+                    ([255, 255, 255, 255], [170, 178, 195, 200])
+                };
+
+                let (text_col, weight) = if task.done {
+                    (row_dimmed, FontWeight::Regular)
+                } else {
+                    (row_primary, FontWeight::Bold)
                 };
 
                 // Precision anti-aliased vector checkbox
                 let chk_cx = 38.0;
                 if task.done {
-                    let bg_box = if self.is_wallpaper_light {
+                    let bg_box = if row_is_light {
                         [10, 14, 22, 255]
                     } else {
                         [255, 255, 255, 245]
                     };
-                    let fg_chk = if self.is_wallpaper_light {
+                    let fg_chk = if row_is_light {
                         [255, 255, 255, 255]
                     } else {
                         [10, 14, 22, 255]
@@ -958,10 +976,10 @@ impl AppData {
                         fg_chk,
                     );
                 } else {
-                    let stroke_box = if self.is_wallpaper_light {
-                        [35, 45, 60, 200]
+                    let stroke_box = if row_is_light {
+                        [10, 14, 22, 230]
                     } else {
-                        [220, 230, 248, 190]
+                        [255, 255, 255, 230]
                     };
                     UIFont::draw_rounded_rect_stroke(
                         buf,
@@ -1292,20 +1310,31 @@ impl ProvidesRegistryState for AppData {
 }
 
 fn is_buffer_light(buf: &[u8]) -> bool {
-    let mut total_lum = 0u64;
-    let mut count = 0u64;
+    let mut total_lum = 0.0f64;
+    let mut count = 0usize;
     let step = 16 * 4;
     for i in (0..buf.len()).step_by(step) {
         if i + 2 < buf.len() {
-            let r = buf[i] as u64;
-            let g = buf[i + 1] as u64;
-            let b = buf[i + 2] as u64;
-            let lum = (r * 299 + g * 587 + b * 114) / 1000;
-            total_lum += lum;
+            let r = buf[i] as f64 / 255.0;
+            let g = buf[i + 1] as f64 / 255.0;
+            let b = buf[i + 2] as f64 / 255.0;
+            let to_lin = |c: f64| {
+                if c <= 0.04045 {
+                    c / 12.92
+                } else {
+                    ((c + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            let lin_lum = 0.2126 * to_lin(r) + 0.7152 * to_lin(g) + 0.0722 * to_lin(b);
+            total_lum += lin_lum;
             count += 1;
         }
     }
-    total_lum.checked_div(count).is_some_and(|avg| avg > 72)
+    if count > 0 {
+        (total_lum / count as f64) > 0.179
+    } else {
+        false
+    }
 }
 
 fn get_theme_accent() -> [f32; 4] {
