@@ -1620,22 +1620,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let N_2d = N.xy;
 
     // ════════════════════════════════════════════
-    // 3. PHYSICAL 3D SNELL'S LAW REFRACTION & CAUCHY SPECTRAL DISPERSION
+    // 3. PHYSICAL 3D SNELL'S LAW REFRACTION & CAUCHY DISPERSION
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
 
-    // Physical lens displacement along curved liquid lip (zero in flat center, gentle near boundary)
-    let refr_dist = bevel_w * 0.35 * params.refraction_strength * edge_slope;
-
-    // Boundary safety falloff: prevents rays from crossing texture borders and stretching into streaks
-    let min_edge_dist_px = min(min(uv.x, 1.0 - uv.x) * params.surface_size.x, min(uv.y, 1.0 - uv.y) * params.surface_size.y);
-    let safe_refr_scale = smoothstep(2.5, 16.0, min_edge_dist_px) * lip_fade;
-
-    let refr_ray = -grad_2d * refr_dist * px_to_uv * safe_refr_scale;
+    // Physical lens displacement: Thickness * tan(theta)
+    // Smooth, non-inverting optical warp (d(offset)/dx < 0.4 prevents caustic fold artifacts)
+    let refr_profile = smoothstep(0.0, 9.0, inside) * edge_slope;
+    let refr_px = bevel_w * 0.35 * params.refraction_strength * refr_profile;
+    let refr_ray = -N_2d * refr_px * px_to_uv;
 
     // Cauchy chromatic dispersion along the curved perimeter
-    let ca_dist = params.dispersion * 8.0 * edge_slope * safe_refr_scale;
-    let ca_offset = -grad_2d * ca_dist * px_to_uv;
+    let ca_dist = params.dispersion * 5.0 * refr_profile * px_to_uv;
+    let ca_offset = -N_2d * ca_dist;
 
     let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
     let uv_g = clamp(uv + refr_ray, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1689,31 +1686,36 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // 2D directional vectors for rim orientation:
     let light_vec_2d = normalize(vec2<f32>(-0.45, -0.65));
+    let shadow_vec_2d = -light_vec_2d;
 
-    // Light-facing factor: 1.0 at top-left edge, 0.0 at bottom-right edge
+    // Light-facing & opposing-facing factors along the 2D rim
     let light_facing = max(dot(N_2d, light_vec_2d), 0.0);
+    let opp_facing = max(dot(N_2d, shadow_vec_2d), 0.0);
+
+    // Fresnel grazing factor: pow(1.0 - dot(N, V), power)
+    let N_dot_V = max(dot(N, view_dir_3d), 0.0);
+    let fresnel_grazing = pow(1.0 - N_dot_V, 2.8);
 
     // ════════════════════════════════════════════
-    // 6. DIRECTIONALLY MODULATED SCHLICK FRESNEL TERM
+    // 6. OPPOSING EDGE DEFINITION & AMBIENT RIM
     // ════════════════════════════════════════════
-    let cos_theta = max(N.z, 0.0);
-    let F0 = 0.045; // Refractive index of acrylic resin / liquid meniscus (n = 1.52)
-    let fresnel = F0 + (1.0 - F0) * pow(1.0 - cos_theta, 4.0);
-    let fresnel_ambient = mix(0.08, 1.0, light_facing);
-    let fresnel_gleam = vec3<f32>(0.98, 0.99, 1.0) * (fresnel * edge_slope * lip_fade * fresnel_ambient * mix(0.60, 0.28, is_light) * params.fresnel_strength);
-    col += fresnel_gleam;
+    // 1. Subtle Fresnel ambient occlusion / ground darkening on the opposing unlit side (bottom-right)
+    let ground_darken = opp_facing * fresnel_grazing * edge_slope * lip_fade * mix(0.28, 0.15, is_light);
+    col *= (1.0 - ground_darken);
+
+    // 2. Ambient environmental reflection along all curved edges
+    let ambient_rim = fresnel_grazing * edge_slope * lip_fade * mix(0.35, 0.20, is_light) * params.fresnel_strength;
+    col += vec3<f32>(0.96, 0.98, 1.0) * ambient_rim;
 
     // ════════════════════════════════════════════
     // 7. DIRECTIONAL 3D VOLUMETRIC SPECULAR HIGHLIGHTS
     // ════════════════════════════════════════════
-    // 3D Blinn-Phong specular on the curved liquid meniscus (zero in flat center, zero dark inner shadow)
     let N_dot_H = max(dot(N, half_vector), 0.0);
 
-    // Wet liquid specular gloss: tight high-energy glint + focused crest (natural falloff into center)
-    let wet_glint = pow(N_dot_H, 48.0) * 2.4;
-    let wet_crest = pow(N_dot_H, 22.0) * 0.9;
-    let wet_body  = pow(N_dot_H, 10.0) * 0.2;
-    let spec_gloss = (wet_glint + wet_crest + wet_body) * edge_slope * lip_fade * mix(1.35, 0.60, is_light) * params.specular_strength;
+    // Softened gloss spread with natural Fresnel falloff as surface turns away
+    let spec_lobe_crest = pow(N_dot_H, 28.0) * 1.5;
+    let spec_lobe_broad = pow(N_dot_H, 14.0) * 0.8;
+    let spec_gloss = (spec_lobe_crest + spec_lobe_broad) * (0.30 + 0.70 * fresnel_grazing) * light_facing * lip_fade * mix(1.35, 0.60, is_light) * params.specular_strength;
 
     col += vec3<f32>(spec_gloss);
 
