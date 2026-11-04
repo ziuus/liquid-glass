@@ -1593,32 +1593,30 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     
     // ════════════════════════════════════════════
-    // 2. ISOTROPIC PHYSICAL LIQUID MENISCUS PROFILE
+    // 2. TRUE SOLID VOLUME LIQUID DOME PROFILE
     // ════════════════════════════════════════════
-    let mask = 1.0 - smoothstep(-1.0, 0.1, sdf);
     let inside = max(-sdf, 0.0);
 
-    // Constant, uniform meniscus width around all edges and corners (prevents pinched corners)
+    // Meniscus roll-off width (outer lip curvature)
     let bevel_w = clamp(params.bevel, 14.0, 26.0);
-    let t = clamp(inside / bevel_w, 0.0, 1.0); // 0.0 at outer rim, 1.0 at flat interior
-    let edge = 1.0 - t; // 1.0 at outer rim, 0.0 at flat interior
 
-    // Smooth C1 cubic meniscus roll-off (zero in center, completely eliminates diagonal seams)
-    let edge_curv = edge * edge * (3.0 - 2.0 * edge);
+    // Exact analytical gradient of a blurred solid filled plateau:
+    // Gaussian falloff centered at the outer boundary, strictly monotonic decay into the center.
+    // 100% flat (slope = 0.0) across the entire solid interior — zero hollow trough, zero inner ridge.
+    let sigma = bevel_w * 0.42;
+    let dist_norm = inside / sigma;
+    let edge_slope = exp(-0.5 * dist_norm * dist_norm) * smoothstep(bevel_w, bevel_w - 3.0, inside);
 
-    // Smooth boundary fade to 0.0 at the outer perimeter:
-    // Prevents hard cutoff / boundary clipping artifacts at the container edge
-    let outer_rim_fade = smoothstep(0.0, 2.5, inside);
+    // Sub-pixel lip fade at extreme outer perimeter (prevents hard clipping wall)
+    let lip_fade = smoothstep(0.0, 2.0, inside);
 
     // Exact analytical 2D outward unit normal of rounded rectangle
     let grad_2d = rr_normal(local_px, half_size, r);
 
-    // 3D surface normal: curved water-droplet meniscus along outer curves;
-    // strictly zero tilt in the center (N = [0, 0, 1]), keeping the interior 100% flat and crystal-clear
-    let theta = edge_curv * 1.15; // ~66° contact angle at outer rim
-    let sin_th = sin(theta);
-    let cos_th = cos(theta);
-    let N = normalize(vec3<f32>(grad_2d * sin_th, cos_th));
+    // 3D Surface Normal from solid blurred dome:
+    // Surface scale controls steepness of outer liquid lip; strictly (0, 0, 1) in center
+    let surface_scale = 1.35;
+    let N = normalize(vec3<f32>(grad_2d * (edge_slope * surface_scale), 1.0));
     let N_2d = N.xy;
 
     // ════════════════════════════════════════════
@@ -1626,17 +1624,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
 
-    // Physical lens displacement along curved liquid meniscus (zero in flat center, gentle near boundary)
-    let refr_dist = bevel_w * 0.35 * params.refraction_strength * sin_th;
+    // Physical lens displacement along curved liquid lip (zero in flat center, gentle near boundary)
+    let refr_dist = bevel_w * 0.35 * params.refraction_strength * edge_slope;
 
     // Boundary safety falloff: prevents rays from crossing texture borders and stretching into streaks
     let min_edge_dist_px = min(min(uv.x, 1.0 - uv.x) * params.surface_size.x, min(uv.y, 1.0 - uv.y) * params.surface_size.y);
-    let safe_refr_scale = smoothstep(2.5, 16.0, min_edge_dist_px) * smoothstep(0.5, 4.0, inside);
+    let safe_refr_scale = smoothstep(2.5, 16.0, min_edge_dist_px) * lip_fade;
 
     let refr_ray = -grad_2d * refr_dist * px_to_uv * safe_refr_scale;
 
     // Cauchy chromatic dispersion along the curved perimeter
-    let ca_dist = params.dispersion * 8.0 * edge_curv * safe_refr_scale;
+    let ca_dist = params.dispersion * 8.0 * edge_slope * safe_refr_scale;
     let ca_offset = -grad_2d * ca_dist * px_to_uv;
 
     let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1691,41 +1689,31 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // 2D directional vectors for rim orientation:
     let light_vec_2d = normalize(vec2<f32>(-0.45, -0.65));
-    let shadow_vec_2d = -light_vec_2d;
 
     // Light-facing factor: 1.0 at top-left edge, 0.0 at bottom-right edge
     let light_facing = max(dot(N_2d, light_vec_2d), 0.0);
-    // Shadow-facing factor: 1.0 at bottom-right edge, 0.0 at top-left edge
-    let shadow_facing = max(dot(N_2d, shadow_vec_2d), 0.0);
 
     // ════════════════════════════════════════════
-    // 6. VOLUMETRIC INNER SHADOW (BOTTOM-RIGHT EXTINCTION)
-    // ════════════════════════════════════════════
-    // Soft extinction shadow along bottom and right curved edges (strictly zero in flat center)
-    let inner_shadow_intensity = pow(shadow_facing, 1.2) * edge_curv * outer_rim_fade * mix(0.50, 0.28, is_light);
-    col *= (1.0 - inner_shadow_intensity);
-
-    // ════════════════════════════════════════════
-    // 7. DIRECTIONALLY MODULATED SCHLICK FRESNEL TERM
+    // 6. DIRECTIONALLY MODULATED SCHLICK FRESNEL TERM
     // ════════════════════════════════════════════
     let cos_theta = max(N.z, 0.0);
     let F0 = 0.045; // Refractive index of acrylic resin / liquid meniscus (n = 1.52)
     let fresnel = F0 + (1.0 - F0) * pow(1.0 - cos_theta, 4.0);
     let fresnel_ambient = mix(0.08, 1.0, light_facing);
-    let fresnel_gleam = vec3<f32>(0.98, 0.99, 1.0) * (fresnel * edge_curv * outer_rim_fade * fresnel_ambient * mix(0.60, 0.28, is_light) * params.fresnel_strength);
+    let fresnel_gleam = vec3<f32>(0.98, 0.99, 1.0) * (fresnel * edge_slope * lip_fade * fresnel_ambient * mix(0.60, 0.28, is_light) * params.fresnel_strength);
     col += fresnel_gleam;
 
     // ════════════════════════════════════════════
-    // 8. DIRECTIONAL 3D VOLUMETRIC SPECULAR HIGHLIGHTS
+    // 7. DIRECTIONAL 3D VOLUMETRIC SPECULAR HIGHLIGHTS
     // ════════════════════════════════════════════
-    // 3D Blinn-Phong specular on the curved liquid meniscus (strictly zero in flat center)
+    // 3D Blinn-Phong specular on the curved liquid meniscus (zero in flat center, zero dark inner shadow)
     let N_dot_H = max(dot(N, half_vector), 0.0);
 
-    // Wet liquid specular gloss: tight high-energy glint + focused crest (eliminates milky wash)
+    // Wet liquid specular gloss: tight high-energy glint + focused crest (natural falloff into center)
     let wet_glint = pow(N_dot_H, 48.0) * 2.4;
     let wet_crest = pow(N_dot_H, 22.0) * 0.9;
     let wet_body  = pow(N_dot_H, 10.0) * 0.2;
-    let spec_gloss = (wet_glint + wet_crest + wet_body) * edge_curv * outer_rim_fade * mix(1.35, 0.60, is_light) * params.specular_strength;
+    let spec_gloss = (wet_glint + wet_crest + wet_body) * edge_slope * lip_fade * mix(1.35, 0.60, is_light) * params.specular_strength;
 
     col += vec3<f32>(spec_gloss);
 
@@ -1745,8 +1733,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let prox_curve = prox * prox;
 
         // Subtle, elegant edge response
-        side_bevel_flare = pow(edge_curv, 1.6) * pow(bevel_facing, 3.0) * prox_curve * outer_rim_fade * 0.55 * params.specular_strength;
-        side_rim_flare = pow(edge_curv, 2.0) * pow(bevel_facing, 2.2) * prox * outer_rim_fade * 0.70 * params.specular_strength;
+        side_bevel_flare = pow(edge_slope, 1.6) * pow(bevel_facing, 3.0) * prox_curve * lip_fade * 0.55 * params.specular_strength;
+        side_rim_flare = pow(edge_slope, 2.0) * pow(bevel_facing, 2.2) * prox * lip_fade * 0.70 * params.specular_strength;
     }
 
     // ════════════════════════════════════════════
