@@ -568,7 +568,7 @@ impl AppData {
             let month = now.month() as f32;
             let mday = now.day() as f32;
 
-            let time_val = hr * 10000.0 + mn * 100.0 + sec;
+            let _time_val = hr * 10000.0 + mn * 100.0 + sec;
             let date_val = wday * 10000.0 + month * 100.0 + mday;
 
             let _accent = get_theme_accent();
@@ -577,20 +577,20 @@ impl AppData {
 
             let is_light_f32 = if self.is_wallpaper_light { 1.0 } else { 0.0 };
 
-            // Authentic 3D Liquid Glass with generous 22px curved optical meniscus
+            // Authentic 3D Liquid Glass with precision curved optical meniscus
             let clock_card = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::RoundedRectangle { radius: 28.0 })
                 .bounds(0.0, 0.0, 1.0, 1.0)
                 .curvature(0.035)
-                .bevel(22.0)
-                .refraction(0.75)
-                .dispersion(0.045)
-                .blur(5.0)
-                .tint(0.0, time_val, 0.0, is_light_f32)
+                .bevel(12.0)
+                .refraction(0.35)
+                .dispersion(0.015)
+                .blur(8.0)
+                .tint(0.0, 0.0, 0.0, is_light_f32)
                 .roughness(self.battery_level)
-                .specular(1.50)
-                .fresnel(0.85)
+                .specular(0.65)
+                .fresnel(0.40)
                 .element_type(25.0)
                 .deformation(date_val)
                 .pointer_pos(px, py);

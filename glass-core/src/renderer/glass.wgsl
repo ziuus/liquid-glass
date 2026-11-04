@@ -1584,8 +1584,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let mask = 1.0 - smoothstep(-1.0, 0.1, sdf);
     let inside = max(-sdf, 0.0);
 
-    // Authentic Physical Liquid Glass Meniscus (20px-28px for optimal optical rim clarity)
-    let bevel_w = clamp(params.bevel, 20.0, 28.0);
+    // Authentic Physical Liquid Glass Meniscus (sleek 6px-20px precision profile)
+    let bevel_w = clamp(params.bevel, 4.0, 20.0);
     let t = clamp(inside / bevel_w, 0.0, 1.0); // 0 at outer edge, 1 at interior flat face
     let edge = 1.0 - t; // 1 at outer edge, 0 at interior flat face
 
@@ -1648,12 +1648,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let is_light = params.is_light;
     let bg_luma = dot(col, vec3<f32>(0.299, 0.587, 0.114));
 
-    // Apple Vibrancy: boost saturation so underlying colors glow richly through liquid glass
-    let sat_col = mix(vec3<f32>(bg_luma), col, 1.25);
+    // Apple Vibrancy: subtle saturation boost only on dark backgrounds, neutral on light
+    let sat_mult = mix(1.20, 1.0, is_light);
+    let sat_col = mix(vec3<f32>(bg_luma), col, sat_mult);
     col = sat_col;
 
     // Translucent glass substrate (subtle physical luminance, not flat white/black paint)
-    let light_substrate = mix(col, vec3<f32>(0.99, 0.995, 1.0), 0.06);
+    let light_substrate = mix(col, vec3<f32>(0.99, 0.995, 1.0), 0.04);
     let dark_substrate = mix(col, vec3<f32>(0.12, 0.14, 0.18), 0.12);
     col = mix(dark_substrate, light_substrate, is_light);
 
@@ -1663,6 +1664,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         col *= tint_absorb;
     }
 
+    // Directional orientation: Top-left light source vs bottom-right shadow
+    let top_left_dir = normalize(vec2<f32>(-0.45, -0.68));
+    let top_left_facing = max(dot(-grad_2d, top_left_dir), 0.0);
+
     // ════════════════════════════════════════════
     // 5. VOLUMETRIC INNER SHADOW (BOTTOM-RIGHT EXTINCTION)
     // ════════════════════════════════════════════
@@ -1670,36 +1675,38 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // occlude direct light, producing grounded, thick physical acrylic / resin volume.
     let shadow_dir = normalize(vec2<f32>(0.50, 0.72));
     let shadow_facing = max(dot(grad_2d, shadow_dir), 0.0);
-    let inner_shadow = pow(shadow_facing, 1.5) * pow(edge, 1.2) * mix(0.42, 0.28, is_light);
+    let inner_shadow = pow(shadow_facing, 1.5) * pow(edge, 1.2) * mix(0.40, 0.22, is_light);
     col *= (1.0 - inner_shadow);
+
+    // In light mode, crisp 1px perimeter boundary definition so glass does not blur into white fog
+    if is_light > 0.5 {
+        let dark_contour = smoothstep(1.4, 0.2, inside) * (1.0 - top_left_facing * 0.75) * 0.10;
+        col *= (1.0 - dark_contour);
+    }
 
     // ════════════════════════════════════════════
     // 6. SCHLICK FRESNEL TERM (VIEWING ANGLE REFLECTION)
     // ════════════════════════════════════════════
-    // Center is highly transparent (N.z ~ 1.0); curved edges become denser & reflective
     let cos_theta = max(N.z, 0.0);
     let F0 = 0.045; // Refractive index of crown glass / acrylic resin (n = 1.52)
     let fresnel = F0 + (1.0 - F0) * pow(1.0 - cos_theta, 4.0);
-    let fresnel_gleam = vec3<f32>(0.98, 0.99, 1.0) * (fresnel * pow(edge, 1.2) * 0.70 * params.fresnel_strength);
+    let fresnel_gleam = vec3<f32>(0.98, 0.99, 1.0) * (fresnel * pow(edge, 1.2) * mix(0.65, 0.20, is_light) * params.fresnel_strength);
     col += fresnel_gleam;
 
     // ════════════════════════════════════════════
     // 7. DIRECTIONAL SPECULAR HIGHLIGHTS (TOP-LEFT EXTENDED LIGHT)
     // ════════════════════════════════════════════
-    // Virtual studio key light from top-left: direction (-0.45, -0.68)
-    let top_left_dir = normalize(vec2<f32>(-0.45, -0.68));
-    let top_left_facing = max(dot(-grad_2d, top_left_dir), 0.0);
 
-    // 1. Razor-sharp 1.5px outer meniscus boundary crest on top & left perimeter
-    let hairline = smoothstep(1.5, 0.2, inside);
-    let rim_crest = hairline * pow(top_left_facing, 1.3) * 1.85 * params.specular_strength;
+    // 1. Razor-sharp 1.2px outer meniscus boundary crest on top & left perimeter
+    let hairline = smoothstep(1.3, 0.2, inside);
+    let rim_crest = hairline * pow(top_left_facing, 1.4) * mix(1.75, 0.50, is_light) * params.specular_strength;
 
-    // 2. Smooth continuous specular sheen along the curved bevel lip (zero detached blob)
-    let lip_profile = pow(edge, 1.5) * smoothstep(0.0, 0.35, 1.0 - edge);
-    let lip_spec = lip_profile * pow(top_left_facing, 1.8) * 1.15 * params.specular_strength;
+    // 2. Smooth continuous specular sheen along the curved bevel lip (no detached blob)
+    let lip_profile = pow(edge, 1.6) * smoothstep(0.0, 0.40, 1.0 - edge);
+    let lip_spec = lip_profile * pow(top_left_facing, 2.0) * mix(1.10, 0.25, is_light) * params.specular_strength;
 
     // 3. Subtle ambient surface gloss along the top-left curved quadrant
-    let ambient_gloss = pow(edge, 2.2) * top_left_facing * 0.30 * params.specular_strength;
+    let ambient_gloss = pow(edge, 2.4) * top_left_facing * mix(0.30, 0.08, is_light) * params.specular_strength;
 
     col += vec3<f32>(rim_crest + lip_spec + ambient_gloss);
 
