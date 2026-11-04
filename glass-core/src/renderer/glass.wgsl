@@ -153,6 +153,8 @@ fn sample_frost_blur(uv: vec2<f32>, radius: f32) -> vec3<f32> {
 struct ElementAppearance {
     glyph_mask: f32,
     glyph_color: vec3<f32>,
+    fill_mask: f32,
+    rim_mask: f32,
     fluid_color: vec3<f32>,
     fluid_glow: f32,
 };
@@ -785,6 +787,8 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
     var app: ElementAppearance;
     app.glyph_mask = 0.0;
     app.glyph_color = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.11, 0.14, 0.18), is_light);
+    app.fill_mask = 0.0;
+    app.rim_mask = 0.0;
     app.fluid_color = vec3<f32>(1.0, 1.0, 1.0);
     app.fluid_glow = 0.0;
     
@@ -1228,6 +1232,9 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         );
         let secondary_glyphs = max(max(mask_tab2_txt, mask_act_txt), max(mask_don_txt, mask_add_txt));
 
+        app.fill_mask = all_fills;
+        app.rim_mask = all_rims;
+
         if mask_plus_icon > 0.05 {
             app.glyph_mask = mask_plus_icon;
             app.glyph_color = text_primary;
@@ -1254,12 +1261,6 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         } else if secondary_glyphs > 0.02 {
             app.glyph_mask = secondary_glyphs;
             app.glyph_color = text_secondary;
-        } else if all_rims > 0.05 {
-            app.glyph_mask = all_rims;
-            app.glyph_color = pill_rim_col;
-        } else if all_fills > 0.05 {
-            app.glyph_mask = all_fills;
-            app.glyph_color = pill_frost_col;
         }
         return app;
     }
@@ -1340,7 +1341,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         let r_vinyl = length(p_vinyl);
         
         let d_disc = r_vinyl - 28.0;
-        let mask_disc_edge = smoothstep(0.4, -0.4, abs(d_disc) - 0.65);
+        let mask_disc_edge = smoothstep(0.3, -0.3, abs(d_disc) - 0.45);
         let mask_disc_fill = (1.0 - smoothstep(-0.5, 0.5, d_disc)) * 0.16;
         
         // Concentric vinyl grooves
@@ -1452,37 +1453,37 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
         
         // ── 5. Timeline Progress Bar Track & Scrubber Knob (y = 22.0) ──
         let y_bar = 22.0;
-        // Total track spans from x = -15.0 to x = 135.0 (width = 150.0)
-        let bar_len = 150.0;
-        let d_rail = rr_sdf(local_p - vec2<f32>(60.0, y_bar), vec2<f32>(75.0, 1.8), 1.4);
+        // Total track spans from x = 8.0 to x = 138.0 (width = 130.0)
+        let bar_len = 130.0;
+        let d_rail = rr_sdf(local_p - vec2<f32>(73.0, y_bar), vec2<f32>(65.0, 1.8), 1.4);
         let mask_rail = (1.0 - smoothstep(-0.35, 0.35, d_rail)) * 0.28;
         
         let fill_w = prog * bar_len;
-        let fill_cx = -15.0 + fill_w * 0.5;
+        let fill_cx = 8.0 + fill_w * 0.5;
         let d_fill = rr_sdf(local_p - vec2<f32>(fill_cx, y_bar), vec2<f32>(max(fill_w * 0.5, 1.0), 2.0), 1.4);
         let mask_fill = 1.0 - smoothstep(-0.35, 0.35, d_fill);
         
         // Scrubber Knob (circle r = 4.2)
-        let p_knob = local_p - vec2<f32>(-15.0 + fill_w, y_bar);
+        let p_knob = local_p - vec2<f32>(8.0 + fill_w, y_bar);
         let d_knob = length(p_knob) - 4.5;
         let mask_knob = 1.0 - smoothstep(-0.35, 0.35, d_knob);
         
-        // ── 6. Elapsed Time Display (x = -40.0, y = 22.0) ──
+        // ── 6. Elapsed Time Display (x = -24.0, y = 22.0) ──
         let cur_sec = u32(elapsed_sec);
         let e_min = (cur_sec / 60u) % 10u;
         let e_s_tens = (cur_sec % 60u) / 10u;
         let e_s_ones = cur_sec % 10u;
         let t_scale = 1.05;
         let tsp = 7.2;
-        let d_em = draw_digit(local_p - vec2<f32>(-50.0 - tsp, y_bar), e_min, t_scale);
-        let d_ecol = draw_colon(local_p - vec2<f32>(-50.0, y_bar), t_scale);
-        let d_es0 = draw_digit(local_p - vec2<f32>(-50.0 + tsp * 0.9, y_bar), e_s_tens, t_scale);
-        let d_es1 = draw_digit(local_p - vec2<f32>(-50.0 + tsp * 1.9, y_bar), e_s_ones, t_scale);
+        let d_em = draw_digit(local_p - vec2<f32>(-28.0 - tsp, y_bar), e_min, t_scale);
+        let d_ecol = draw_colon(local_p - vec2<f32>(-28.0, y_bar), t_scale);
+        let d_es0 = draw_digit(local_p - vec2<f32>(-28.0 + tsp * 0.9, y_bar), e_s_tens, t_scale);
+        let d_es1 = draw_digit(local_p - vec2<f32>(-28.0 + tsp * 1.9, y_bar), e_s_ones, t_scale);
         let d_time_text = min(min(d_em, d_ecol), min(d_es0, d_es1)) - 0.42;
         let mask_time_text = (1.0 - smoothstep(-0.35, 0.35, d_time_text)) * 0.85;
         
-        // ── 7. Volume Speaker Icon & Soundwaves (x = 162.0, y = y_ctrl) ──
-        let p_spk = local_p - vec2<f32>(160.0, y_ctrl);
+        // ── 7. Volume Speaker Icon & Soundwaves (x = 148.0, y = y_ctrl) ──
+        let p_spk = local_p - vec2<f32>(148.0, y_ctrl);
         // Speaker box: 4px x 6px
         let d_spk_box = rr_sdf(p_spk - vec2<f32>(-4.0, 0.0), vec2<f32>(2.0, 3.0), 0.8);
         // Speaker cone: triangle
@@ -1593,8 +1594,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 2. ANALYTIC CONVEX SQUIRCLE BEZEL & 3D NORMAL
     // ════════════════════════════════════════════
     let depth = max(-sdf, 0.0);
-    let bezel = clamp(params.bevel, 16.0, 28.0); // Liquid edge thickness
-    let t = clamp(depth / bezel, 0.0, 1.0);      // 0.0 at outer rim, 1.0 at flat interior
+    // Meniscus bezel proportional to element size: max 35% of min(w, h), floor of 4.0px
+    let max_element_bezel = max(0.35 * min(bounds_px.z, bounds_px.w), 4.0);
+    let bezel = clamp(params.bevel, 4.0, max_element_bezel); // Liquid edge thickness
+    let t = clamp(depth / bezel, 0.0, 1.0);                  // 0.0 at outer rim, 1.0 at flat interior
     let u = 1.0 - t;
 
     // Height profile: convex liquid squircle curve (0.0 at rim -> 1.0 at flat interior)
@@ -1744,6 +1747,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     fin += flare_rgb;
 
     fin += app.fluid_color * (app.fluid_glow * mix(1.0, 0.35, is_light));
+    
+    // Low-alpha neutral fill and hairline: white lift on dark, black dip on light (preserves pure backdrop hue)
+    let fill_target = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.0, 0.0, 0.0), is_light);
+    let fill_strength = mix(0.08, 0.05, is_light);
+    fin = mix(fin, fill_target, app.fill_mask * fill_strength);
+
+    // 1px subtle hairline rim highlight
+    let rim_target = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.45, 0.48, 0.55), is_light);
+    fin = mix(fin, rim_target, app.rim_mask * mix(0.18, 0.12, is_light));
+
     fin = mix(fin, app.glyph_color, app.glyph_mask);
 
     // Composite dynamic Quicksand typography & interactive UI overlay

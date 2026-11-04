@@ -758,6 +758,8 @@ name = "glass-platform"
 version = "0.1.0"
 dependencies = [
  "glass-core",
+ "image",
+ "libc",
  "log",
  "smithay-client-toolkit",
  "wayland-client",

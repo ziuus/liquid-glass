@@ -10,3 +10,5 @@ wayland-protocols = { workspace = true }
 wayland-protocols-wlr = { workspace = true }
 smithay-client-toolkit = { workspace = true }
 log = { workspace = true }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
+libc = "0.2"

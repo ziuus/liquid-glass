@@ -19,6 +19,9 @@ pub mod capabilities {
     }
 }
 
+pub mod wallpaper;
+pub use wallpaper::WallpaperManager;
+
 pub mod wayland {
 
     // Placeholder for Wayland context

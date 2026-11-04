@@ -1,4 +1,5 @@
 use glass_core::{geometry::Shape, GlassRenderer, GlassSurface, Material};
+use glass_platform::WallpaperManager;
 mod capture;
 use raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle,
@@ -69,7 +70,7 @@ struct AppData {
     exit: bool,
     frame_counter: u32,
     animating: bool,
-    wallpaper_cache: Option<Arc<Vec<u8>>>,
+    wallpaper_mgr: WallpaperManager,
     // Cached wl_output for screencopy (set on first new_output callback)
     primary_output: Option<wl_output::WlOutput>,
     // Frame counter for throttled screencopy (every N frames)
@@ -295,9 +296,9 @@ impl PointerHandler for AppData {
                                     w.surface.commit();
                                 }
                                 if let (Some(cache), Some(renderer)) =
-                                    (&self.wallpaper_cache, &mut self.renderer)
+                                    (self.wallpaper_mgr.cached_buffer(), &mut self.renderer)
                                 {
-                                    let crop = get_wallpaper_crop(
+                                    let crop = WallpaperManager::get_wallpaper_crop(
                                         cache,
                                         self.pos_x as u32,
                                         self.pos_y as u32,
@@ -396,8 +397,26 @@ impl PointerHandler for AppData {
 }
 
 impl AppData {
+    fn check_wallpaper(&mut self) {
+        if self.wallpaper_mgr.check_update() {
+            if let (Some(cache), Some(renderer)) =
+                (self.wallpaper_mgr.cached_buffer(), &mut self.renderer)
+            {
+                let crop = WallpaperManager::get_wallpaper_crop(
+                    cache,
+                    self.pos_x as u32,
+                    self.pos_y as u32,
+                    self.width,
+                    self.height,
+                );
+                renderer.update_background(self.width, self.height, &crop);
+            }
+        }
+    }
+
     fn draw(&mut self) -> bool {
         self.frame_counter += 1;
+        self.check_wallpaper();
 
         if let Some(renderer) = &mut self.renderer {
             let px = self.cursor_pos[0];
@@ -452,16 +471,16 @@ impl AppData {
             ];
             let play_flag = if self.is_playing { 1.0f32 } else { 0.0f32 };
 
-            // Liquid Glass Media Control Island
+            // Liquid Glass Media Control Island (capsule height = 94px, bezel proportional at 12px, crisp blur = 8px)
             let island = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::Capsule)
                 .bounds(b0[0], b0[1], b0[2], b0[3])
                 .curvature(0.05)
-                .bevel(8.0)
+                .bevel(12.0)
                 .refraction(0.55)
                 .dispersion(0.02)
-                .blur(22.0)
+                .blur(8.0)
                 .tint(
                     play_flag,
                     if self.is_pressed { 1.0 } else { 0.0 },
@@ -503,63 +522,6 @@ impl ProvidesRegistryState for AppData {
     registry_handlers![OutputState, SeatState];
 }
 
-fn init_wallpaper_1080p() -> Option<Arc<Vec<u8>>> {
-    let queried = std::process::Command::new("awww")
-        .arg("query")
-        .output()
-        .ok()
-        .and_then(|out| {
-            let s = String::from_utf8_lossy(&out.stdout);
-            s.lines()
-                .find(|line| line.contains("image:"))
-                .and_then(|line| line.split("image:").nth(1))
-                .map(|p| p.trim().to_string())
-        });
-
-    let candidates = [
-        queried.as_deref(),
-        Some("/home/zius/Pictures/wallpaper/IMG_20220815_123133_260.jpg"),
-        Some("/home/zius/Pictures/wallpaper/Fantasy-Landscape3.png"),
-    ];
-
-    for candidate in candidates.into_iter().flatten() {
-        if let Ok(img) = image::open(candidate) {
-            log::info!("Loaded wallpaper: {}", candidate);
-            let rgba = img.to_rgba8();
-            let resized =
-                image::imageops::resize(&rgba, 1920, 1080, image::imageops::FilterType::Triangle);
-            return Some(Arc::new(resized.into_raw()));
-        }
-    }
-
-    // High-quality dark forest / slate fallback gradient if no wallpaper file is accessible
-    let mut fallback = vec![0u8; 1920 * 1080 * 4];
-    for y in 0..1080 {
-        for x in 0..1920 {
-            let i = (y * 1920 + x) * 4;
-            let gy = y as f32 / 1080.0;
-            fallback[i] = (18.0 + gy * 10.0) as u8;
-            fallback[i + 1] = (34.0 + gy * 16.0) as u8;
-            fallback[i + 2] = (16.0 + gy * 8.0) as u8;
-            fallback[i + 3] = 255;
-        }
-    }
-    Some(Arc::new(fallback))
-}
-
-fn get_wallpaper_crop(cache: &[u8], x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {
-    let mut crop = vec![0u8; (w * h * 4) as usize];
-    for row in 0..h {
-        let src_y = (y + row).min(1079);
-        let src_x = x.min(1920u32.saturating_sub(w));
-        let src_start = ((src_y * 1920 + src_x) * 4) as usize;
-        let dst_start = (row * w * 4) as usize;
-        let len = (w * 4) as usize;
-        crop[dst_start..dst_start + len].copy_from_slice(&cache[src_start..src_start + len]);
-    }
-    crop
-}
-
 fn main() {
     env_logger::init();
 
@@ -582,8 +544,7 @@ fn main() {
     let pos_x = (1920i32.saturating_sub(width as i32)) / 2;
     let pos_y = (1080i32.saturating_sub(height as i32)) / 2;
 
-    // Load and pre-scale wallpaper once in memory for ultra-fast, zero-overhead cropping
-    let wallpaper_cache = init_wallpaper_1080p();
+    let wallpaper_mgr = WallpaperManager::new();
 
     let mut app_data = AppData {
         registry_state,
@@ -622,7 +583,7 @@ fn main() {
         exit: false,
         frame_counter: 0,
         animating: true,
-        wallpaper_cache,
+        wallpaper_mgr,
         primary_output: None,
         screencopy_ticker: 0,
     };
@@ -676,8 +637,8 @@ fn main() {
     .expect("Failed to init WGPU");
 
     // Upload initial background crop from pre-cached 1080p wallpaper buffer (sub-millisecond)
-    if let Some(cache) = &app_data.wallpaper_cache {
-        let crop = get_wallpaper_crop(
+    if let Some(cache) = app_data.wallpaper_mgr.cached_buffer() {
+        let crop = WallpaperManager::get_wallpaper_crop(
             cache,
             app_data.pos_x as u32,
             app_data.pos_y as u32,
