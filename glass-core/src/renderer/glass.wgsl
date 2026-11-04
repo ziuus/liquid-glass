@@ -1593,27 +1593,35 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     
     // ════════════════════════════════════════════
-    // 2. ANTI-ALIASED SILKY MASK & ANALYTICAL NORMAL
+    // 2. FULL-SURFACE CONVEX OPTICAL LENS & MENISCUS NORMAL
     // ════════════════════════════════════════════
     let mask = 1.0 - smoothstep(-1.0, 0.1, sdf);
     let inside = max(-sdf, 0.0);
 
-    // Authentic Physical Liquid Glass Meniscus (sleek 6px-20px precision profile)
-    let bevel_w = clamp(params.bevel, 4.0, 20.0);
-    let t = clamp(inside / bevel_w, 0.0, 1.0); // 0 at outer edge, 1 at interior flat face
-    let edge = 1.0 - t; // 1 at outer edge, 0 at interior flat face
+    // Bevel width (meniscus boundary zone): 12px to 24px
+    let bevel_w = clamp(params.bevel, 6.0, 24.0);
+    let t = clamp(inside / bevel_w, 0.0, 1.0); // 0 at outer edge, 1 at interior body
+    let edge = 1.0 - t; // 1 at outer edge, 0 at interior body
 
-    // Smooth sigmoidal cubic meniscus profile (natural fluid meniscus roll-off)
-    let edge_curv = edge * edge * (3.0 - 2.0 * edge);
+    // 1. Continuous convex dome across entire glass surface
+    let norm_p = local_px / half_size;
+    let lens_power = max(params.curvature, 0.10); // continuous surface curvature
+    // Gradient of interior convex dome (gentle outward slope across body)
+    let grad_dome = norm_p * lens_power * (1.0 - edge * 0.4);
 
-    // Exact analytical 2D outward unit normal of the rounded rectangle
+    // 2. Exact analytical perimeter normal of rounded rectangle
     let grad_2d = rr_normal(local_px, half_size, r);
 
-    // Continuous 3D surface normal: curved water-droplet meniscus profile
-    let theta = edge_curv * 1.5707963;
+    // 3. Smooth liquid meniscus curve at perimeter (C1 continuous cubic falloff)
+    let edge_curv = edge * edge * (3.0 - 2.0 * edge);
+    let theta = edge_curv * 1.45; // steep rolloff up to ~83 degrees at rim
     let sin_th = sin(theta);
     let cos_th = cos(theta);
-    let N = normalize(vec3<f32>(grad_2d * sin_th, cos_th));
+
+    // 4. Unified full-surface 3D normal vector
+    // Blends smoothly from dome in center to steep meniscus at outer boundary
+    let N_xy = grad_dome * cos_th + grad_2d * sin_th;
+    let N = normalize(vec3<f32>(N_xy, cos_th));
     let N_2d = N.xy;
 
     // ════════════════════════════════════════════
@@ -1621,13 +1629,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
 
-    // Authentic physical liquid meniscus lens deflection (warping background pixels inwards)
-    // Strong displacement along the curved perimeter (up to 16px) tapering to 0px at interior
-    let refr_dist = bevel_w * 1.15 * params.refraction_strength * sin_th;
-    let refr_ray = -grad_2d * refr_dist * px_to_uv;
+    // Interior magnification + meniscus lensing:
+    // Magnifies background across entire card body, with intensified pinch at perimeter
+    let body_disp = length(norm_p) * (params.refraction_strength * 6.0);
+    let rim_disp = bevel_w * (params.refraction_strength * 1.10) * sin_th;
+    let total_refr_dist = (body_disp * (1.0 - edge) + rim_disp * edge);
 
-    // Cauchy chromatic dispersion: physical wavelength separation (R bends least, B bends most)
-    let ca_dist = params.dispersion * 16.0 * edge_curv * sin_th;
+    // Boundary safety falloff: prevents rays from crossing texture borders and stretching into streaks
+    let min_edge_dist_px = min(min(uv.x, 1.0 - uv.x) * params.surface_size.x, min(uv.y, 1.0 - uv.y) * params.surface_size.y);
+    let safe_refr_scale = smoothstep(1.5, 12.0, min_edge_dist_px);
+
+    let refr_dir = normalize(select(grad_2d, N_xy, length(N_xy) > 0.001));
+    let refr_ray = -refr_dir * total_refr_dist * px_to_uv * safe_refr_scale;
+
+    // Cauchy chromatic dispersion along the high-curvature perimeter
+    let ca_dist = params.dispersion * 14.0 * edge_curv * safe_refr_scale;
     let ca_offset = -grad_2d * ca_dist * px_to_uv;
 
     let uv_r = clamp(uv + refr_ray - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1683,20 +1699,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let half_vector = normalize(light_dir_3d + view_dir_3d);
 
     // 2D directional vectors for rim orientation:
-    // grad_2d points outward (-X, -Y for top-left; +X, +Y for bottom-right)
     let light_vec_2d = normalize(vec2<f32>(-0.45, -0.65));
     let shadow_vec_2d = -light_vec_2d;
 
     // Light-facing factor: 1.0 at top-left edge, 0.0 at bottom-right edge
-    let light_facing = max(dot(grad_2d, light_vec_2d), 0.0);
+    let light_facing = max(dot(N_2d, light_vec_2d), 0.0);
     // Shadow-facing factor: 1.0 at bottom-right edge, 0.0 at top-left edge
-    let shadow_facing = max(dot(grad_2d, shadow_vec_2d), 0.0);
+    let shadow_facing = max(dot(N_2d, shadow_vec_2d), 0.0);
 
     // ════════════════════════════════════════════
     // 6. VOLUMETRIC INNER SHADOW (BOTTOM-RIGHT EXTINCTION)
     // ════════════════════════════════════════════
-    // Bottom and right curved edges occlude direct light, creating rich 3D physical thickness
-    let inner_shadow_intensity = pow(shadow_facing, 1.3) * pow(edge, 1.1) * mix(0.55, 0.35, is_light);
+    // Soft, deep extinction shadow along bottom and right curved edges
+    let inner_shadow_intensity = pow(shadow_facing, 1.3) * (0.15 + 0.85 * pow(edge, 1.1)) * mix(0.50, 0.30, is_light);
     col *= (1.0 - inner_shadow_intensity);
 
     // ════════════════════════════════════════════
@@ -1708,24 +1723,24 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let F0 = 0.045; // Refractive index of acrylic resin / liquid meniscus (n = 1.52)
     let fresnel = F0 + (1.0 - F0) * pow(1.0 - cos_theta, 4.0);
     let fresnel_ambient = mix(0.08, 1.0, light_facing);
-    let fresnel_gleam = vec3<f32>(0.98, 0.99, 1.0) * (fresnel * pow(edge, 1.2) * fresnel_ambient * mix(0.70, 0.35, is_light) * params.fresnel_strength);
+    let fresnel_gleam = vec3<f32>(0.98, 0.99, 1.0) * (fresnel * pow(edge, 1.2) * fresnel_ambient * mix(0.65, 0.30, is_light) * params.fresnel_strength);
     col += fresnel_gleam;
 
     // ════════════════════════════════════════════
     // 8. DIRECTIONAL 3D VOLUMETRIC SPECULAR HIGHLIGHTS
     // ════════════════════════════════════════════
-    // 3D Blinn-Phong specular on the curved liquid meniscus
+    // 3D Blinn-Phong specular on the curved convex glass body and liquid meniscus
     let N_dot_H = max(dot(N, half_vector), 0.0);
 
-    // 1. Brilliant primary specular lip along the top-left curved meniscus
-    let spec_lip = pow(N_dot_H, 28.0) * smoothstep(0.0, 0.25, edge) * mix(1.80, 0.60, is_light) * params.specular_strength;
+    // 1. Primary specular lip along top-left meniscus
+    let spec_lip = pow(N_dot_H, 24.0) * smoothstep(0.0, 0.30, edge) * mix(1.80, 0.60, is_light) * params.specular_strength;
 
-    // 2. Volumetric ambient sheen giving the liquid its thick physical curve
-    let spec_sheen = pow(N_dot_H, 8.0) * pow(edge, 1.4) * mix(0.40, 0.12, is_light) * params.specular_strength;
+    // 2. Continuous volumetric surface sheen across the convex body
+    let spec_sheen = pow(N_dot_H, 6.0) * mix(0.35, 0.10, is_light) * params.specular_strength;
 
-    // 3. Razor outer meniscus boundary crest on light-facing perimeter
+    // 3. Crisp outer meniscus boundary crest on light-facing perimeter
     let hairline = smoothstep(1.5, 0.3, inside);
-    let rim_crest = hairline * pow(light_facing, 1.5) * mix(1.50, 0.45, is_light) * params.specular_strength;
+    let rim_crest = hairline * pow(light_facing, 1.5) * mix(1.40, 0.40, is_light) * params.specular_strength;
 
     col += vec3<f32>(spec_lip + spec_sheen + rim_crest);
 
