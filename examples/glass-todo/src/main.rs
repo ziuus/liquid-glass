@@ -831,8 +831,8 @@ impl AppData {
                 return true;
             }
 
-            if local_x > 40.0 {
-                // Clicked ⚙ Secret button (cx = 286.0)
+            if local_x > 80.0 {
+                // Clicked ⚙ Settings button (cx = 308.0)
                 if is_right {
                     let home = std::env::var("HOME").unwrap_or_default();
                     let cfg_path = format!("{}/.local/state/calendar_config.json", home);
@@ -962,8 +962,8 @@ impl AppData {
         }
         self.last_calendar_check = Instant::now();
 
-        // Auto-sync Google Calendar via calendar_sync.py every 15 minutes
-        if self.last_calendar_sync.elapsed().as_secs() >= 900 {
+        // Auto-sync Google Calendar via calendar_sync.py every 1 hour
+        if self.last_calendar_sync.elapsed().as_secs() >= 3600 {
             self.last_calendar_sync = Instant::now();
             let home = std::env::var("HOME").unwrap_or_default();
             let sync_script = format!("{}/.config/quickshell-todo-widget/calendar_sync.py", home);
@@ -1770,14 +1770,14 @@ impl AppData {
                     FontWeight::SemiBold,
                 );
 
-                // 3. Settings / Secret button pill (cx = 286.0)
+                // 3. Settings button pill with gear icon (cx = 308.0)
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
                     self.height,
-                    286.0,
+                    308.0,
                     412.5,
-                    36.0,
+                    15.0,
                     12.0,
                     8.0,
                     btn_bg,
@@ -1786,10 +1786,10 @@ impl AppData {
                     buf,
                     self.width,
                     self.height,
-                    "⚙ Secret",
-                    286.0,
+                    "⚙",
+                    308.0,
                     412.5,
-                    11.5,
+                    14.5,
                     col_primary,
                     col_shadow,
                     FontWeight::Bold,
