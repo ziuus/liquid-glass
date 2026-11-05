@@ -982,30 +982,28 @@ impl AppData {
                 // Regional luminance adaptation: sample the actual text's bounding box width
                 let text_w = (self.font.measure_text(&task.text, 15.5, FontWeight::Bold) as u32)
                     .clamp(40, 240);
-                let (mean_lum, spread, mut row_is_light) =
-                    if let Some(cache) = &self.wallpaper_cache {
-                        sample_region_stats(
-                            cache,
-                            self.pos_x + 58,
-                            (self.pos_y as f32 + cy - 13.0).max(0.0) as i32,
-                            text_w,
-                            26,
-                        )
-                    } else {
-                        (0.5, 0.0, self.is_wallpaper_light)
-                    };
+                let (mean_lum, spread, _) = if let Some(cache) = &self.wallpaper_cache {
+                    sample_region_stats(
+                        cache,
+                        self.pos_x + 58,
+                        (self.pos_y as f32 + cy - 13.0).max(0.0) as i32,
+                        text_w,
+                        26,
+                    )
+                } else {
+                    (0.5, 0.0, self.is_wallpaper_light)
+                };
 
-                // Diagonal boundary detection: if spread is elevated (row crosses diagonal edge into navy)
-                // or if mean luminance is below 0.15, light ink is strictly required.
-                if spread > 0.06 || mean_lum < 0.15 {
-                    row_is_light = false;
-                } else if mean_lum > 0.21 {
-                    row_is_light = true;
-                }
+                // Strict 0.179 luminance threshold
+                let row_is_light = mean_lum > 0.179;
 
                 // If spread is high (row crosses diagonal edge), apply local scrim shadow
                 let text_shadow_col = if spread > 0.05 {
-                    [10, 14, 22, 180] // Dark scrim under light text ensures readability over both dark navy and lavender
+                    if row_is_light {
+                        [255, 255, 255, 120] // Light halo under dark text
+                    } else {
+                        [10, 14, 22, 180] // Dark scrim under light text
+                    }
                 } else {
                     [0, 0, 0, 0]
                 };
@@ -1224,13 +1222,42 @@ impl AppData {
                     buf,
                     self.width,
                     self.height,
-                    "+  Add task",
+                    "Add task",
                     42.0,
                     412.5,
                     15.5,
                     add_secondary,
                     col_shadow,
                     FontWeight::SemiBold,
+                );
+
+                // Dedicated '+' action button pill on right sharing input bar's ink
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    315.0,
+                    412.5,
+                    11.0,
+                    11.0,
+                    11.0,
+                    if add_is_light {
+                        [220, 226, 238, 140]
+                    } else {
+                        [50, 58, 75, 140]
+                    },
+                );
+                self.font.draw_text_centered(
+                    buf,
+                    self.width,
+                    self.height,
+                    "+",
+                    315.0,
+                    412.5,
+                    16.0,
+                    add_primary,
+                    col_shadow,
+                    FontWeight::Bold,
                 );
             }
         } else {

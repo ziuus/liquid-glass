@@ -118,7 +118,7 @@ fn droplet_height(p: vec2<f32>, b: vec2<f32>, r: f32, z_radius: f32, cur_px: vec
     return h_bevel;
 }
 
-// ── Apple CoreAnimation-grade 16-tap Poisson Blur (Single-Fetch Bilinear Hardware Filtering) ──
+// ── Apple CoreAnimation-grade 24-tap Poisson Blur (Single-Fetch Bilinear Hardware Filtering) ──
 fn sample_frost_blur(uv: vec2<f32>, radius: f32) -> vec3<f32> {
     if radius <= 0.5 {
         return textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
@@ -126,22 +126,22 @@ fn sample_frost_blur(uv: vec2<f32>, radius: f32) -> vec3<f32> {
     let rad_uv = radius / params.surface_size;
     let golden_angle = 2.39996323;
 
-    var col = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb * 0.18;
-    var total_w = 0.18;
+    var col = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb * 0.08;
+    var total_w = 0.08;
 
     // Optical boundary constraint: limit sample radius to distance from texture border
     // to prevent clamp stretching / barcode scanline artifacts
     let max_safe_rad = min(uv, vec2<f32>(1.0) - uv) * 0.90;
     let safe_rad_uv = min(rad_uv, max_safe_rad);
 
-    for (var i = 0.0; i < 16.0; i += 1.0) {
-        let t = (i + 0.5) / 16.0;
+    for (var i = 0.0; i < 24.0; i += 1.0) {
+        let t = (i + 0.5) / 24.0;
         let r = sqrt(t);
         let theta = i * golden_angle;
         let offset = vec2<f32>(r * cos(theta), r * sin(theta)) * safe_rad_uv;
         let sample_uv = clamp(uv + offset, vec2<f32>(0.001), vec2<f32>(0.999));
         let s = textureSampleLevel(background_texture, background_sampler, sample_uv, 0.0).rgb;
-        let w = exp(-r * r * 2.2);
+        let w = exp(-r * r * 1.5);
         col += s * w;
         total_w += w;
     }
@@ -1177,7 +1177,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
 
             let d_plus_v = dist_segment(p_plus, vec2<f32>(0.0, -4.5), vec2<f32>(0.0, 4.5));
             let d_plus_h = dist_segment(p_plus, vec2<f32>(-4.5, 0.0), vec2<f32>(4.5, 0.0));
-            mask_plus_icon = (1.0 - smoothstep(-0.35, 0.35, min(d_plus_v, d_plus_h) - 0.70)) * task_view_weight;
+            mask_plus_icon = 0.0;
         }
 
         if agenda_view_weight > 0.01 {
@@ -1632,16 +1632,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let eta = 1.0 / 1.52;
     let R = refract(vec3<f32>(0.0, 0.0, -1.0), N, eta);
 
-    // Physical background offset: (R.xy / -R.z) * thickness * h
-    // Enhanced refraction at corners: glass curvature bends background strongest at rounded corners
-    let corner_refract_boost = select(1.0, 1.65, is_corner);
-    let thickness_px = 18.0 * corner_refract_boost;
-    let offset_px = (R.xy / max(-R.z, 0.001)) * (thickness_px * h);
+    // Enhanced refraction at rim and corners: glass curvature bends background strongest at edges!
+    let corner_refract_boost = select(1.0, 1.85, is_corner);
+    let thickness_px = 24.0 * corner_refract_boost;
+    let rim_tilt = pow(1.0 - t, 0.70);
+    let offset_px = (R.xy / max(-R.z, 0.001)) * (thickness_px * (0.35 + 0.65 * rim_tilt));
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
     let base_uv = uv + offset_px * px_to_uv;
 
     // Cauchy chromatic dispersion along optical ray
-    let ca_offset = R.xy * (params.dispersion * 12.0 * px_to_uv);
+    let ca_offset = R.xy * (params.dispersion * 14.0 * px_to_uv);
 
     let uv_r = clamp(base_uv - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
     let uv_g = clamp(base_uv, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1660,11 +1660,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if params.blur_radius <= 0.5 {
         col = sharp_col;
     } else {
-        // Deep optical diffusion: crisp at the outer specular bevel for Snell refraction,
-        // rich luxurious frosted diffusion throughout interior (scaled by blur_radius)
-        let frosted_col = sample_frost_blur(uv_g, params.blur_radius * 1.35);
-        let frost_mix = mix(0.12, 0.82, t);
-        col = mix(sharp_col, frosted_col, frost_mix);
+        // Two-tier optical architecture:
+        // - At the rim (depth < 0.5 * bezel): crisp Snell refraction so wave edges visibly bend
+        // - In the interior (depth > 1.2 * bezel): deep frosted diffusion (eliminates leaf veins/hairs)
+        let w_blur = smoothstep(0.40 * bezel, 1.25 * bezel, depth);
+        let frosted_col = sample_frost_blur(uv, params.blur_radius * 1.85);
+        col = mix(sharp_col, frosted_col, w_blur);
     }
 
     // Clean transmissive glass substrate without artificial darkening veils (keeps interior within ±5% of backdrop)
@@ -1708,7 +1709,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let soft_falloff = smoothstep(3.5, 0.0, depth) * 0.12 * light_facing;
     let spec_rim = (edge_spec + soft_falloff) * params.specular_strength;
 
-    col += vec3<f32>(spec_rim);
+    // On light backdrops: directional dark contour dip to prevent washed-out white-on-white edges
+    let dark_edge = smoothstep(1.8, 0.0, depth) * (1.0 - light_facing * 0.60) * mix(0.0, 0.28, is_light);
+    col = col * (1.0 - dark_edge) + vec3<f32>(spec_rim);
 
     var side_bevel_flare = 0.0;
     var side_rim_flare = 0.0;
@@ -1764,15 +1767,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var fin_a = 1.0;
     if params.padding >= 26.9 && params.padding <= 27.1 {
         // Dynamic Island Overlay: Hyprland provides hardware dual-Kawase blur behind this layer surface.
-        // We render deep obsidian liquid glass tint + Snell specular bevel + vector overlay.
-        let base_body = mix(vec3<f32>(0.07, 0.08, 0.11), vec3<f32>(0.95, 0.96, 0.98), is_light);
-        let base_alpha = mix(0.72, 0.76, is_light);
+        // We render deep obsidian liquid glass tint (zero gray plastic veil: <=10% lift) + Snell specular bevel + vector overlay.
+        let base_body = mix(vec3<f32>(0.02, 0.025, 0.035), vec3<f32>(0.94, 0.95, 0.97), is_light);
+        let base_alpha = mix(0.50, 0.65, is_light);
         
         // Specular highlight rim: bright thin specular contour
-        var island_col = base_body + vec3<f32>(spec_rim * 1.15);
+        var island_col = base_body + vec3<f32>(spec_rim * 1.35);
         island_col += flare_rgb;
         
-        let rim_alpha = smoothstep(2.5, 0.0, depth) * 0.25;
+        let rim_alpha = smoothstep(2.5, 0.0, depth) * 0.35;
         let surface_alpha = clamp(base_alpha + rim_alpha, 0.0, 1.0);
         
         // Composite dynamic overlay

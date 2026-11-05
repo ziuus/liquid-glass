@@ -225,8 +225,8 @@ impl AppData {
     }
 
     fn update_physics(&mut self, dt: f32) -> bool {
-        let spring_k = 320.0f32;
-        let damping = 26.0f32;
+        let spring_k = 380.0f32;
+        let damping = 33.1f32;
 
         let force_w = -spring_k * (self.current_w - self.target_w) - damping * self.vel_w;
         self.vel_w += force_w * dt;
@@ -344,9 +344,9 @@ impl AppData {
             [255, 255, 255, 255]
         };
         let col_dim = if is_light {
-            [60, 70, 85, 220]
+            [50, 60, 75, 255]
         } else {
-            [180, 190, 210, 220]
+            [224, 228, 236, 255] // Crisp #e0e4ec for >6.5:1 contrast
         };
         let col_accent = [90, 155, 255, 255];
         let col_green = [70, 215, 120, 255];
@@ -514,18 +514,7 @@ impl AppData {
                 let next_cx = play_cx + 44.0;
 
                 // Previous
-                self.font.draw_text_centered(
-                    buf,
-                    self.width,
-                    self.height,
-                    "⏮",
-                    prev_cx,
-                    ctrl_y,
-                    16.0,
-                    col_ink,
-                    col_shadow,
-                    FontWeight::Bold,
-                );
+                UIFont::draw_prev_icon(buf, self.width, self.height, prev_cx, ctrl_y, 8.5, col_ink);
 
                 // Play / Pause Button with circle fill (half_w = 18.0, half_h = 18.0)
                 UIFont::draw_rounded_rect_fill(
@@ -543,42 +532,41 @@ impl AppData {
                         [245, 248, 255, 255]
                     },
                 );
-                self.font.draw_text_centered(
-                    buf,
-                    self.width,
-                    self.height,
-                    if self.music.is_playing { "⏸" } else { "▶" },
-                    play_cx,
-                    ctrl_y,
-                    15.0,
-                    if is_light {
-                        [255, 255, 255, 255]
-                    } else {
-                        [10, 14, 20, 255]
-                    },
-                    col_shadow,
-                    FontWeight::Bold,
-                );
+                let play_icon_col = if is_light {
+                    [255, 255, 255, 255]
+                } else {
+                    [10, 14, 20, 255]
+                };
+                if self.music.is_playing {
+                    UIFont::draw_pause_icon(
+                        buf,
+                        self.width,
+                        self.height,
+                        play_cx,
+                        ctrl_y,
+                        7.5,
+                        play_icon_col,
+                    );
+                } else {
+                    UIFont::draw_play_icon(
+                        buf,
+                        self.width,
+                        self.height,
+                        play_cx,
+                        ctrl_y,
+                        8.0,
+                        play_icon_col,
+                    );
+                }
 
                 // Next
-                self.font.draw_text_centered(
-                    buf,
-                    self.width,
-                    self.height,
-                    "⏭",
-                    next_cx,
-                    ctrl_y,
-                    16.0,
-                    col_ink,
-                    col_shadow,
-                    FontWeight::Bold,
-                );
+                UIFont::draw_next_icon(buf, self.width, self.height, next_cx, ctrl_y, 8.5, col_ink);
 
                 // Progress Bar
                 let bar_y = island_top + 108.0;
                 let bar_w = island_w - 64.0;
                 let bar_x = island_cx;
-                // Track back (half_w = bar_w * 0.5, half_h = 2.0)
+                // High-contrast track back (half_w = bar_w * 0.5, half_h = 2.0)
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
@@ -589,9 +577,9 @@ impl AppData {
                     2.0,
                     2.0,
                     if is_light {
-                        [180, 185, 200, 150]
+                        [160, 170, 190, 200]
                     } else {
-                        [80, 90, 110, 150]
+                        [140, 155, 185, 160]
                     },
                 );
                 // Active fill
@@ -608,6 +596,19 @@ impl AppData {
                         2.0,
                         2.0,
                         col_accent,
+                    );
+                    // Glowing scrubber knob
+                    let knob_x = island_cx - bar_w * 0.5 + fill_w;
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        knob_x,
+                        bar_y,
+                        4.0,
+                        4.0,
+                        4.0,
+                        [255, 255, 255, 255],
                     );
                 }
             }
@@ -626,17 +627,14 @@ impl AppData {
                         14.0,
                         col_accent,
                     );
-                    self.font.draw_text_centered(
+                    UIFont::draw_bell_icon(
                         buf,
                         self.width,
                         self.height,
-                        "🔔",
                         badge_cx,
                         island_cy,
-                        18.0,
+                        9.5,
                         [255, 255, 255, 255],
-                        col_shadow,
-                        FontWeight::Bold,
                     );
 
                     // App Name & Time
@@ -704,18 +702,12 @@ impl AppData {
                     FontWeight::Bold,
                 );
 
-                let apps = [
-                    ("Terminal", "💻"),
-                    ("Browser", "🌐"),
-                    ("Editor", "📝"),
-                    ("Files", "📁"),
-                    ("Music", "🎵"),
-                ];
+                let apps = ["Terminal", "Browser", "Editor", "Files", "Music"];
 
                 let item_w = (island_w - 50.0) / (apps.len() as f32);
                 let start_x = island_cx - island_w * 0.5 + 25.0 + item_w * 0.5;
 
-                for (idx, (name, icon)) in apps.iter().enumerate() {
+                for (idx, name) in apps.iter().enumerate() {
                     let cx = start_x + (idx as f32) * item_w;
                     let cy = island_top + 62.0;
 
@@ -736,18 +728,50 @@ impl AppData {
                         },
                     );
 
-                    self.font.draw_text_centered(
-                        buf,
-                        self.width,
-                        self.height,
-                        icon,
-                        cx,
-                        cy - 8.0,
-                        16.0,
-                        col_ink,
-                        col_shadow,
-                        FontWeight::Bold,
-                    );
+                    let icon_cy = cy - 8.0;
+                    match idx {
+                        0 => UIFont::draw_terminal_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            icon_cy,
+                            col_ink,
+                        ),
+                        1 => UIFont::draw_browser_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            icon_cy,
+                            col_ink,
+                        ),
+                        2 => UIFont::draw_editor_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            icon_cy,
+                            col_ink,
+                        ),
+                        3 => UIFont::draw_folder_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            icon_cy,
+                            col_ink,
+                        ),
+                        _ => UIFont::draw_music_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            icon_cy,
+                            col_ink,
+                        ),
+                    }
+
                     self.font.draw_text_centered(
                         buf,
                         self.width,
@@ -787,9 +811,15 @@ impl AppData {
 
             let is_light = if self.is_wallpaper_light { 1.0 } else { 0.0 };
 
+            let island_shape = if self.mode == IslandMode::CompactPill {
+                Shape::Capsule
+            } else {
+                Shape::RoundedRectangle { radius: 34.0 }
+            };
+
             let island = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::Capsule)
+                .shape(island_shape)
                 .bounds(x_norm, y_norm, w_norm, h_norm)
                 .curvature(0.06)
                 .bevel(14.0)

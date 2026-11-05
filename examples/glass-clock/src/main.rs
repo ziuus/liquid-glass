@@ -69,6 +69,9 @@ struct AppData {
     last_battery_check: Instant,
     font: QuicksandFont,
     is_wallpaper_light: bool,
+    date_is_light: bool,
+    time_is_light: bool,
+    bat_is_light: bool,
 }
 
 struct WaylandWindow {
@@ -405,21 +408,54 @@ impl AppData {
         }
     }
 
-    fn render_ui_overlay(&self, buf: &mut [u8]) {
-        // Apple macOS Sequoia Typography: Deep Obsidian Slate on Light Mode, Pure Crisp White on Dark Mode
-        let (col_primary, col_secondary, col_shadow) = if self.is_wallpaper_light {
-            (
-                [0, 0, 0, 255], // Pure black primary text
-                [0, 0, 0, 255], // Pure black secondary text & icons
-                [0, 0, 0, 0],   // Zero shadow, zero halo, 100% clean
-            )
+    fn render_ui_overlay(&mut self, buf: &mut [u8]) {
+        // Multi-region adaptive luminance sampling: Date, Time, and Battery adapt independently!
+        if let Some(cache) = &self.wallpaper_cache {
+            self.date_is_light = sample_region_is_light(
+                cache,
+                self.pos_x + 30,
+                self.pos_y + 15,
+                260,
+                50,
+                self.date_is_light,
+            );
+            self.time_is_light = sample_region_is_light(
+                cache,
+                self.pos_x + 30,
+                self.pos_y + 70,
+                260,
+                85,
+                self.time_is_light,
+            );
+            self.bat_is_light = sample_region_is_light(
+                cache,
+                self.pos_x + 40,
+                self.pos_y + 155,
+                240,
+                48,
+                self.bat_is_light,
+            );
+        }
+
+        let (date_col, date_sec) = if self.date_is_light {
+            ([8, 12, 20, 255], [18, 24, 34, 255])
         } else {
-            (
-                [255, 255, 255, 255],
-                [255, 255, 255, 255],
-                [0, 0, 0, 0], // Clean text without drop shadow
-            )
+            ([255, 255, 255, 255], [240, 245, 255, 255])
         };
+
+        let (time_col, ampm_col) = if self.time_is_light {
+            ([8, 12, 20, 255], [18, 24, 34, 255])
+        } else {
+            ([255, 255, 255, 255], [240, 245, 255, 255])
+        };
+
+        let bat_col = if self.bat_is_light {
+            [8, 12, 20, 255]
+        } else {
+            [255, 255, 255, 255]
+        };
+
+        let col_shadow = [0, 0, 0, 0];
 
         let now = Local::now();
         let hr = now.hour();
@@ -476,7 +512,7 @@ impl AppData {
             self.height,
             date_start_x + 6.0,
             44.0,
-            col_secondary,
+            date_sec,
         );
         self.font.draw_text_centered_y(
             buf,
@@ -486,7 +522,7 @@ impl AppData {
             date_start_x + 18.0,
             44.0,
             16.5,
-            col_primary,
+            date_col,
             col_shadow,
             FontWeight::Bold,
         );
@@ -507,7 +543,7 @@ impl AppData {
             time_x,
             time_baseline,
             68.0,
-            col_primary,
+            time_col,
             col_shadow,
             FontWeight::Bold,
         );
@@ -521,7 +557,7 @@ impl AppData {
             end_x + 10.0,
             time_baseline - 8.0,
             18.0,
-            col_secondary,
+            ampm_col,
             col_shadow,
             FontWeight::Bold,
         );
@@ -538,7 +574,7 @@ impl AppData {
             bat_start_x,
             176.0,
             15.0,
-            col_secondary,
+            bat_col,
             col_shadow,
             FontWeight::Bold,
         );
@@ -549,7 +585,7 @@ impl AppData {
             bat_start_x + bat_text_w + 18.0,
             176.0,
             self.battery_level,
-            col_secondary,
+            bat_col,
         );
     }
 
@@ -797,6 +833,18 @@ fn is_buffer_light(buf: &[u8]) -> bool {
     is_buffer_light_hysteresis(buf, false)
 }
 
+fn sample_region_is_light(
+    cache: &[u8],
+    gx: i32,
+    gy: i32,
+    gw: u32,
+    gh: u32,
+    current_state: bool,
+) -> bool {
+    let crop = get_wallpaper_crop(cache, gx.max(0) as u32, gy.max(0) as u32, gw, gh);
+    is_buffer_light_hysteresis(&crop, current_state)
+}
+
 fn init_wallpaper_1080p() -> (Option<Arc<Vec<u8>>>, Option<String>) {
     let path = get_active_wallpaper_path();
     let buf = load_wallpaper_image(path.as_deref());
@@ -882,6 +930,9 @@ fn main() {
         last_battery_check: Instant::now() - std::time::Duration::from_secs(60),
         font,
         is_wallpaper_light: is_light,
+        date_is_light: is_light,
+        time_is_light: is_light,
+        bat_is_light: is_light,
     };
 
     let surface = app_data.compositor_state.create_surface(&qh);

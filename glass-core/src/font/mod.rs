@@ -489,4 +489,485 @@ impl UIFont {
             color,
         );
     }
+
+    /// Draw a precision anti-aliased vector play triangle (right-pointing)
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_play_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        r: f32,
+        color: [u8; 4],
+    ) {
+        let x0 = cx - r * 0.60;
+        let x1 = cx + r * 0.90;
+        let y_top = cy - r * 0.85;
+        let y_bot = cy + r * 0.85;
+
+        let x_min = (x0 - 1.0).max(0.0) as i32;
+        let x_max = (x1 + 1.0).min(width as f32 - 1.0) as i32;
+        let y_min = (y_top - 1.0).max(0.0) as i32;
+        let y_max = (y_bot + 1.0).min(height as f32 - 1.0) as i32;
+
+        let h_span = x1 - x0;
+        for py in y_min..=y_max {
+            for px in x_min..=x_max {
+                let fx = px as f32;
+                let fy = py as f32;
+                if fx < x0 || fx > x1 {
+                    continue;
+                }
+                let t = (fx - x0) / h_span;
+                let max_dy = (1.0 - t) * (r * 0.85);
+                let dist_y = (fy - cy).abs() - max_dy;
+                let dist_x = (x0 - fx).max(fx - x1);
+                let d = dist_y.max(dist_x);
+                if d < 1.0 {
+                    let cov = (1.0 - d).clamp(0.0, 1.0);
+                    let alpha = ((cov * color[3] as f32).round() as u32).min(255);
+                    if alpha > 0 {
+                        let idx = ((py as usize) * (width as usize) + (px as usize)) * 4;
+                        let inv_a = 255 - alpha;
+                        buf[idx] =
+                            ((color[0] as u32 * alpha + buf[idx] as u32 * inv_a) / 255) as u8;
+                        buf[idx + 1] =
+                            ((color[1] as u32 * alpha + buf[idx + 1] as u32 * inv_a) / 255) as u8;
+                        buf[idx + 2] =
+                            ((color[2] as u32 * alpha + buf[idx + 2] as u32 * inv_a) / 255) as u8;
+                        buf[idx + 3] = (buf[idx + 3] as u32 + alpha).min(255) as u8;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Draw a precision anti-aliased vector pause icon (two vertical rounded batons)
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_pause_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        r: f32,
+        color: [u8; 4],
+    ) {
+        let bar_hw = (r * 0.22).max(1.2);
+        let bar_hh = r * 0.75;
+        let sep = r * 0.45;
+        Self::draw_rounded_rect_fill(
+            buf,
+            width,
+            height,
+            cx - sep,
+            cy,
+            bar_hw,
+            bar_hh,
+            bar_hw,
+            color,
+        );
+        Self::draw_rounded_rect_fill(
+            buf,
+            width,
+            height,
+            cx + sep,
+            cy,
+            bar_hw,
+            bar_hh,
+            bar_hw,
+            color,
+        );
+    }
+
+    /// Draw a precision anti-aliased vector previous icon (vertical bar + left-pointing triangle)
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_prev_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        r: f32,
+        color: [u8; 4],
+    ) {
+        // Left vertical bar
+        let bar_hw = (r * 0.16).max(1.0);
+        let bar_hh = r * 0.70;
+        let bar_cx = cx - r * 0.65;
+        Self::draw_rounded_rect_fill(
+            buf, width, height, bar_cx, cy, bar_hw, bar_hh, bar_hw, color,
+        );
+
+        // Left-pointing triangle
+        let x0 = cx - r * 0.45;
+        let x1 = cx + r * 0.75;
+        let y_top = cy - r * 0.70;
+        let y_bot = cy + r * 0.70;
+
+        let x_min = (x0 - 1.0).max(0.0) as i32;
+        let x_max = (x1 + 1.0).min(width as f32 - 1.0) as i32;
+        let y_min = (y_top - 1.0).max(0.0) as i32;
+        let y_max = (y_bot + 1.0).min(height as f32 - 1.0) as i32;
+
+        let h_span = x1 - x0;
+        for py in y_min..=y_max {
+            for px in x_min..=x_max {
+                let fx = px as f32;
+                let fy = py as f32;
+                if fx < x0 || fx > x1 {
+                    continue;
+                }
+                let t = (x1 - fx) / h_span;
+                let max_dy = (1.0 - t) * (r * 0.70);
+                let dist_y = (fy - cy).abs() - max_dy;
+                let dist_x = (x0 - fx).max(fx - x1);
+                let d = dist_y.max(dist_x);
+                if d < 1.0 {
+                    let cov = (1.0 - d).clamp(0.0, 1.0);
+                    let alpha = ((cov * color[3] as f32).round() as u32).min(255);
+                    if alpha > 0 {
+                        let idx = ((py as usize) * (width as usize) + (px as usize)) * 4;
+                        let inv_a = 255 - alpha;
+                        buf[idx] =
+                            ((color[0] as u32 * alpha + buf[idx] as u32 * inv_a) / 255) as u8;
+                        buf[idx + 1] =
+                            ((color[1] as u32 * alpha + buf[idx + 1] as u32 * inv_a) / 255) as u8;
+                        buf[idx + 2] =
+                            ((color[2] as u32 * alpha + buf[idx + 2] as u32 * inv_a) / 255) as u8;
+                        buf[idx + 3] = (buf[idx + 3] as u32 + alpha).min(255) as u8;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Draw a precision anti-aliased vector next icon (right-pointing triangle + vertical bar)
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_next_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        r: f32,
+        color: [u8; 4],
+    ) {
+        // Right vertical bar
+        let bar_hw = (r * 0.16).max(1.0);
+        let bar_hh = r * 0.70;
+        let bar_cx = cx + r * 0.65;
+        Self::draw_rounded_rect_fill(
+            buf, width, height, bar_cx, cy, bar_hw, bar_hh, bar_hw, color,
+        );
+
+        // Right-pointing triangle
+        let x0 = cx - r * 0.75;
+        let x1 = cx + r * 0.45;
+        let y_top = cy - r * 0.70;
+        let y_bot = cy + r * 0.70;
+
+        let x_min = (x0 - 1.0).max(0.0) as i32;
+        let x_max = (x1 + 1.0).min(width as f32 - 1.0) as i32;
+        let y_min = (y_top - 1.0).max(0.0) as i32;
+        let y_max = (y_bot + 1.0).min(height as f32 - 1.0) as i32;
+
+        let h_span = x1 - x0;
+        for py in y_min..=y_max {
+            for px in x_min..=x_max {
+                let fx = px as f32;
+                let fy = py as f32;
+                if fx < x0 || fx > x1 {
+                    continue;
+                }
+                let t = (fx - x0) / h_span;
+                let max_dy = (1.0 - t) * (r * 0.70);
+                let dist_y = (fy - cy).abs() - max_dy;
+                let dist_x = (x0 - fx).max(fx - x1);
+                let d = dist_y.max(dist_x);
+                if d < 1.0 {
+                    let cov = (1.0 - d).clamp(0.0, 1.0);
+                    let alpha = ((cov * color[3] as f32).round() as u32).min(255);
+                    if alpha > 0 {
+                        let idx = ((py as usize) * (width as usize) + (px as usize)) * 4;
+                        let inv_a = 255 - alpha;
+                        buf[idx] =
+                            ((color[0] as u32 * alpha + buf[idx] as u32 * inv_a) / 255) as u8;
+                        buf[idx + 1] =
+                            ((color[1] as u32 * alpha + buf[idx + 1] as u32 * inv_a) / 255) as u8;
+                        buf[idx + 2] =
+                            ((color[2] as u32 * alpha + buf[idx + 2] as u32 * inv_a) / 255) as u8;
+                        buf[idx + 3] = (buf[idx + 3] as u32 + alpha).min(255) as u8;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Draw a precision anti-aliased vector notification bell icon
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_bell_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        r: f32,
+        color: [u8; 4],
+    ) {
+        // Bell dome: rounded rectangle upper body
+        Self::draw_rounded_rect_fill(
+            buf,
+            width,
+            height,
+            cx,
+            cy - r * 0.15,
+            r * 0.50,
+            r * 0.55,
+            r * 0.45,
+            color,
+        );
+        // Bell rim flare at bottom
+        Self::draw_rounded_rect_fill(
+            buf,
+            width,
+            height,
+            cx,
+            cy + r * 0.40,
+            r * 0.72,
+            r * 0.16,
+            r * 0.16,
+            color,
+        );
+        // Bell clapper at bottom center
+        Self::draw_rounded_rect_fill(
+            buf,
+            width,
+            height,
+            cx,
+            cy + r * 0.68,
+            r * 0.22,
+            r * 0.22,
+            r * 0.22,
+            color,
+        );
+    }
+
+    /// Draw a precision anti-aliased line segment
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_segment(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        p0: (f32, f32),
+        p1: (f32, f32),
+        stroke: f32,
+        color: [u8; 4],
+    ) {
+        let half_s = stroke * 0.5;
+        let x_min = (p0.0.min(p1.0) - stroke - 1.0).max(0.0) as i32;
+        let x_max = (p0.0.max(p1.0) + stroke + 1.0).min(width as f32 - 1.0) as i32;
+        let y_min = (p0.1.min(p1.1) - stroke - 1.0).max(0.0) as i32;
+        let y_max = (p0.1.max(p1.1) + stroke + 1.0).min(height as f32 - 1.0) as i32;
+
+        let bax = p1.0 - p0.0;
+        let bay = p1.1 - p0.1;
+        let l2 = (bax * bax + bay * bay).max(0.0001);
+
+        for py in y_min..=y_max {
+            for px in x_min..=x_max {
+                let pax = px as f32 - p0.0;
+                let pay = py as f32 - p0.1;
+                let h = ((pax * bax + pay * bay) / l2).clamp(0.0, 1.0);
+                let qx = pax - bax * h;
+                let qy = pay - bay * h;
+                let dist = (qx * qx + qy * qy).sqrt();
+                let d = dist - half_s;
+                if d < 1.0 {
+                    let cov = (1.0 - d).clamp(0.0, 1.0);
+                    let alpha = ((cov * color[3] as f32).round() as u32).min(255);
+                    if alpha > 0 {
+                        let idx = ((py as usize) * (width as usize) + (px as usize)) * 4;
+                        let inv_a = 255 - alpha;
+                        buf[idx] =
+                            ((color[0] as u32 * alpha + buf[idx] as u32 * inv_a) / 255) as u8;
+                        buf[idx + 1] =
+                            ((color[1] as u32 * alpha + buf[idx + 1] as u32 * inv_a) / 255) as u8;
+                        buf[idx + 2] =
+                            ((color[2] as u32 * alpha + buf[idx + 2] as u32 * inv_a) / 255) as u8;
+                        buf[idx + 3] = (buf[idx + 3] as u32 + alpha).min(255) as u8;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Draw a precision terminal prompt icon (>_)
+    pub fn draw_terminal_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        color: [u8; 4],
+    ) {
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 5.5, cy - 4.5),
+            (cx - 1.2, cy),
+            1.6,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 1.2, cy),
+            (cx - 5.5, cy + 4.5),
+            1.6,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx + 1.2, cy + 4.5),
+            (cx + 6.0, cy + 4.5),
+            1.6,
+            color,
+        );
+    }
+
+    /// Draw a precision browser globe icon
+    pub fn draw_browser_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        color: [u8; 4],
+    ) {
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 6.5, 6.5, 6.5, 1.4, color);
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 6.5, cy),
+            (cx + 6.5, cy),
+            1.2,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx, cy - 6.5),
+            (cx, cy + 6.5),
+            1.2,
+            color,
+        );
+    }
+
+    /// Draw a precision editor code brackets icon (<>)
+    pub fn draw_editor_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        color: [u8; 4],
+    ) {
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 2.0, cy - 5.0),
+            (cx - 6.0, cy),
+            1.5,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 6.0, cy),
+            (cx - 2.0, cy + 5.0),
+            1.5,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx + 2.0, cy - 5.0),
+            (cx + 6.0, cy),
+            1.5,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx + 6.0, cy),
+            (cx + 2.0, cy + 5.0),
+            1.5,
+            color,
+        );
+    }
+
+    /// Draw a precision folder icon
+    pub fn draw_folder_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        color: [u8; 4],
+    ) {
+        Self::draw_rounded_rect_fill(buf, width, height, cx - 3.5, cy - 4.5, 3.8, 1.8, 1.0, color);
+        Self::draw_rounded_rect_fill(buf, width, height, cx, cy + 1.2, 7.5, 5.0, 1.5, color);
+    }
+
+    /// Draw a precision music eighth notes icon
+    pub fn draw_music_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        color: [u8; 4],
+    ) {
+        Self::draw_rounded_rect_fill(buf, width, height, cx - 3.5, cy + 3.5, 2.5, 2.0, 2.0, color);
+        Self::draw_rounded_rect_fill(buf, width, height, cx + 3.5, cy + 1.5, 2.5, 2.0, 2.0, color);
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 1.5, cy + 3.5),
+            (cx - 1.5, cy - 4.5),
+            1.4,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx + 5.5, cy + 1.5),
+            (cx + 5.5, cy - 6.5),
+            1.4,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 1.5, cy - 4.5),
+            (cx + 5.5, cy - 6.5),
+            2.0,
+            color,
+        );
+    }
 }
