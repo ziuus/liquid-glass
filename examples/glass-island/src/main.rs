@@ -328,7 +328,11 @@ impl AppData {
                         }
                     }
                 }
+            } else {
+                self.music.is_playing = false;
             }
+        } else {
+            self.music.is_playing = false;
         }
     }
 
@@ -1540,7 +1544,7 @@ fn main() {
         let timeout_ms = if active || app_data.is_hovered {
             16
         } else {
-            32
+            250
         };
 
         let guard = match conn.prepare_read() {
