@@ -1,5 +1,7 @@
 use glass_core::font::{FontWeight, QuicksandFont, UIFont};
-use glass_core::{geometry::Shape, GlassRenderer, GlassSurface, Material, Spring, SpringParams};
+use glass_core::{
+    geometry::Shape, GlassRenderer, GlassSurface, Material, Spring, SpringParams, Tokens,
+};
 use raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle,
     RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle, WindowHandle,
@@ -677,14 +679,77 @@ impl AppData {
             .collect()
     }
 
+    fn get_tasks_height(&self) -> f32 {
+        let count = self.filtered_indices().len().min(6);
+        if count == 0 {
+            230.0
+        } else {
+            (122.5 + (count as f32) * 44.0 + 34.0).clamp(220.0, 455.0)
+        }
+    }
+
+    fn get_agenda_height(&self) -> f32 {
+        let count = self.events.len().min(6);
+        if count == 0 {
+            250.0
+        } else {
+            (122.5 + (count as f32) * 44.0 + 34.0).clamp(220.0, 455.0)
+        }
+    }
+
+    fn get_card_height(&self) -> f32 {
+        let h_tasks = self.get_tasks_height();
+        let h_agenda = self.get_agenda_height();
+        let t = self.tab_spring.value.clamp(0.0, 1.0);
+        h_tasks * (1.0 - t) + h_agenda * t
+    }
+
+    fn get_tasks_add_bar_cy(&self) -> f32 {
+        let count = self.filtered_indices().len().min(6);
+        if count == 0 {
+            175.0
+        } else {
+            122.5 + (count as f32) * 44.0
+        }
+    }
+
+    fn get_agenda_add_bar_cy(&self) -> f32 {
+        let count = self.events.len().min(6);
+        if count == 0 {
+            210.0
+        } else {
+            122.5 + (count as f32) * 44.0
+        }
+    }
+
+    fn get_add_bar_cy(&self) -> f32 {
+        if self.active_tab == 0 {
+            self.get_tasks_add_bar_cy()
+        } else {
+            self.get_agenda_add_bar_cy()
+        }
+    }
+
     fn handle_click(&mut self, px: f32, py: f32, is_right: bool) -> bool {
         let half_w = self.width as f32 * 0.5;
         let half_h = self.height as f32 * 0.5;
         let local_x = px - half_w;
         let local_y = py - half_h;
 
-        // Check Top Tabs (tab_y = -195.0, cy = 32.5)
+        // Check Top Tabs & Header Settings Button (tab_y = -195.0, cy = 32.5)
         if (local_y - (-195.0)).abs() <= 22.0 {
+            // Header Settings button on top-right (px > 310.0, local_x > 130.0)
+            if local_x > 125.0 {
+                self.active_tab = 1;
+                self.is_cal_editing = !self.is_cal_editing;
+                if self.is_cal_editing {
+                    self.cal_input_buffer.clear();
+                    self.cal_edit_start_time = Instant::now();
+                }
+                self.draw();
+                return true;
+            }
+
             if self.is_editing {
                 self.is_editing = false;
                 self.input_buffer.clear();
@@ -743,8 +808,10 @@ impl AppData {
             }
         }
 
-        // Check Add task button in Tasks view (bot_y = 185.0, cy = 412.5)
-        if self.active_tab == 0 && (local_y - 185.0).abs() <= 24.0 {
+        // Check Add task button in Tasks view (dynamic cy hug-content)
+        let add_bar_cy = self.get_add_bar_cy();
+        let add_local_y = add_bar_cy - half_h;
+        if self.active_tab == 0 && (local_y - add_local_y).abs() <= 24.0 {
             self.is_editing = true;
             self.input_buffer.clear();
             self.edit_start_time = Instant::now();
@@ -752,8 +819,8 @@ impl AppData {
             return true;
         }
 
-        // Check Agenda bottom controls (bot_y = 185.0, cy = 412.5)
-        if self.active_tab == 1 && (local_y - 185.0).abs() <= 24.0 {
+        // Check Agenda bottom controls (dynamic cy hug-content)
+        if self.active_tab == 1 && (local_y - add_local_y).abs() <= 24.0 {
             if self.is_cal_editing {
                 // If clicked Save on right (local_x > 90.0)
                 if local_x > 90.0 {
@@ -979,6 +1046,63 @@ impl AppData {
     }
 
     fn render_ui_overlay(&self, buf: &mut [u8]) {
+        let card_h = self.get_card_height();
+        let tasks_add_bar_cy = self.get_tasks_add_bar_cy();
+        let agenda_add_bar_cy = self.get_agenda_add_bar_cy();
+        let tasks_offset_x = -self.tab_spring.value * (self.width as f32);
+        let agenda_offset_x = (1.0 - self.tab_spring.value) * (self.width as f32);
+
+        // 1. Soft tinted glass substrate (physical depth and optical contrast)
+        let card_bg = if self.is_wallpaper_light {
+            Tokens::CLEAR_BACKDROP_LIGHT
+        } else {
+            [16, 20, 28, 110] // ~43% dark obsidian glass tint
+        };
+        UIFont::draw_rounded_rect_fill(
+            buf,
+            self.width,
+            self.height,
+            180.0,
+            card_h * 0.5,
+            178.0,
+            card_h * 0.5 - 2.0,
+            Tokens::RADIUS_OUTER,
+            card_bg,
+        );
+
+        // 2. 1px Outer Specular Rim (ONLY on outer shell)
+        UIFont::draw_rounded_rect_stroke(
+            buf,
+            self.width,
+            self.height,
+            180.0,
+            card_h * 0.5,
+            178.0,
+            card_h * 0.5 - 2.0,
+            Tokens::RADIUS_OUTER,
+            1.0,
+            if self.is_wallpaper_light {
+                Tokens::RIM_OUTER_LIGHT
+            } else {
+                Tokens::RIM_OUTER_DARK
+            },
+        );
+
+        // 3. Top Specular Bevel Highlight
+        UIFont::draw_segment(
+            buf,
+            self.width,
+            self.height,
+            (32.0, 2.0),
+            (328.0, 2.0),
+            1.0,
+            if self.is_wallpaper_light {
+                [255, 255, 255, 180]
+            } else {
+                [255, 255, 255, 65]
+            },
+        );
+
         // Apple macOS Sequoia Typography: Deep Obsidian Slate on Light Mode, Pure Crisp White on Dark Mode
         let (col_primary, col_secondary, col_dimmed, _col_accent, col_shadow) =
             if self.is_wallpaper_light {
@@ -991,15 +1115,15 @@ impl AppData {
                 )
             } else {
                 (
-                    [255, 255, 255, 255], // Primary text: Crisp Pure White
-                    [225, 232, 245, 230], // Secondary text: Soft White
-                    [170, 178, 195, 200], // Tertiary/Dimmed: Dimmed White
-                    [255, 255, 255, 255], // White accent
-                    [10, 14, 22, 140],    // Downward soft drop shadow (0, +1)
+                    Tokens::TEXT_PRIMARY,   // Primary text: Crisp Pure White
+                    Tokens::TEXT_SECONDARY, // Secondary text: Soft White
+                    Tokens::TEXT_TERTIARY,  // Tertiary/Dimmed: Dimmed White
+                    Tokens::TEXT_PRIMARY,   // White accent
+                    Tokens::TEXT_SHADOW,    // Downward soft drop shadow (0, +1)
                 )
             };
 
-        // 1. Top Tab Labels: "Tasks ({count})" (cx = 104.0) & "Agenda" (cx = 256.0), cy = 32.5
+        // 1. Top Tab Labels: "Tasks ({count})" (cx = 104.0) & "Agenda" (cx = 240.0), cy = 32.5
         let tasks_count = self.todos.tasks.len();
         let tasks_label = format!("Tasks ({})", tasks_count);
         // Active selected pill has bright near-white fill with dark ink; unselected uses regionally-adapted dimmed text
@@ -1034,6 +1158,36 @@ impl AppData {
         } else {
             tab1_unselected
         };
+
+        // Top Right: Settings Icon Button (Accessible from both Tabs!)
+        let is_settings_active = self.is_cal_editing;
+        UIFont::draw_rounded_rect_fill(
+            buf,
+            self.width,
+            self.height,
+            330.0,
+            32.5,
+            13.0,
+            13.0,
+            8.0,
+            if is_settings_active {
+                Tokens::ACCENT_FILL
+            } else {
+                Tokens::INNER_TILE_BG_DARK
+            },
+        );
+        UIFont::draw_settings_icon(
+            buf,
+            self.width,
+            self.height,
+            330.0,
+            32.5,
+            if is_settings_active {
+                Tokens::ACCENT
+            } else {
+                Tokens::TEXT_SECONDARY
+            },
+        );
         self.font.draw_text_centered(
             buf,
             self.width,
@@ -1066,7 +1220,9 @@ impl AppData {
             FontWeight::Bold,
         );
 
-        if self.active_tab == 0 {
+        if tasks_offset_x > -(self.width as f32) + 2.0 {
+            let add_bar_cy = tasks_add_bar_cy;
+
             // 2. Filter Bar Labels: "All" (cx = 84.0), "Active" (cx = 156.0), "Done" (cx = 228.0), cy = 79.5
             let f0_is_light = self
                 .wallpaper_cache
@@ -1124,7 +1280,7 @@ impl AppData {
                 self.width,
                 self.height,
                 "All",
-                84.0,
+                84.0 + tasks_offset_x,
                 79.5,
                 14.0,
                 f0_col,
@@ -1136,7 +1292,7 @@ impl AppData {
                 self.width,
                 self.height,
                 "Active",
-                156.0,
+                156.0 + tasks_offset_x,
                 79.5,
                 14.0,
                 f1_col,
@@ -1148,7 +1304,7 @@ impl AppData {
                 self.width,
                 self.height,
                 "Done",
-                228.0,
+                228.0 + tasks_offset_x,
                 79.5,
                 14.0,
                 f2_col,
@@ -1169,7 +1325,7 @@ impl AppData {
                     self.width,
                     self.height,
                     msg,
-                    180.0,
+                    180.0 + tasks_offset_x,
                     200.0,
                     14.5,
                     col_dimmed,
@@ -1233,7 +1389,7 @@ impl AppData {
                         buf,
                         self.width,
                         self.height,
-                        180.0,
+                        180.0 + tasks_offset_x,
                         cy,
                         156.0,
                         18.0,
@@ -1244,7 +1400,7 @@ impl AppData {
                         buf,
                         self.width,
                         self.height,
-                        180.0,
+                        180.0 + tasks_offset_x,
                         cy,
                         156.0,
                         18.0,
@@ -1263,7 +1419,7 @@ impl AppData {
                         self.width,
                         self.height,
                         label,
-                        270.0,
+                        270.0 + tasks_offset_x,
                         cy,
                         11.5,
                         [255, 235, 240, 220],
@@ -1286,7 +1442,7 @@ impl AppData {
                         buf,
                         self.width,
                         self.height,
-                        180.0 + slide_x,
+                        180.0 + slide_x + tasks_offset_x,
                         cy,
                         156.0,
                         18.0,
@@ -1297,7 +1453,7 @@ impl AppData {
                         buf,
                         self.width,
                         self.height,
-                        180.0 + slide_x,
+                        180.0 + slide_x + tasks_offset_x,
                         cy,
                         156.0,
                         18.0,
@@ -1308,7 +1464,7 @@ impl AppData {
                 }
 
                 // Precision anti-aliased vector checkbox
-                let chk_cx = 44.0 + slide_x;
+                let chk_cx = 44.0 + slide_x + tasks_offset_x;
                 if task.done {
                     let bg_box = if row_is_light {
                         [10, 14, 22, 255]
@@ -1356,18 +1512,27 @@ impl AppData {
                         9.0,
                         9.0,
                         5.0,
-                        1.5,
+                        1.3,
                         stroke_box,
                     );
                 }
 
-                // Truncate task text if too long for display
+                // Truncate task text dynamically based on measured width
+                let max_text_w = 245.0f32;
                 let mut display_text = task.text.clone();
-                if display_text.len() > 24 {
-                    display_text = format!("{}...", &display_text[..22]);
+                let text_x = 68.0 + slide_x + tasks_offset_x;
+                if self.font.measure_text(&display_text, 14.5, weight) > max_text_w {
+                    while !display_text.is_empty()
+                        && self
+                            .font
+                            .measure_text(&format!("{display_text}…"), 14.5, weight)
+                            > max_text_w
+                    {
+                        display_text.pop();
+                    }
+                    display_text.push('…');
                 }
 
-                let text_x = 68.0 + slide_x;
                 let end_x = self.font.draw_text_centered_y(
                     buf,
                     self.width,
@@ -1375,7 +1540,7 @@ impl AppData {
                     &display_text,
                     text_x,
                     cy,
-                    15.5,
+                    14.5,
                     text_col,
                     text_shadow_col,
                     weight,
@@ -1387,7 +1552,7 @@ impl AppData {
                         buf,
                         self.width,
                         self.height,
-                        57.0 + slide_x,
+                        57.0 + slide_x + tasks_offset_x,
                         end_x + 2.0,
                         cy,
                         1.5,
@@ -1396,20 +1561,26 @@ impl AppData {
                 }
             }
 
-            // 4. Bottom Add Task Bar (cy = 412.5)
-            let add_is_light = self
-                .wallpaper_cache
-                .as_ref()
-                .map_or(self.is_wallpaper_light, |cache| {
-                    sample_region_is_light(cache, self.pos_x + 42, self.pos_y + 400, 200, 26)
-                });
+            // 4. Bottom Add Task Bar (hug-content dynamic cy)
+            let add_is_light =
+                self.wallpaper_cache
+                    .as_ref()
+                    .map_or(self.is_wallpaper_light, |cache| {
+                        sample_region_is_light(
+                            cache,
+                            self.pos_x + 42,
+                            self.pos_y + add_bar_cy as i32 - 12,
+                            200,
+                            26,
+                        )
+                    });
             let (add_primary, add_dimmed, add_secondary) = if add_is_light {
                 ([8, 12, 20, 255], [45, 55, 70, 245], [18, 24, 34, 250])
             } else {
                 (
-                    [255, 255, 255, 255],
-                    [170, 178, 195, 200],
-                    [225, 232, 245, 230],
+                    Tokens::TEXT_PRIMARY,
+                    Tokens::TEXT_TERTIARY,
+                    Tokens::TEXT_SECONDARY,
                 )
             };
 
@@ -1430,19 +1601,19 @@ impl AppData {
                     self.width,
                     self.height,
                     input_str,
-                    42.0,
-                    412.5,
-                    15.5,
+                    42.0 + tasks_offset_x,
+                    add_bar_cy,
+                    14.5,
                     input_col,
                     col_shadow,
-                    FontWeight::SemiBold,
+                    FontWeight::Medium,
                 );
 
                 // Blinking cursor
                 let elapsed_ms = self.edit_start_time.elapsed().as_millis();
                 if (elapsed_ms / 500).is_multiple_of(2) {
                     let cursor_x = if self.input_buffer.is_empty() {
-                        42.0
+                        42.0 + tasks_offset_x
                     } else {
                         end_x + 2.0
                     };
@@ -1451,7 +1622,7 @@ impl AppData {
                         self.width,
                         self.height,
                         cursor_x,
-                        412.5 - 9.0,
+                        add_bar_cy - 9.0,
                         18.0,
                         2.0,
                         add_primary,
@@ -1464,8 +1635,8 @@ impl AppData {
                     self.width,
                     self.height,
                     "↵ Enter",
-                    295.0,
-                    412.5,
+                    295.0 + tasks_offset_x,
+                    add_bar_cy,
                     12.0,
                     add_dimmed,
                     col_shadow,
@@ -1477,12 +1648,12 @@ impl AppData {
                     self.width,
                     self.height,
                     "Add task",
-                    42.0,
-                    412.5,
-                    15.5,
+                    42.0 + tasks_offset_x,
+                    add_bar_cy,
+                    14.5,
                     add_secondary,
                     col_shadow,
-                    FontWeight::SemiBold,
+                    FontWeight::Medium,
                 );
 
                 // Dedicated '+' action button pill on right sharing input bar's ink
@@ -1490,15 +1661,15 @@ impl AppData {
                     buf,
                     self.width,
                     self.height,
-                    315.0,
-                    412.5,
+                    315.0 + tasks_offset_x,
+                    add_bar_cy,
                     11.0,
                     11.0,
                     11.0,
                     if add_is_light {
                         [220, 226, 238, 140]
                     } else {
-                        [50, 58, 75, 140]
+                        Tokens::INNER_TILE_BG_DARK
                     },
                 );
                 self.font.draw_text_centered(
@@ -1506,15 +1677,19 @@ impl AppData {
                     self.width,
                     self.height,
                     "+",
-                    315.0,
-                    412.5,
+                    315.0 + tasks_offset_x,
+                    add_bar_cy,
                     16.0,
                     add_primary,
                     col_shadow,
                     FontWeight::Bold,
                 );
             }
-        } else {
+        }
+
+        if agenda_offset_x < (self.width as f32) - 2.0 {
+            let add_bar_cy = agenda_add_bar_cy;
+
             // Agenda View (Events from ~/.local/state/calendar_events.json, cy = 122.5 + idx * 44.0)
             if self.events.is_empty() {
                 self.font.draw_text_centered(
@@ -1522,7 +1697,7 @@ impl AppData {
                     self.width,
                     self.height,
                     "No upcoming events",
-                    180.0,
+                    180.0 + agenda_offset_x,
                     190.0,
                     14.5,
                     col_dimmed,
@@ -1534,7 +1709,7 @@ impl AppData {
                     self.width,
                     self.height,
                     "Click ⚙ Secret below to connect Google Calendar",
-                    180.0,
+                    180.0 + agenda_offset_x,
                     216.0,
                     11.5,
                     col_secondary,
@@ -1556,7 +1731,7 @@ impl AppData {
                         self.width,
                         self.height,
                         time_str,
-                        64.0,
+                        64.0 + agenda_offset_x,
                         cy,
                         11.0,
                         col_secondary,
@@ -1574,7 +1749,7 @@ impl AppData {
                         self.width,
                         self.height,
                         &title,
-                        108.0,
+                        108.0 + agenda_offset_x,
                         cy,
                         13.5,
                         col_primary,
@@ -1589,7 +1764,7 @@ impl AppData {
                         self.width,
                         self.height,
                         tag_str,
-                        304.0,
+                        304.0 + agenda_offset_x,
                         cy,
                         10.0,
                         col_dimmed,
@@ -1599,7 +1774,7 @@ impl AppData {
                 }
             }
 
-            // Bottom Agenda Bar (y = +185.0, cy = 412.5)
+            // Bottom Agenda Bar (dynamic cy hug-content)
             if self.is_cal_editing {
                 let input_str = if self.cal_input_buffer.is_empty() {
                     "Paste Google iCal secret link..."
@@ -1617,8 +1792,8 @@ impl AppData {
                     self.width,
                     self.height,
                     input_str,
-                    38.0,
-                    412.5,
+                    38.0 + agenda_offset_x,
+                    add_bar_cy,
                     12.0,
                     input_col,
                     col_shadow,
@@ -1628,7 +1803,7 @@ impl AppData {
                 let elapsed_ms = self.cal_edit_start_time.elapsed().as_millis();
                 if (elapsed_ms / 500).is_multiple_of(2) {
                     let cursor_x = if self.cal_input_buffer.is_empty() {
-                        38.0
+                        38.0 + agenda_offset_x
                     } else {
                         end_x + 2.0
                     };
@@ -1637,7 +1812,7 @@ impl AppData {
                         self.width,
                         self.height,
                         cursor_x,
-                        412.5 - 9.0,
+                        add_bar_cy - 9.0,
                         18.0,
                         2.0,
                         col_primary,
@@ -1649,8 +1824,8 @@ impl AppData {
                     self.width,
                     self.height,
                     "↵ Save",
-                    315.0,
-                    412.5,
+                    315.0 + agenda_offset_x,
+                    add_bar_cy,
                     11.5,
                     col_primary,
                     col_shadow,
@@ -1660,28 +1835,36 @@ impl AppData {
                 let btn_bg = if self.is_wallpaper_light {
                     [220, 226, 238, 120]
                 } else {
-                    [50, 58, 75, 120]
+                    Tokens::INNER_TILE_BG_DARK
                 };
 
-                // 1. Sync button pill (cx = 64.0)
+                // 1. Sync button pill (cx = 64.0) with Lucide Sync icon
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
                     self.height,
-                    64.0,
-                    412.5,
+                    64.0 + agenda_offset_x,
+                    add_bar_cy,
                     32.0,
                     12.0,
                     8.0,
                     btn_bg,
                 );
+                UIFont::draw_sync_icon(
+                    buf,
+                    self.width,
+                    self.height,
+                    46.0 + agenda_offset_x,
+                    add_bar_cy,
+                    col_primary,
+                );
                 self.font.draw_text_centered(
                     buf,
                     self.width,
                     self.height,
-                    "↻ Sync",
-                    64.0,
-                    412.5,
+                    "Sync",
+                    72.0 + agenda_offset_x,
+                    add_bar_cy,
                     11.5,
                     col_primary,
                     col_shadow,
@@ -1695,37 +1878,33 @@ impl AppData {
                     self.width,
                     self.height,
                     &cal_status,
-                    175.0,
-                    412.5,
+                    175.0 + agenda_offset_x,
+                    add_bar_cy,
                     12.0,
                     col_secondary,
                     col_shadow,
                     FontWeight::SemiBold,
                 );
 
-                // 3. Settings button pill with gear icon (cx = 308.0)
+                // 3. Settings button pill with Lucide Settings gear icon (cx = 308.0)
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
                     self.height,
-                    308.0,
-                    412.5,
+                    308.0 + agenda_offset_x,
+                    add_bar_cy,
                     15.0,
                     12.0,
                     8.0,
                     btn_bg,
                 );
-                self.font.draw_text_centered(
+                UIFont::draw_settings_icon(
                     buf,
                     self.width,
                     self.height,
-                    "⚙",
-                    308.0,
-                    412.5,
-                    14.5,
+                    308.0 + agenda_offset_x,
+                    add_bar_cy,
                     col_primary,
-                    col_shadow,
-                    FontWeight::Bold,
                 );
             }
         }
@@ -1750,6 +1929,8 @@ impl AppData {
         // Pack item_count in upper 16 bits, bitmask in lower 16 bits
         let progress_packed = (((item_count & 0xFFFF) << 16) | (bitmask & 0xFFFF)) as f32;
 
+        let card_h = self.get_card_height();
+
         // Generate dynamic Quicksand font overlay
         let mut overlay_buf = vec![0u8; (self.width * self.height * 4) as usize];
         self.render_ui_overlay(&mut overlay_buf);
@@ -1766,10 +1947,15 @@ impl AppData {
 
             let is_light_f32 = if self.is_wallpaper_light { 1.0 } else { 0.0 };
 
+            // Hug content: glass card bounds match calculated height
+            let h_norm = (card_h / (self.height as f32)).clamp(0.1, 1.0);
+
             let todo_card = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::RoundedRectangle { radius: 28.0 })
-                .bounds(0.0, 0.0, 1.0, 1.0)
+                .shape(Shape::RoundedRectangle {
+                    radius: Tokens::RADIUS_OUTER,
+                })
+                .bounds(0.0, 0.0, 1.0, h_norm)
                 .curvature(0.035)
                 .bevel(22.0)
                 .refraction(0.70)

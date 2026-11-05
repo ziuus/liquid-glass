@@ -1095,21 +1095,22 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
 
         if task_view_weight > 0.01 {
             // ════════════════════════════════════════════
-            // 2. FILTER STRIP (y = -148.0) - TASKS VIEW
+            // 2. FILTER STRIP (y = -148.0) - TASKS VIEW (Sliding Horizontal Page)
             // ════════════════════════════════════════════
             let filt_y = -148.0;
+            let tasks_slide_x = -tab_t * 360.0;
 
             // Smooth continuous sliding active filter pill using params.dispersion (0.0 = All, 1.0 = Active, 2.0 = Done)
             let f_t = clamp(params.dispersion, 0.0, 2.0);
             let filt_cx = select(mix(-96.0, -24.0, f_t), mix(-24.0, 48.0, f_t - 1.0), f_t > 1.0);
             let filt_w = select(mix(30.0, 34.0, f_t), mix(34.0, 30.0, f_t - 1.0), f_t > 1.0);
-            let p_filt = local_p - vec2<f32>(filt_cx, filt_y);
+            let p_filt = local_p - vec2<f32>(filt_cx + tasks_slide_x, filt_y);
             let d_filt = rr_sdf(p_filt, vec2<f32>(filt_w, 10.0), 10.0);
             mask_all_fill = (1.0 - smoothstep(-0.4, 0.4, d_filt)) * mix(0.85, 0.90, is_light) * task_view_weight;
             mask_all_rim = smoothstep(1.0, 0.0, abs(d_filt)) * mix(0.40, 0.55, is_light) * task_view_weight;
 
             // Refresh Icon ↻
-            let p_ref = local_p - vec2<f32>(120.0, filt_y);
+            let p_ref = local_p - vec2<f32>(120.0 + tasks_slide_x, filt_y);
             let r_ref = length(p_ref);
             let d_ref_arc = abs(r_ref - 5.5) - 0.65;
             let ang_ref = atan2(p_ref.y, p_ref.x);
@@ -1125,7 +1126,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
                     continue;
                 }
                 let row_y = -105.0 + f32(i) * 44.0;
-                let p_row = local_p - vec2<f32>(0.0, row_y);
+                let p_row = local_p - vec2<f32>(tasks_slide_x, row_y);
                 let d_row = rr_sdf(p_row, vec2<f32>(156.0, 18.0), 10.0);
 
                 let is_row_hover = (hover_row >= f32(i) - 0.1 && hover_row <= f32(i) + 0.1);
@@ -1151,13 +1152,13 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
             // 4. BOTTOM ADD BAR (y = +185.0) - maximum visibility
             // ════════════════════════════════════════════
             let bot_y = 185.0;
-            let p_add_bar = local_p - vec2<f32>(0.0, bot_y);
+            let p_add_bar = local_p - vec2<f32>(tasks_slide_x, bot_y);
             let d_add_bar = rr_sdf(p_add_bar, vec2<f32>(156.0, 17.0), 17.0);
             mask_add_fill = (1.0 - smoothstep(-0.4, 0.4, d_add_bar)) * mix(0.10, 0.18, is_light) * task_view_weight;
             mask_add_rim = smoothstep(1.0, 0.0, abs(d_add_bar)) * mix(0.35, 0.45, is_light) * task_view_weight;
 
             // Add Button '+' at cx = 135.0, cy = bot_y - maximum visibility
-            let p_plus = local_p - vec2<f32>(135.0, bot_y);
+            let p_plus = local_p - vec2<f32>(135.0 + tasks_slide_x, bot_y);
             let d_plus_bg = length(p_plus) - 11.0;
             let plus_fill = (1.0 - smoothstep(-0.4, 0.4, d_plus_bg)) * mix(0.12, 0.25, is_light) * task_view_weight;
             let plus_rim = smoothstep(1.0, 0.0, abs(d_plus_bg)) * 0.40 * task_view_weight;
@@ -1171,14 +1172,15 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
 
         if agenda_view_weight > 0.01 {
             // ════════════════════════════════════════════
-            // 2. AGENDA SCHEDULE VIEW (y = -135.0 to +135.0)
+            // 2. AGENDA SCHEDULE VIEW (y = -135.0 to +135.0) (Sliding Horizontal Page)
             // ════════════════════════════════════════════
+            let agenda_slide_x = (1.0 - tab_t) * 360.0;
             for (var i = 0u; i < 6u; i += 1u) {
                 if i >= item_count {
                     continue;
                 }
                 let row_y = -105.0 + f32(i) * 44.0;
-                let p_row = local_p - vec2<f32>(0.0, row_y);
+                let p_row = local_p - vec2<f32>(agenda_slide_x, row_y);
                 let d_row = rr_sdf(p_row, vec2<f32>(156.0, 18.0), 10.0);
 
                 let is_row_hover = (hover_row >= f32(i) - 0.1 && hover_row <= f32(i) + 0.1);
@@ -1190,14 +1192,14 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
                 rows_rim = max(rows_rim, rim);
 
                 // Time Badge Capsule (cx = -120.0, cy = row_y)
-                let p_tbadge = local_p - vec2<f32>(-120.0, row_y);
+                let p_tbadge = local_p - vec2<f32>(-120.0 + agenda_slide_x, row_y);
                 let d_tbadge = rr_sdf(p_tbadge, vec2<f32>(24.0, 9.0), 6.0);
                 let tb_rim = smoothstep(1.0, 0.0, abs(d_tbadge)) * 0.25 * agenda_view_weight;
                 let tb_fill = (1.0 - smoothstep(-0.4, 0.4, d_tbadge)) * 0.10 * agenda_view_weight;
                 check_rims = max(check_rims, max(tb_rim, tb_fill));
 
                 // Right Status Badge: TODAY (cx = 124.0, cy = row_y) - maximum visibility
-                let p_dtag = local_p - vec2<f32>(124.0, row_y);
+                let p_dtag = local_p - vec2<f32>(124.0 + agenda_slide_x, row_y);
                 let d_dtag = rr_sdf(p_dtag, vec2<f32>(22.0, 7.5), 7.5);
                 daily_fills = max(daily_fills, (1.0 - smoothstep(-0.4, 0.4, d_dtag)) * 0.12 * agenda_view_weight);
                 daily_rims = max(daily_rims, smoothstep(1.0, 0.0, abs(d_dtag)) * 0.35 * agenda_view_weight);
@@ -1205,7 +1207,7 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
 
             // Bottom Status Bar (y = +185.0): CALENDAR • EVENTS - maximum visibility
             let bot_y = 185.0;
-            let p_add_bar = local_p - vec2<f32>(0.0, bot_y);
+            let p_add_bar = local_p - vec2<f32>(agenda_slide_x, bot_y);
             let d_add_bar = rr_sdf(p_add_bar, vec2<f32>(156.0, 17.0), 17.0);
             mask_add_fill = max(mask_add_fill, (1.0 - smoothstep(-0.4, 0.4, d_add_bar)) * mix(0.18, 0.15, is_light) * agenda_view_weight);
             mask_add_rim = max(mask_add_rim, smoothstep(1.1, 0.0, abs(d_add_bar)) * mix(0.45, 0.35, is_light) * agenda_view_weight);
@@ -1648,12 +1650,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if params.blur_radius <= 0.5 {
         col = sharp_col;
     } else {
-        // Two-tier optical architecture:
-        // - At the rim (depth < 0.4 * bezel): 100% crisp refracted Snell optics (edge bending is sharp & visible)
-        // - In the interior (depth > 1.1 * bezel): subtle frosted diffusion across entire interior
-        let w_blur = smoothstep(0.40 * bezel, 1.10 * bezel, depth);
-        let frosted_col = sample_frost_blur(uv, clamp(params.blur_radius, 2.0, 5.0));
-        col = mix(sharp_col, frosted_col, w_blur);
+        // Continuous variable blur: smoothly scales from rim to interior over 2.5x bezel
+        // completely eliminating the sharp spotlight boundary ring
+        let blur_t = smoothstep(0.0, 2.5 * bezel, depth);
+        let cur_radius = clamp(params.blur_radius * blur_t, 0.0, 6.0);
+        if cur_radius <= 0.3 {
+            col = sharp_col;
+        } else {
+            let frosted_col = sample_frost_blur(uv, cur_radius);
+            col = mix(sharp_col, frosted_col, blur_t);
+        }
     }
 
     // Clean transmissive glass substrate without artificial darkening veils (keeps interior within ±5% of backdrop)
@@ -1716,9 +1722,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let prox = clamp(1.0 - (dist_to_cur / 100.0), 0.0, 1.0);
         let prox_curve = prox * prox;
 
-        // Subtle, elegant edge response
-        side_bevel_flare = pow(1.0 - t, 1.6) * pow(bevel_facing, 3.0) * prox_curve * 0.55 * params.specular_strength;
-        side_rim_flare = pow(1.0 - t, 2.0) * pow(bevel_facing, 2.2) * prox * 0.70 * params.specular_strength;
+        // Soft, diffused edge specular response without sharp white hot-spots
+        let soft_falloff = exp(-dist_to_cur * dist_to_cur / (2.0 * 60.0 * 60.0));
+        side_bevel_flare = pow(1.0 - t, 2.0) * pow(bevel_facing, 2.0) * soft_falloff * 0.12 * params.specular_strength;
+        side_rim_flare = 0.0; // Eliminated jarring rim hot spot
     }
 
     // ════════════════════════════════════════════

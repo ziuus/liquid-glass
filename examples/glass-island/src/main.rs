@@ -1,5 +1,5 @@
 use glass_core::font::{FontWeight, UIFont};
-use glass_core::{geometry::Shape, GlassRenderer, GlassSurface, Material};
+use glass_core::{geometry::Shape, GlassRenderer, GlassSurface, Material, Tokens};
 mod capture;
 use raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle,
@@ -231,6 +231,12 @@ pub struct AppData {
     mode: IslandMode,
     prev_mode: IslandMode,
 
+    // Slide Carousel Transitions
+    slide_offset: f32,
+    slide_vel: f32,
+    slide_dir: f32,
+    transition_from_mode: Option<IslandMode>,
+
     music: MusicState,
     last_music_poll: Instant,
 
@@ -299,12 +305,42 @@ impl HasDisplayHandle for WaylandWindow {
 }
 
 impl AppData {
+    fn page_index(mode: IslandMode) -> Option<usize> {
+        match mode {
+            IslandMode::MusicExpanded => Some(0),
+            IslandMode::SystemOverview => Some(1),
+            IslandMode::QuickAccess => Some(2),
+            IslandMode::PowerMenu => Some(3),
+            IslandMode::Notification => Some(0),
+            _ => None,
+        }
+    }
+
     fn set_mode(&mut self, new_mode: IslandMode) {
         if self.mode == new_mode {
             return;
         }
-        self.prev_mode = self.mode;
+        let old_mode = self.mode;
+        self.prev_mode = old_mode;
         self.mode = new_mode;
+
+        if let (Some(from_idx), Some(to_idx)) =
+            (Self::page_index(old_mode), Self::page_index(new_mode))
+        {
+            if from_idx != to_idx {
+                let dir = if (to_idx > from_idx && !(from_idx == 0 && to_idx == 3))
+                    || (from_idx == 3 && to_idx == 0)
+                {
+                    1.0f32
+                } else {
+                    -1.0f32
+                };
+                self.transition_from_mode = Some(old_mode);
+                self.slide_dir = dir;
+                self.slide_offset = dir * 460.0;
+                self.slide_vel = 0.0;
+            }
+        }
 
         match new_mode {
             IslandMode::Hidden => {
@@ -314,38 +350,19 @@ impl AppData {
                 self.target_alpha = 0.0;
             }
             IslandMode::CompactPill => {
-                self.target_w = 210.0;
-                self.target_h = 42.0;
+                self.target_w = 220.0;
+                self.target_h = Tokens::ISLAND_COMPACT_H;
                 self.target_y = 12.0;
                 self.target_alpha = 1.0;
             }
-            IslandMode::MusicExpanded => {
-                self.target_w = 440.0;
-                self.target_h = 130.0;
-                self.target_y = 12.0;
-                self.target_alpha = 1.0;
-            }
-            IslandMode::Notification => {
+            IslandMode::MusicExpanded
+            | IslandMode::Notification
+            | IslandMode::QuickAccess
+            | IslandMode::SystemOverview
+            | IslandMode::PowerMenu => {
+                // Unified standard geometry: all expanded pages have identical 460x120px footprint
                 self.target_w = 460.0;
-                self.target_h = 92.0;
-                self.target_y = 12.0;
-                self.target_alpha = 1.0;
-            }
-            IslandMode::QuickAccess => {
-                self.target_w = 480.0;
-                self.target_h = 110.0;
-                self.target_y = 12.0;
-                self.target_alpha = 1.0;
-            }
-            IslandMode::SystemOverview => {
-                self.target_w = 460.0;
-                self.target_h = 115.0;
-                self.target_y = 12.0;
-                self.target_alpha = 1.0;
-            }
-            IslandMode::PowerMenu => {
-                self.target_w = 440.0;
-                self.target_h = 110.0;
+                self.target_h = Tokens::ISLAND_EXPANDED_H;
                 self.target_y = 12.0;
                 self.target_alpha = 1.0;
             }
@@ -394,8 +411,6 @@ impl AppData {
                 IslandIpcEvent::NextMenu => self.cycle_mode_forward(),
                 IslandIpcEvent::PrevMenu => self.cycle_mode_backward(),
                 IslandIpcEvent::Notification(notif) => {
-                    let text_len = notif.summary.len().max(notif.body.len());
-                    self.target_w = (text_len as f32 * 8.0 + 190.0).clamp(380.0, 480.0);
                     self.active_notif = Some(notif);
                     self.set_mode(IslandMode::Notification);
                 }
@@ -448,6 +463,21 @@ impl AppData {
             && self.vel_h.abs() < 1.0
             && self.vel_y.abs() < 1.0;
 
+        let mut slide_settling = true;
+        if self.transition_from_mode.is_some() {
+            let force_slide = -380.0 * self.slide_offset - 32.0 * self.slide_vel;
+            self.slide_vel += force_slide * dt;
+            self.slide_offset += self.slide_vel * dt;
+
+            if self.slide_offset.abs() < 0.5 && self.slide_vel.abs() < 1.0 {
+                self.slide_offset = 0.0;
+                self.slide_vel = 0.0;
+                self.transition_from_mode = None;
+            } else {
+                slide_settling = false;
+            }
+        }
+
         if settling {
             self.current_w = self.target_w;
             self.current_h = self.target_h;
@@ -457,6 +487,11 @@ impl AppData {
             self.vel_h = 0.0;
             self.vel_y = 0.0;
             self.vel_alpha = 0.0;
+        }
+
+        if !settling || !slide_settling {
+            self.animating = true;
+            self.needs_redraw = true;
         }
 
         // Notification expiration timer
@@ -730,26 +765,28 @@ impl AppData {
     }
 
     fn render_ui_overlay(&mut self) {
-        let buf = &mut self.overlay_buffer;
-        buf.fill(0);
-
         if self.current_alpha <= 0.05 {
             return;
         }
+
+        let mut overlay_vec = std::mem::take(&mut self.overlay_buffer);
+        if overlay_vec.len() != (self.width * self.height * 4) as usize {
+            overlay_vec.resize((self.width * self.height * 4) as usize, 0);
+        }
+        overlay_vec.fill(0);
+        let buf = &mut overlay_vec[..];
 
         let is_light = self.is_wallpaper_light;
         let col_ink = if is_light {
             [8, 12, 20, 255]
         } else {
-            [255, 255, 255, 255]
+            Tokens::TEXT_PRIMARY
         };
         let col_dim = if is_light {
             [50, 60, 75, 255]
         } else {
-            [224, 228, 236, 255] // Crisp #e0e4ec for >6.5:1 contrast
+            Tokens::TEXT_SECONDARY
         };
-        let col_accent = [90, 155, 255, 255];
-        let col_green = [70, 215, 120, 255];
         let col_shadow = [0, 0, 0, 0];
 
         let island_cx = (self.width as f32) * 0.5;
@@ -758,9 +795,68 @@ impl AppData {
         let island_h = self.current_h;
         let island_cy = island_top + island_h * 0.5;
 
+        // Base Island Physical Glass Body (Apple-grade Obsidian Near-Opaque Dark Glass)
+        let island_r = if self.mode == IslandMode::CompactPill {
+            island_h * 0.5
+        } else {
+            Tokens::RADIUS_OUTER
+        };
+
+        let backdrop_col = if is_light {
+            Tokens::CLEAR_BACKDROP_LIGHT
+        } else {
+            Tokens::OBSIDIAN_BACKDROP
+        };
+
+        UIFont::draw_rounded_rect_fill(
+            buf,
+            self.width,
+            self.height,
+            island_cx,
+            island_cy,
+            island_w * 0.5,
+            island_h * 0.5,
+            island_r,
+            backdrop_col,
+        );
+
+        // Specular outer rim highlight (ONLY on outer shell)
+        UIFont::draw_rounded_rect_stroke(
+            buf,
+            self.width,
+            self.height,
+            island_cx,
+            island_cy,
+            island_w * 0.5,
+            island_h * 0.5,
+            island_r,
+            1.0,
+            if is_light {
+                Tokens::RIM_OUTER_LIGHT
+            } else {
+                Tokens::RIM_OUTER_DARK
+            },
+        );
+
+        // Top specular bevel highlight
+        let bevel_span = (island_w * 0.5 - island_r).max(10.0);
+        UIFont::draw_segment(
+            buf,
+            self.width,
+            self.height,
+            (island_cx - bevel_span, island_top + 1.2),
+            (island_cx + bevel_span, island_top + 1.2),
+            1.0,
+            if is_light {
+                [255, 255, 255, 180]
+            } else {
+                [255, 255, 255, 65]
+            },
+        );
+
         match self.mode {
             IslandMode::CompactPill => {
-                // Left: Rotating Vinyl Disc icon with pulsing glow when playing (half-dimensions = 11.0, 11.0)
+                // Left: Playing or Paused Lucide Icon
                 let disc_cx = island_cx - island_w * 0.5 + 24.0;
                 UIFont::draw_rounded_rect_fill(
                     buf,
@@ -768,31 +864,39 @@ impl AppData {
                     self.height,
                     disc_cx,
                     island_cy,
-                    11.0,
-                    11.0,
-                    11.0,
+                    12.0,
+                    12.0,
+                    12.0,
                     if self.music.is_playing {
-                        col_green
+                        Tokens::ACCENT_FILL
                     } else {
-                        col_dim
+                        Tokens::INNER_TILE_BG_DARK
                     },
                 );
-                self.font.draw_text_centered(
-                    buf,
-                    self.width,
-                    self.height,
-                    if self.music.is_playing { "♫" } else { "●" },
-                    disc_cx,
-                    island_cy,
-                    13.0,
-                    [10, 14, 20, 255],
-                    col_shadow,
-                    FontWeight::Bold,
-                );
+                if self.music.is_playing {
+                    UIFont::draw_music_icon(
+                        buf,
+                        self.width,
+                        self.height,
+                        disc_cx,
+                        island_cy,
+                        Tokens::ACCENT,
+                    );
+                } else {
+                    UIFont::draw_pause_icon(
+                        buf,
+                        self.width,
+                        self.height,
+                        disc_cx,
+                        island_cy,
+                        6.0,
+                        Tokens::TEXT_SECONDARY,
+                    );
+                }
 
                 // Center: Track Title
-                let title = if self.music.title.len() > 14 {
-                    format!("{}...", &self.music.title[..12])
+                let title = if self.music.title.len() > 16 {
+                    format!("{}…", &self.music.title[..15])
                 } else {
                     self.music.title.clone()
                 };
@@ -803,46 +907,113 @@ impl AppData {
                     &title,
                     island_cx + 4.0,
                     island_cy,
-                    13.5,
-                    col_ink,
+                    Tokens::TYPE_BODY_SM,
+                    Tokens::TEXT_PRIMARY,
                     col_shadow,
-                    FontWeight::Bold,
+                    FontWeight::SemiBold,
                 );
 
-                // Right: Mini waveform bars (half-width 1.5, half-height 2.0..8.0)
+                // Right: Equalizer waveform bars or Paused Indicator
                 let right_x = island_cx + island_w * 0.5 - 28.0;
-                for i in 0..3 {
-                    let bx = right_x + (i as f32) * 6.0;
-                    let h_half = if self.music.is_playing {
-                        3.0 + (i as f32 * 2.0)
-                    } else {
-                        2.0
-                    };
-                    UIFont::draw_rounded_rect_fill(
+                if self.music.is_playing {
+                    let t_sec = self.start_time.elapsed().as_secs_f32();
+                    for i in 0..3 {
+                        let bx = right_x + (i as f32) * 6.0;
+                        let wave = ((t_sec * (6.0 + i as f32 * 2.0)).sin() * 0.5 + 0.5) * 5.0 + 2.5;
+                        UIFont::draw_rounded_rect_fill(
+                            buf,
+                            self.width,
+                            self.height,
+                            bx,
+                            island_cy,
+                            1.2,
+                            wave,
+                            1.0,
+                            Tokens::ACCENT,
+                        );
+                    }
+                } else {
+                    self.font.draw_text_centered(
                         buf,
                         self.width,
                         self.height,
-                        bx,
+                        "PAUSED",
+                        right_x + 6.0,
                         island_cy,
-                        1.5,
-                        h_half,
-                        1.5,
-                        col_green,
+                        Tokens::TYPE_CAPTION,
+                        Tokens::TEXT_TERTIARY,
+                        col_shadow,
+                        FontWeight::Medium,
                     );
                 }
             }
-            IslandMode::MusicExpanded => {
-                Self::draw_page_dots(
+            IslandMode::Hidden => {}
+            _ => {
+                if let Some(active_idx) = Self::page_index(self.mode) {
+                    Self::draw_page_dots(
+                        buf,
+                        self.width,
+                        self.height,
+                        island_cx,
+                        island_top,
+                        island_w,
+                        is_light,
+                        active_idx,
+                    );
+                }
+
+                if let Some(from_mode) = self.transition_from_mode {
+                    let from_offset_x = self.slide_offset - self.slide_dir * island_w;
+                    self.render_expanded_page_content(
+                        buf,
+                        from_mode,
+                        island_cx + from_offset_x,
+                        island_cy,
+                        island_top,
+                        island_w,
+                        island_h,
+                        is_light,
+                        col_ink,
+                        col_dim,
+                        col_shadow,
+                    );
+                }
+
+                self.render_expanded_page_content(
                     buf,
-                    self.width,
-                    self.height,
-                    island_cx,
+                    self.mode,
+                    island_cx + self.slide_offset,
+                    island_cy,
                     island_top,
                     island_w,
+                    island_h,
                     is_light,
-                    0,
+                    col_ink,
+                    col_dim,
+                    col_shadow,
                 );
+            }
+        }
+        self.overlay_buffer = overlay_vec;
+    }
 
+    #[allow(clippy::too_many_arguments)]
+    fn render_expanded_page_content(
+        &self,
+        buf: &mut [u8],
+        mode: IslandMode,
+        cx: f32,
+        island_cy: f32,
+        island_top: f32,
+        island_w: f32,
+        _island_h: f32,
+        is_light: bool,
+        col_ink: [u8; 4],
+        col_dim: [u8; 4],
+        col_shadow: [u8; 4],
+    ) {
+        match mode {
+            IslandMode::MusicExpanded => {
                 // Header: NOW PLAYING
                 let header_y = island_top + 22.0;
                 self.font.draw_text(
@@ -850,7 +1021,7 @@ impl AppData {
                     self.width,
                     self.height,
                     "NOW PLAYING",
-                    island_cx - island_w * 0.5 + 32.0,
+                    cx - island_w * 0.5 + 32.0,
                     header_y,
                     11.0,
                     col_dim,
@@ -858,7 +1029,7 @@ impl AppData {
                 );
 
                 // Vinyl Album Disc (half_w = 23.0, half_h = 23.0)
-                let disc_cx = island_cx - island_w * 0.5 + 50.0;
+                let disc_cx = cx - island_w * 0.5 + 50.0;
                 let disc_cy = island_top + 68.0;
                 UIFont::draw_rounded_rect_fill(
                     buf,
@@ -885,13 +1056,13 @@ impl AppData {
                     9.0,
                     9.0,
                     9.0,
-                    col_green,
+                    Tokens::ACCENT,
                 );
 
                 // Track details
-                let title_x = island_cx - island_w * 0.5 + 88.0;
-                let title = if self.music.title.len() > 20 {
-                    format!("{}...", &self.music.title[..18])
+                let title_x = cx - island_w * 0.5 + 88.0;
+                let title = if self.music.title.len() > 22 {
+                    format!("{}…", &self.music.title[..20])
                 } else {
                     self.music.title.clone()
                 };
@@ -902,7 +1073,7 @@ impl AppData {
                     &title,
                     title_x,
                     island_top + 58.0,
-                    16.0,
+                    Tokens::TYPE_BODY,
                     col_ink,
                     FontWeight::Bold,
                 );
@@ -913,14 +1084,14 @@ impl AppData {
                     &self.music.artist,
                     title_x,
                     island_top + 78.0,
-                    13.0,
+                    Tokens::TYPE_BODY_SM,
                     col_dim,
                     FontWeight::Medium,
                 );
 
                 // Transport Controls: Prev, Play/Pause, Next
                 let ctrl_y = island_top + 68.0;
-                let play_cx = island_cx + island_w * 0.5 - 64.0;
+                let play_cx = cx + island_w * 0.5 - 64.0;
                 let prev_cx = play_cx - 44.0;
                 let next_cx = play_cx + 44.0;
 
@@ -973,37 +1144,10 @@ impl AppData {
                 // Next
                 UIFont::draw_next_icon(buf, self.width, self.height, next_cx, ctrl_y, 8.5, col_ink);
 
-                // Audio Spectrum Visualizer (5 dynamic harmonic bars)
-                let viz_x = prev_cx - 40.0;
-                let t_sec = self.start_time.elapsed().as_secs_f32();
-                for i in 0..5 {
-                    let bx = viz_x + (i as f32) * 5.5;
-                    let h_half = if self.music.is_playing {
-                        let freq = 4.2 + (i as f32) * 1.8;
-                        let phase = (i as f32) * 0.95;
-                        let wave = ((t_sec * freq + phase).sin() * 0.5 + 0.5)
-                            * ((t_sec * 2.1 + phase * 1.4).cos() * 0.3 + 0.7);
-                        2.5 + wave * 9.5
-                    } else {
-                        2.0
-                    };
-                    UIFont::draw_rounded_rect_fill(
-                        buf,
-                        self.width,
-                        self.height,
-                        bx,
-                        ctrl_y,
-                        1.5,
-                        h_half,
-                        1.5,
-                        col_green,
-                    );
-                }
-
-                // Progress Bar
-                let bar_y = island_top + 108.0;
+                // Progress Bar (at y = 104.0)
+                let bar_y = island_top + 104.0;
                 let bar_w = island_w - 64.0;
-                let bar_x = island_cx;
+                let bar_x = cx;
                 // High-contrast track back (half_w = bar_w * 0.5, half_h = 2.0)
                 UIFont::draw_rounded_rect_fill(
                     buf,
@@ -1023,7 +1167,7 @@ impl AppData {
                 // Active fill
                 let fill_w = bar_w * self.music.progress;
                 if fill_w > 2.0 {
-                    let fill_cx = island_cx - bar_w * 0.5 + fill_w * 0.5;
+                    let fill_cx = cx - bar_w * 0.5 + fill_w * 0.5;
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
@@ -1033,10 +1177,10 @@ impl AppData {
                         fill_w * 0.5,
                         2.0,
                         2.0,
-                        col_accent,
+                        Tokens::ACCENT,
                     );
                     // Glowing scrubber knob
-                    let knob_x = island_cx - bar_w * 0.5 + fill_w;
+                    let knob_x = cx - bar_w * 0.5 + fill_w;
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
@@ -1053,7 +1197,7 @@ impl AppData {
             IslandMode::Notification => {
                 if let Some(notif) = &self.active_notif {
                     // Left App Icon badge (half_w = 20.0, half_h = 20.0) with deep royal accent
-                    let badge_cx = island_cx - island_w * 0.5 + 42.0;
+                    let badge_cx = cx - island_w * 0.5 + 42.0;
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
@@ -1076,7 +1220,7 @@ impl AppData {
                     );
 
                     // App Name Header
-                    let content_x = island_cx - island_w * 0.5 + 76.0;
+                    let content_x = cx - island_w * 0.5 + 76.0;
                     self.font.draw_text(
                         buf,
                         self.width,
@@ -1126,7 +1270,7 @@ impl AppData {
                     );
 
                     // Right-side metadata: "now" badge pill + "✕" dismiss button
-                    let right_x = island_cx + island_w * 0.5 - 34.0;
+                    let right_x = cx + island_w * 0.5 - 34.0;
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
@@ -1175,24 +1319,13 @@ impl AppData {
                 }
             }
             IslandMode::QuickAccess => {
-                Self::draw_page_dots(
-                    buf,
-                    self.width,
-                    self.height,
-                    island_cx,
-                    island_top,
-                    island_w,
-                    is_light,
-                    2,
-                );
-
                 // Header
                 self.font.draw_text(
                     buf,
                     self.width,
                     self.height,
                     "QUICK ACCESS",
-                    island_cx - island_w * 0.5 + 32.0,
+                    cx - island_w * 0.5 + 32.0,
                     island_top + 24.0,
                     11.0,
                     col_dim,
@@ -1203,32 +1336,32 @@ impl AppData {
                 let key_hints = ["1", "2", "3", "4", "5"];
 
                 let item_w = (island_w - 50.0) / (apps.len() as f32);
-                let start_x = island_cx - island_w * 0.5 + 25.0 + item_w * 0.5;
+                let start_x = cx - island_w * 0.5 + 25.0 + item_w * 0.5;
 
                 let cur_lx = self.cursor_pos[0] * (self.width as f32);
                 let cur_ly = self.cursor_pos[1] * (self.height as f32);
 
                 for (idx, name) in apps.iter().enumerate() {
                     let cx = start_x + (idx as f32) * item_w;
-                    let cy = island_top + 62.0;
+                    let cy = island_top + 65.0;
 
                     let is_tile_hover = self.is_hovered
                         && (cur_lx - cx).abs() <= (item_w - 10.0) * 0.5
-                        && (cur_ly - cy).abs() <= 25.0;
+                        && (cur_ly - cy).abs() <= 28.0;
 
                     let tile_bg = if is_tile_hover {
                         if is_light {
-                            [255, 255, 255, 140]
+                            Tokens::INNER_TILE_BG_LIGHT
                         } else {
-                            [255, 255, 255, 48]
+                            Tokens::INNER_TILE_BG_HOVER_DARK
                         }
                     } else if is_light {
-                        [255, 255, 255, 75]
+                        [255, 255, 255, 60]
                     } else {
-                        [255, 255, 255, 20]
+                        Tokens::INNER_TILE_BG_DARK
                     };
 
-                    // Container pill: pure optical translucent liquid glass
+                    // Subtle inner fill (NO wireframe outline!)
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
@@ -1236,38 +1369,25 @@ impl AppData {
                         cx,
                         cy,
                         (item_w - 10.0) * 0.5,
-                        25.0,
-                        12.0,
+                        28.0,
+                        Tokens::RADIUS_INNER_TILE,
                         tile_bg,
                     );
 
-                    // Specular rim highlight (subtle 1px glass edge)
-                    UIFont::draw_rounded_rect_stroke(
+                    // Top highlight bevel only
+                    UIFont::draw_segment(
                         buf,
                         self.width,
                         self.height,
-                        cx,
-                        cy,
-                        (item_w - 10.0) * 0.5,
-                        25.0,
-                        12.0,
+                        (cx - (item_w - 10.0) * 0.5 + 6.0, cy - 27.0),
+                        (cx + (item_w - 10.0) * 0.5 - 6.0, cy - 27.0),
                         1.0,
-                        if is_tile_hover {
-                            if is_light {
-                                [90, 150, 255, 200]
-                            } else {
-                                [255, 255, 255, 190]
-                            }
-                        } else if is_light {
-                            [255, 255, 255, 180]
-                        } else {
-                            [255, 255, 255, 55]
-                        },
+                        Tokens::INNER_TOP_HIGHLIGHT_DARK,
                     );
 
                     // Key hint badge at top-right of tile (1..5)
-                    let hint_cx = cx + (item_w - 10.0) * 0.5 - 9.0;
-                    let hint_cy = cy - 15.0;
+                    let hint_cx = cx + (item_w - 10.0) * 0.5 - 10.0;
+                    let hint_cy = cy - 16.0;
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
@@ -1290,12 +1410,8 @@ impl AppData {
                         key_hints[idx],
                         hint_cx,
                         hint_cy,
-                        8.5,
-                        if is_light {
-                            [40, 50, 70, 255]
-                        } else {
-                            [200, 215, 235, 255]
-                        },
+                        Tokens::TYPE_CAPTION - 2.0,
+                        Tokens::TEXT_SECONDARY,
                         col_shadow,
                         FontWeight::Bold,
                     );
@@ -1350,41 +1466,25 @@ impl AppData {
                         self.height,
                         name,
                         cx,
-                        cy + 12.0,
-                        11.0,
-                        if is_light {
-                            [20, 28, 40, 255]
-                        } else {
-                            [225, 232, 244, 255]
-                        },
+                        cy + 13.0,
+                        Tokens::TYPE_CAPTION,
+                        Tokens::TEXT_PRIMARY,
                         col_shadow,
                         FontWeight::Medium,
                     );
                 }
             }
             IslandMode::SystemOverview => {
-                Self::draw_page_dots(
-                    buf,
-                    self.width,
-                    self.height,
-                    island_cx,
-                    island_top,
-                    island_w,
-                    is_light,
-                    1,
-                );
-                self.sys_stats.poll();
-
                 // Header
                 self.font.draw_text(
                     buf,
                     self.width,
                     self.height,
                     "SYSTEM OVERVIEW",
-                    island_cx - island_w * 0.5 + 32.0,
+                    cx - island_w * 0.5 + 32.0,
                     island_top + 24.0,
-                    11.0,
-                    col_dim,
+                    Tokens::TYPE_CAPTION,
+                    Tokens::TEXT_TERTIARY,
                     FontWeight::Bold,
                 );
 
@@ -1394,27 +1494,25 @@ impl AppData {
                         "CPU",
                         format!("{}%", self.sys_stats.cpu_pct),
                         if self.sys_stats.cpu_pct > 80 {
-                            [240, 80, 80, 255]
+                            Tokens::STATUS_RED
                         } else {
-                            col_green
+                            Tokens::ACCENT
                         },
                     ),
                     (
                         "RAM",
                         format!("{:.1}G", self.sys_stats.ram_used_gb),
-                        col_accent,
+                        Tokens::ACCENT,
                     ),
                     (
-                        if self.sys_stats.bat_charging {
-                            "BAT ⚡"
-                        } else {
-                            "BAT"
-                        },
+                        "BATTERY",
                         format!("{}%", self.sys_stats.bat_pct),
                         if self.sys_stats.bat_pct <= 20 {
-                            [240, 80, 80, 255]
+                            Tokens::STATUS_AMBER
+                        } else if self.sys_stats.bat_charging {
+                            Tokens::STATUS_GREEN
                         } else {
-                            col_green
+                            Tokens::ACCENT
                         },
                     ),
                     (
@@ -1423,22 +1521,22 @@ impl AppData {
                             "{}h {}m",
                             self.sys_stats.uptime_hrs, self.sys_stats.uptime_mins
                         ),
-                        [180, 160, 255, 255],
+                        Tokens::ACCENT,
                     ),
                 ];
 
                 let item_w = (island_w - 52.0) / 4.0;
-                let start_x = island_cx - island_w * 0.5 + 26.0 + item_w * 0.5;
+                let start_x = cx - island_w * 0.5 + 26.0 + item_w * 0.5;
                 let cy = island_top + 65.0;
 
                 for (idx, (lbl, val, accent)) in stat_items.iter().enumerate() {
                     let cx = start_x + (idx as f32) * item_w;
 
-                    // Container pill: pure optical translucent liquid glass
+                    // Container pill: subtle 7% white fill (NO wireframe outline!)
                     let tile_bg = if is_light {
-                        [255, 255, 255, 75]
+                        Tokens::INNER_TILE_BG_LIGHT
                     } else {
-                        [255, 255, 255, 20]
+                        Tokens::INNER_TILE_BG_DARK
                     };
                     UIFont::draw_rounded_rect_fill(
                         buf,
@@ -1447,104 +1545,124 @@ impl AppData {
                         cx,
                         cy,
                         (item_w - 10.0) * 0.5,
-                        25.0,
-                        12.0,
+                        28.0,
+                        Tokens::RADIUS_INNER_TILE,
                         tile_bg,
                     );
 
-                    // Specular rim highlight (subtle 1px glass edge)
-                    UIFont::draw_rounded_rect_stroke(
+                    // Top highlight bevel only
+                    UIFont::draw_segment(
                         buf,
                         self.width,
                         self.height,
-                        cx,
-                        cy,
-                        (item_w - 10.0) * 0.5,
-                        25.0,
-                        12.0,
+                        (cx - (item_w - 10.0) * 0.5 + 6.0, cy - 27.0),
+                        (cx + (item_w - 10.0) * 0.5 - 6.0, cy - 27.0),
                         1.0,
-                        if is_light {
-                            [255, 255, 255, 180]
-                        } else {
-                            [255, 255, 255, 55]
-                        },
+                        Tokens::INNER_TOP_HIGHLIGHT_DARK,
                     );
 
-                    // Label (top)
-                    self.font.draw_text_centered(
-                        buf,
-                        self.width,
-                        self.height,
-                        lbl,
-                        cx,
-                        cy - 11.0,
-                        10.5,
-                        col_dim,
-                        col_shadow,
-                        FontWeight::Medium,
-                    );
+                    // Lucide Vector Icon (top)
+                    match idx {
+                        0 => UIFont::draw_cpu_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            cy - 12.0,
+                            *accent,
+                        ),
+                        1 => UIFont::draw_ram_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            cy - 12.0,
+                            *accent,
+                        ),
+                        2 => UIFont::draw_battery_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            cy - 12.0,
+                            self.sys_stats.bat_pct,
+                            self.sys_stats.bat_charging,
+                            *accent,
+                        ),
+                        _ => UIFont::draw_clock_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            cy - 12.0,
+                            *accent,
+                        ),
+                    }
 
-                    // Value (bottom large)
+                    // Value (pure white tabular text for optical clarity)
                     self.font.draw_text_centered(
                         buf,
                         self.width,
                         self.height,
                         val,
                         cx,
-                        cy + 9.0,
-                        14.5,
-                        *accent,
+                        cy + 6.0,
+                        Tokens::TYPE_BODY,
+                        Tokens::TEXT_PRIMARY,
                         col_shadow,
-                        FontWeight::Bold,
+                        FontWeight::SemiBold,
+                    );
+
+                    // Label (clean caption below)
+                    self.font.draw_text_centered(
+                        buf,
+                        self.width,
+                        self.height,
+                        lbl,
+                        cx,
+                        cy + 20.0,
+                        Tokens::TYPE_CAPTION - 0.5,
+                        Tokens::TEXT_TERTIARY,
+                        col_shadow,
+                        FontWeight::Medium,
                     );
                 }
             }
             IslandMode::PowerMenu => {
-                Self::draw_page_dots(
-                    buf,
-                    self.width,
-                    self.height,
-                    island_cx,
-                    island_top,
-                    island_w,
-                    is_light,
-                    3,
-                );
-
                 // Header
                 self.font.draw_text(
                     buf,
                     self.width,
                     self.height,
                     "SESSION & POWER",
-                    island_cx - island_w * 0.5 + 32.0,
+                    cx - island_w * 0.5 + 32.0,
                     island_top + 24.0,
-                    11.0,
-                    col_dim,
+                    Tokens::TYPE_CAPTION,
+                    Tokens::TEXT_TERTIARY,
                     FontWeight::Bold,
                 );
 
                 // 4 Action buttons: Lock, Suspend, Restart, Shut Down
                 let actions = [
-                    ("Lock", "🔒", [90, 155, 255, 255]),
-                    ("Suspend", "🌙", [160, 150, 255, 255]),
-                    ("Restart", "↻", [255, 175, 70, 255]),
-                    ("Power Off", "⏻", [245, 75, 75, 255]),
+                    ("Lock", Tokens::ACCENT),
+                    ("Suspend", Tokens::ACCENT),
+                    ("Restart", Tokens::STATUS_AMBER),
+                    ("Power Off", Tokens::STATUS_RED),
                 ];
 
                 let item_w = (island_w - 52.0) / 4.0;
-                let start_x = island_cx - island_w * 0.5 + 26.0 + item_w * 0.5;
-                let cy = island_top + 64.0;
+                let start_x = cx - island_w * 0.5 + 26.0 + item_w * 0.5;
+                let cy = island_top + 65.0;
 
                 let cur_lx = self.cursor_pos[0] * (self.width as f32);
                 let cur_ly = self.cursor_pos[1] * (self.height as f32);
 
-                for (idx, (name, icon, accent_col)) in actions.iter().enumerate() {
+                for (idx, (name, accent_col)) in actions.iter().enumerate() {
                     let cx = start_x + (idx as f32) * item_w;
 
                     let is_tile_hover = self.is_hovered
                         && (cur_lx - cx).abs() <= (item_w - 10.0) * 0.5
-                        && (cur_ly - cy).abs() <= 25.0;
+                        && (cur_ly - cy).abs() <= 28.0;
 
                     let is_tile_pressed = self.power_held.is_some_and(|(h_idx, _)| h_idx == idx);
                     let hold_progress = if let Some((h_idx, start)) = self.power_held {
@@ -1565,17 +1683,17 @@ impl AppData {
                         }
                     } else if is_tile_hover {
                         if is_light {
-                            [255, 255, 255, 140]
+                            Tokens::INNER_TILE_BG_LIGHT
                         } else {
-                            [255, 255, 255, 48]
+                            Tokens::INNER_TILE_BG_HOVER_DARK
                         }
                     } else if is_light {
-                        [255, 255, 255, 75]
+                        [255, 255, 255, 60]
                     } else {
-                        [255, 255, 255, 20]
+                        Tokens::INNER_TILE_BG_DARK
                     };
 
-                    // Translucent optical glass tile
+                    // Subtle inner fill (NO wireframe outline!)
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
@@ -1583,69 +1701,76 @@ impl AppData {
                         cx,
                         cy,
                         (item_w - 10.0) * 0.5,
-                        25.0,
-                        12.0,
+                        28.0,
+                        Tokens::RADIUS_INNER_TILE,
                         tile_bg,
                     );
 
-                    // Specular rim highlight (subtle translucent 1px bevel)
-                    let stroke_col = if is_tile_pressed {
-                        [255, 60, 60, 255]
-                    } else if is_tile_hover {
-                        if is_light {
-                            [90, 150, 255, 200]
-                        } else {
-                            [255, 255, 255, 190]
-                        }
-                    } else if is_light {
-                        [255, 255, 255, 180]
-                    } else {
-                        [255, 255, 255, 55]
-                    };
-                    UIFont::draw_rounded_rect_stroke(
+                    // Top highlight bevel only
+                    UIFont::draw_segment(
                         buf,
                         self.width,
                         self.height,
-                        cx,
-                        cy,
-                        (item_w - 10.0) * 0.5,
-                        25.0,
-                        12.0,
+                        (cx - (item_w - 10.0) * 0.5 + 6.0, cy - 27.0),
+                        (cx + (item_w - 10.0) * 0.5 - 6.0, cy - 27.0),
                         1.0,
-                        stroke_col,
+                        Tokens::INNER_TOP_HIGHLIGHT_DARK,
                     );
 
-                    // If holding Restart or Power Off, draw progress fill bar
-                    if is_tile_pressed && (idx == 2 || idx == 3) && hold_progress > 0.05 {
-                        let fill_w = ((item_w - 12.0) * hold_progress) * 0.5;
+                    // Red hold-to-confirm progress bar fill
+                    if hold_progress > 0.01 {
+                        let max_fill_w = (item_w - 16.0) * 0.5;
+                        let fill_w = max_fill_w * hold_progress;
                         UIFont::draw_rounded_rect_fill(
                             buf,
                             self.width,
                             self.height,
                             cx,
-                            cy + 22.0,
+                            cy + 24.0,
                             fill_w,
                             1.8,
                             1.5,
-                            [255, 60, 60, 255],
+                            Tokens::STATUS_RED,
                         );
                     }
 
-                    // Icon (top)
-                    self.font.draw_text_centered(
-                        buf,
-                        self.width,
-                        self.height,
-                        icon,
-                        cx,
-                        cy - 10.0,
-                        14.0,
-                        *accent_col,
-                        col_shadow,
-                        FontWeight::Bold,
-                    );
+                    // Precision Lucide Vector Icon (top)
+                    match idx {
+                        0 => UIFont::draw_lock_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            cy - 10.0,
+                            *accent_col,
+                        ),
+                        1 => UIFont::draw_moon_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            cy - 10.0,
+                            *accent_col,
+                        ),
+                        2 => UIFont::draw_restart_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            cy - 10.0,
+                            *accent_col,
+                        ),
+                        _ => UIFont::draw_power_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            cy - 10.0,
+                            *accent_col,
+                        ),
+                    }
 
-                    // Text (bottom)
+                    // Text (pure white / hold hint)
                     let display_text = if is_tile_pressed && (idx == 2 || idx == 3) {
                         "Hold..."
                     } else {
@@ -1657,19 +1782,15 @@ impl AppData {
                         self.height,
                         display_text,
                         cx,
-                        cy + 10.0,
-                        10.5,
-                        if is_light {
-                            [15, 22, 32, 255]
-                        } else {
-                            [240, 245, 255, 255]
-                        },
+                        cy + 12.0,
+                        Tokens::TYPE_CAPTION,
+                        Tokens::TEXT_PRIMARY,
                         col_shadow,
                         FontWeight::SemiBold,
                     );
                 }
             }
-            IslandMode::Hidden => {}
+            _ => {}
         }
     }
 
@@ -1678,6 +1799,7 @@ impl AppData {
         self.check_music();
         self.check_wallpaper();
         self.check_window_overlap();
+        self.sys_stats.poll();
 
         self.render_ui_overlay();
 
@@ -1699,7 +1821,9 @@ impl AppData {
             let island_shape = if self.mode == IslandMode::CompactPill {
                 Shape::Capsule
             } else {
-                Shape::RoundedRectangle { radius: 34.0 }
+                Shape::RoundedRectangle {
+                    radius: Tokens::RADIUS_OUTER,
+                }
             };
 
             let island = GlassSurface::new()
@@ -2309,6 +2433,11 @@ fn main() {
 
         mode: IslandMode::CompactPill,
         prev_mode: IslandMode::CompactPill,
+
+        slide_offset: 0.0,
+        slide_vel: 0.0,
+        slide_dir: 1.0,
+        transition_from_mode: None,
 
         music: MusicState {
             title: "Starboy".to_string(),

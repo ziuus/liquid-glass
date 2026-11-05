@@ -1006,4 +1006,497 @@ impl UIFont {
             color,
         );
     }
+
+    #[inline]
+    fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
+        let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+        t * t * (3.0 - 2.0 * t)
+    }
+
+    /// Draw a precision Lucide-grade Lock icon (curved shackle + body)
+    pub fn draw_lock_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        color: [u8; 4],
+    ) {
+        // Body (half_w = 6.0, half_h = 4.5, radius = 2.0)
+        Self::draw_rounded_rect_fill(buf, width, height, cx, cy + 2.5, 6.0, 4.5, 2.0, color);
+        // Shackle (arched stroke, half_w = 3.6, half_h = 4.0, radius = 3.6)
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy - 3.5, 3.6, 4.0, 3.6, 1.4, color);
+        // Keyhole dot (contrast negative dot inside body)
+        let inv_color = [20, 25, 35, 255];
+        Self::draw_rounded_rect_fill(buf, width, height, cx, cy + 2.0, 1.2, 1.6, 1.0, inv_color);
+    }
+
+    /// Draw a precision Lucide-grade Moon icon (crescent moon for Suspend)
+    pub fn draw_moon_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        color: [u8; 4],
+    ) {
+        let r = 7.0f32;
+        let r_in = 6.2f32;
+        let off_x = 3.2f32;
+        let off_y = -1.8f32;
+
+        let min_x = (cx - r - 1.0).max(0.0) as u32;
+        let max_x = (cx + r + 1.0).min(width as f32 - 1.0) as u32;
+        let min_y = (cy - r - 1.0).max(0.0) as u32;
+        let max_y = (cy + r + 1.0).min(height as f32 - 1.0) as u32;
+
+        for y in min_y..=max_y {
+            for x in min_x..=max_x {
+                let px = x as f32 + 0.5;
+                let py = y as f32 + 0.5;
+                let d_outer = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt() - r;
+                let d_inner =
+                    ((px - (cx + off_x)).powi(2) + (py - (cy + off_y)).powi(2)).sqrt() - r_in;
+
+                let d_crescent = d_outer.max(-d_inner);
+                let alpha =
+                    (1.0 - Self::smoothstep(-0.4, 0.4, d_crescent)) * (color[3] as f32 / 255.0);
+                if alpha > 0.01 {
+                    let idx = ((y * width + x) * 4) as usize;
+                    if idx + 3 < buf.len() {
+                        let inv_a = 1.0 - alpha;
+                        buf[idx] = (color[0] as f32 * alpha + buf[idx] as f32 * inv_a) as u8;
+                        buf[idx + 1] =
+                            (color[1] as f32 * alpha + buf[idx + 1] as f32 * inv_a) as u8;
+                        buf[idx + 2] =
+                            (color[2] as f32 * alpha + buf[idx + 2] as f32 * inv_a) as u8;
+                        buf[idx + 3] = (alpha * 255.0).max(buf[idx + 3] as f32) as u8;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Draw a precision Lucide-grade Restart icon (circular arrow)
+    pub fn draw_restart_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        color: [u8; 4],
+    ) {
+        let r = 6.0f32;
+        let min_x = (cx - r - 2.0).max(0.0) as u32;
+        let max_x = (cx + r + 2.0).min(width as f32 - 1.0) as u32;
+        let min_y = (cy - r - 2.0).max(0.0) as u32;
+        let max_y = (cy + r + 2.0).min(height as f32 - 1.0) as u32;
+
+        for y in min_y..=max_y {
+            for x in min_x..=max_x {
+                let px = x as f32 + 0.5;
+                let py = y as f32 + 0.5;
+                let dist = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
+                let d_ring = (dist - r).abs() - 0.75;
+
+                let angle = (py - cy).atan2(px - cx); // [-pi, pi]
+                                                      // 270 degree arc, open top-right (from -0.5 to 0.5 rad gap)
+                let in_gap = (-0.4..0.6).contains(&angle);
+                if !in_gap {
+                    let alpha =
+                        (1.0 - Self::smoothstep(-0.4, 0.4, d_ring)) * (color[3] as f32 / 255.0);
+                    if alpha > 0.01 {
+                        let idx = ((y * width + x) * 4) as usize;
+                        if idx + 3 < buf.len() {
+                            let inv_a = 1.0 - alpha;
+                            buf[idx] = (color[0] as f32 * alpha + buf[idx] as f32 * inv_a) as u8;
+                            buf[idx + 1] =
+                                (color[1] as f32 * alpha + buf[idx + 1] as f32 * inv_a) as u8;
+                            buf[idx + 2] =
+                                (color[2] as f32 * alpha + buf[idx + 2] as f32 * inv_a) as u8;
+                            buf[idx + 3] = (alpha * 255.0).max(buf[idx + 3] as f32) as u8;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Arrow head at arc termination (top right: cx + 4.5, cy - 3.5)
+        let ax = cx + 4.8;
+        let ay = cy - 3.5;
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (ax - 3.5, ay - 1.0),
+            (ax + 0.5, ay),
+            1.4,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (ax - 0.5, ay + 3.8),
+            (ax + 0.5, ay),
+            1.4,
+            color,
+        );
+    }
+
+    /// Draw a precision Lucide-grade Power Off icon (circle with top vertical bar)
+    pub fn draw_power_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        color: [u8; 4],
+    ) {
+        let r = 6.2f32;
+        let min_x = (cx - r - 2.0).max(0.0) as u32;
+        let max_x = (cx + r + 2.0).min(width as f32 - 1.0) as u32;
+        let min_y = (cy - r - 2.0).max(0.0) as u32;
+        let max_y = (cy + r + 2.0).min(height as f32 - 1.0) as u32;
+
+        for y in min_y..=max_y {
+            for x in min_x..=max_x {
+                let px = x as f32 + 0.5;
+                let py = y as f32 + 0.5;
+                let dist = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
+                let d_ring = (dist - r).abs() - 0.75;
+
+                let angle = (py - cy).atan2(px - cx); // [-pi, pi]
+                                                      // Open at top (-1.9 to -1.2 rad)
+                let in_top_gap = angle > -1.95 && angle < -1.19;
+                if !in_top_gap {
+                    let alpha =
+                        (1.0 - Self::smoothstep(-0.4, 0.4, d_ring)) * (color[3] as f32 / 255.0);
+                    if alpha > 0.01 {
+                        let idx = ((y * width + x) * 4) as usize;
+                        if idx + 3 < buf.len() {
+                            let inv_a = 1.0 - alpha;
+                            buf[idx] = (color[0] as f32 * alpha + buf[idx] as f32 * inv_a) as u8;
+                            buf[idx + 1] =
+                                (color[1] as f32 * alpha + buf[idx + 1] as f32 * inv_a) as u8;
+                            buf[idx + 2] =
+                                (color[2] as f32 * alpha + buf[idx + 2] as f32 * inv_a) as u8;
+                            buf[idx + 3] = (alpha * 255.0).max(buf[idx + 3] as f32) as u8;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Center vertical power pin
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx, cy - 7.5),
+            (cx, cy - 1.0),
+            1.5,
+            color,
+        );
+    }
+
+    /// Draw a precision Lucide-grade Battery icon with level bar
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_battery_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        pct: u32,
+        charging: bool,
+        color: [u8; 4],
+    ) {
+        // Outer body (half_w = 7.0, half_h = 4.2, r = 1.6)
+        Self::draw_rounded_rect_stroke(buf, width, height, cx - 1.0, cy, 7.0, 4.2, 1.6, 1.2, color);
+        // Positive terminal cap (+ right nipple)
+        Self::draw_rounded_rect_fill(buf, width, height, cx + 7.2, cy, 1.0, 2.0, 0.8, color);
+
+        // Fill indicator
+        let fill_pct = (pct as f32 / 100.0).clamp(0.08, 1.0);
+        let max_w = 11.5f32;
+        let cur_w = max_w * fill_pct;
+        let fill_cx = (cx - 1.0) - (max_w - cur_w) * 0.5;
+        Self::draw_rounded_rect_fill(
+            buf,
+            width,
+            height,
+            fill_cx,
+            cy,
+            cur_w * 0.5,
+            2.8,
+            1.0,
+            color,
+        );
+
+        // Bolt if charging
+        if charging {
+            let bolt_col = [255, 220, 60, 255];
+            Self::draw_segment(
+                buf,
+                width,
+                height,
+                (cx - 2.0, cy - 4.5),
+                (cx, cy),
+                1.4,
+                bolt_col,
+            );
+            Self::draw_segment(
+                buf,
+                width,
+                height,
+                (cx - 0.5, cy),
+                (cx + 1.5, cy + 4.5),
+                1.4,
+                bolt_col,
+            );
+        }
+    }
+
+    /// Draw a precision Lucide-grade CPU microchip icon
+    pub fn draw_cpu_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        color: [u8; 4],
+    ) {
+        // Outer chip package (half = 5.5 x 5.5, r = 1.5)
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 5.5, 5.5, 1.5, 1.2, color);
+        // Core die
+        Self::draw_rounded_rect_fill(buf, width, height, cx, cy, 2.4, 2.4, 0.8, color);
+
+        // Pins (2 on each of the 4 sides)
+        let pin_len = 2.0f32;
+        for &offset in &[-2.5f32, 2.5f32] {
+            // Top pins
+            Self::draw_segment(
+                buf,
+                width,
+                height,
+                (cx + offset, cy - 5.5),
+                (cx + offset, cy - 5.5 - pin_len),
+                1.1,
+                color,
+            );
+            // Bottom pins
+            Self::draw_segment(
+                buf,
+                width,
+                height,
+                (cx + offset, cy + 5.5),
+                (cx + offset, cy + 5.5 + pin_len),
+                1.1,
+                color,
+            );
+            // Left pins
+            Self::draw_segment(
+                buf,
+                width,
+                height,
+                (cx - 5.5, cy + offset),
+                (cx - 5.5 - pin_len, cy + offset),
+                1.1,
+                color,
+            );
+            // Right pins
+            Self::draw_segment(
+                buf,
+                width,
+                height,
+                (cx + 5.5, cy + offset),
+                (cx + 5.5 + pin_len, cy + offset),
+                1.1,
+                color,
+            );
+        }
+    }
+
+    /// Draw a precision Lucide-grade RAM memory stick icon
+    pub fn draw_ram_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        color: [u8; 4],
+    ) {
+        // Outer stick module: half_w = 6.5, half_h = 4.0, r = 1.0, stroke = 1.2
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 6.5, 4.0, 1.0, 1.2, color);
+        // 3 mini memory chip blocks inside
+        for &ox in &[-3.5f32, 0.0f32, 3.5f32] {
+            Self::draw_rounded_rect_fill(
+                buf,
+                width,
+                height,
+                cx + ox,
+                cy - 0.5,
+                1.1,
+                1.8,
+                0.5,
+                color,
+            );
+        }
+        // Bottom contact pins
+        for &ox in &[-4.0f32, -2.0f32, 2.0f32, 4.0f32] {
+            Self::draw_segment(
+                buf,
+                width,
+                height,
+                (cx + ox, cy + 4.0),
+                (cx + ox, cy + 5.5),
+                1.0,
+                color,
+            );
+        }
+    }
+
+    /// Draw a precision Lucide-grade Clock / Uptime icon (circle + hands)
+    pub fn draw_clock_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        color: [u8; 4],
+    ) {
+        let r = 6.2f32;
+        let min_x = (cx - r - 2.0).max(0.0) as u32;
+        let max_x = (cx + r + 2.0).min(width as f32 - 1.0) as u32;
+        let min_y = (cy - r - 2.0).max(0.0) as u32;
+        let max_y = (cy + r + 2.0).min(height as f32 - 1.0) as u32;
+
+        for y in min_y..=max_y {
+            for x in min_x..=max_x {
+                let px = x as f32 + 0.5;
+                let py = y as f32 + 0.5;
+                let dist = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
+                let d_ring = (dist - r).abs() - 0.65;
+                let alpha = (1.0 - Self::smoothstep(-0.4, 0.4, d_ring)) * (color[3] as f32 / 255.0);
+                if alpha > 0.01 {
+                    let idx = ((y * width + x) * 4) as usize;
+                    if idx + 3 < buf.len() {
+                        let inv_a = 1.0 - alpha;
+                        buf[idx] = (color[0] as f32 * alpha + buf[idx] as f32 * inv_a) as u8;
+                        buf[idx + 1] =
+                            (color[1] as f32 * alpha + buf[idx + 1] as f32 * inv_a) as u8;
+                        buf[idx + 2] =
+                            (color[2] as f32 * alpha + buf[idx + 2] as f32 * inv_a) as u8;
+                        buf[idx + 3] = (alpha * 255.0).max(buf[idx + 3] as f32) as u8;
+                    }
+                }
+            }
+        }
+
+        // Center dot
+        Self::draw_rounded_rect_fill(buf, width, height, cx, cy, 0.9, 0.9, 0.9, color);
+        // Hour hand: center to 12 o'clock
+        Self::draw_segment(buf, width, height, (cx, cy), (cx, cy - 3.4), 1.3, color);
+        // Minute hand: center to 3 o'clock
+        Self::draw_segment(buf, width, height, (cx, cy), (cx + 3.2, cy), 1.3, color);
+    }
+
+    /// Draw a precision Lucide-grade Settings / Cog gear icon
+    pub fn draw_settings_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        color: [u8; 4],
+    ) {
+        let r_outer = 4.8f32;
+        let r_inner = 2.2f32;
+        let min_x = (cx - 7.5).max(0.0) as u32;
+        let max_x = (cx + 7.5).min(width as f32 - 1.0) as u32;
+        let min_y = (cy - 7.5).max(0.0) as u32;
+        let max_y = (cy + 7.5).min(height as f32 - 1.0) as u32;
+
+        for y in min_y..=max_y {
+            for x in min_x..=max_x {
+                let px = x as f32 + 0.5;
+                let py = y as f32 + 0.5;
+                let dx = px - cx;
+                let dy = py - cy;
+                let dist = (dx * dx + dy * dy).sqrt();
+                let angle = dy.atan2(dx);
+
+                // 6 cogs around circumference
+                let step = std::f32::consts::PI / 3.0;
+                let normalized_ang = (angle + std::f32::consts::PI + step * 0.5) % step;
+                let diff_to_cog = (normalized_ang - (step * 0.5)).abs();
+                let cog_extra = if diff_to_cog < 0.22 {
+                    1.8f32 * (1.0 - diff_to_cog / 0.22)
+                } else {
+                    0.0f32
+                };
+
+                let target_r = r_outer + cog_extra;
+                let d_body = dist - target_r;
+                let d_hole = r_inner - dist;
+                let d = d_body.max(d_hole);
+
+                let alpha = (1.0 - Self::smoothstep(-0.4, 0.4, d)) * (color[3] as f32 / 255.0);
+                if alpha > 0.01 {
+                    let idx = ((y * width + x) * 4) as usize;
+                    if idx + 3 < buf.len() {
+                        let inv_a = 1.0 - alpha;
+                        buf[idx] = (color[0] as f32 * alpha + buf[idx] as f32 * inv_a) as u8;
+                        buf[idx + 1] =
+                            (color[1] as f32 * alpha + buf[idx + 1] as f32 * inv_a) as u8;
+                        buf[idx + 2] =
+                            (color[2] as f32 * alpha + buf[idx + 2] as f32 * inv_a) as u8;
+                        buf[idx + 3] = (alpha * 255.0).max(buf[idx + 3] as f32) as u8;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Draw a precision Lucide-grade Sync / Refresh icon
+    pub fn draw_sync_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        color: [u8; 4],
+    ) {
+        Self::draw_restart_icon(buf, width, height, cx, cy, color);
+    }
+
+    /// Draw a precision Lucide-grade Checkmark icon
+    pub fn draw_check_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        color: [u8; 4],
+    ) {
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 3.8, cy),
+            (cx - 1.0, cy + 3.2),
+            1.4,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 1.0, cy + 3.2),
+            (cx + 4.2, cy - 3.5),
+            1.4,
+            color,
+        );
+    }
 }
