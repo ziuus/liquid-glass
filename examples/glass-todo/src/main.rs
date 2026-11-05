@@ -117,6 +117,11 @@ struct AppData {
     input_buffer: String,
     edit_start_time: Instant,
 
+    // Calendar Secret Config Editing
+    is_cal_editing: bool,
+    cal_input_buffer: String,
+    cal_edit_start_time: Instant,
+
     // Slide-to-Delete Interaction
     slide_offsets: [f32; 6],
     task_pressed_row: Option<usize>,
@@ -348,6 +353,90 @@ impl KeyboardHandler for AppData {
         _serial: u32,
         event: KeyEvent,
     ) {
+        if self.is_cal_editing {
+            match event.keysym {
+                Keysym::Return => {
+                    let url = self.cal_input_buffer.trim().to_string();
+                    if !url.is_empty() {
+                        let home = std::env::var("HOME").unwrap_or_default();
+                        let cfg_path = format!("{}/.local/state/calendar_config.json", home);
+                        let json = serde_json::json!({
+                            "ics_url": url,
+                            "_comment": "Google Calendar iCal private link"
+                        });
+                        if let Ok(s) = serde_json::to_string_pretty(&json) {
+                            let _ = std::fs::write(&cfg_path, s);
+                        }
+                        let sync_script =
+                            format!("{}/.config/quickshell-todo-widget/calendar_sync.py", home);
+                        if std::path::Path::new(&sync_script).exists() {
+                            let _ = std::process::Command::new("python3")
+                                .arg(&sync_script)
+                                .spawn();
+                        }
+                        self.last_calendar_check =
+                            Instant::now() - std::time::Duration::from_secs(10);
+                        self.check_calendar();
+                    }
+                    self.is_cal_editing = false;
+                    self.cal_input_buffer.clear();
+                    if let Some(ls) = &self.layer_surface {
+                        ls.set_keyboard_interactivity(KeyboardInteractivity::None);
+                        ls.commit();
+                    }
+                    if let Some(w) = &self.window_wrapper {
+                        w.surface.commit();
+                    }
+                    self.draw();
+                }
+                Keysym::Escape => {
+                    self.is_cal_editing = false;
+                    self.cal_input_buffer.clear();
+                    if let Some(ls) = &self.layer_surface {
+                        ls.set_keyboard_interactivity(KeyboardInteractivity::None);
+                        ls.commit();
+                    }
+                    if let Some(w) = &self.window_wrapper {
+                        w.surface.commit();
+                    }
+                    self.draw();
+                }
+                Keysym::BackSpace => {
+                    self.cal_input_buffer.pop();
+                    self.draw();
+                }
+                _ => {
+                    // Check if pasting from clipboard
+                    if event.utf8.as_deref() == Some("v") || event.utf8.as_deref() == Some("V") {
+                        if let Ok(out) = std::process::Command::new("wl-paste")
+                            .arg("--no-newline")
+                            .output()
+                        {
+                            if let Ok(clip) = String::from_utf8(out.stdout) {
+                                let clean = clip.trim();
+                                if clean.starts_with("http") {
+                                    self.cal_input_buffer.clear();
+                                    self.cal_input_buffer.push_str(clean);
+                                    self.draw();
+                                    return;
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(chars) = event.utf8 {
+                        for ch in chars.chars() {
+                            if !ch.is_control() && self.cal_input_buffer.len() < 256 {
+                                self.cal_input_buffer.push(ch);
+                            }
+                        }
+                        self.draw();
+                    }
+                }
+            }
+            return;
+        }
+
         if !self.is_editing {
             return;
         }
@@ -701,22 +790,115 @@ impl AppData {
             return true;
         }
 
-        // Check Calendar sync button in Agenda view (bot_y = 185.0, cy = 412.5)
+        // Check Agenda bottom controls (bot_y = 185.0, cy = 412.5)
         if self.active_tab == 1 && (local_y - 185.0).abs() <= 24.0 {
-            let home = std::env::var("HOME").unwrap_or_default();
-            let sync_script = format!("{}/.config/quickshell-todo-widget/calendar_sync.py", home);
-            if std::path::Path::new(&sync_script).exists() {
-                let _ = std::process::Command::new("python3")
-                    .arg(&sync_script)
-                    .spawn();
+            if self.is_cal_editing {
+                // If clicked Save on right (local_x > 90.0)
+                if local_x > 90.0 {
+                    let url = self.cal_input_buffer.trim().to_string();
+                    if !url.is_empty() {
+                        let home = std::env::var("HOME").unwrap_or_default();
+                        let cfg_path = format!("{}/.local/state/calendar_config.json", home);
+                        let json = serde_json::json!({
+                            "ics_url": url,
+                            "_comment": "Google Calendar iCal private link"
+                        });
+                        if let Ok(s) = serde_json::to_string_pretty(&json) {
+                            let _ = std::fs::write(&cfg_path, s);
+                        }
+                        let sync_script =
+                            format!("{}/.config/quickshell-todo-widget/calendar_sync.py", home);
+                        if std::path::Path::new(&sync_script).exists() {
+                            let _ = std::process::Command::new("python3")
+                                .arg(&sync_script)
+                                .spawn();
+                        }
+                        self.last_calendar_check =
+                            Instant::now() - std::time::Duration::from_secs(10);
+                        self.check_calendar();
+                    }
+                }
+                self.is_cal_editing = false;
+                self.cal_input_buffer.clear();
+                if let Some(ls) = &self.layer_surface {
+                    ls.set_keyboard_interactivity(KeyboardInteractivity::None);
+                    ls.commit();
+                }
+                if let Some(w) = &self.window_wrapper {
+                    w.surface.commit();
+                }
+                self.draw();
+                return true;
             }
-            self.last_calendar_check = Instant::now() - std::time::Duration::from_secs(10);
-            self.check_calendar();
+
+            if local_x > 40.0 {
+                // Clicked ⚙ Secret button (cx = 286.0)
+                if is_right {
+                    let home = std::env::var("HOME").unwrap_or_default();
+                    let cfg_path = format!("{}/.local/state/calendar_config.json", home);
+                    let _ = std::process::Command::new("xdg-open")
+                        .arg(&cfg_path)
+                        .spawn();
+                } else {
+                    self.is_cal_editing = true;
+                    self.cal_edit_start_time = Instant::now();
+                    self.cal_input_buffer.clear();
+
+                    // Pre-fill from clipboard if it contains a calendar URL
+                    if let Ok(out) = std::process::Command::new("wl-paste")
+                        .arg("--no-newline")
+                        .output()
+                    {
+                        if let Ok(clip) = String::from_utf8(out.stdout) {
+                            let clean = clip.trim();
+                            if clean.starts_with("http") && clean.contains(".ics") {
+                                self.cal_input_buffer.push_str(clean);
+                            }
+                        }
+                    }
+
+                    if let Some(ls) = &self.layer_surface {
+                        ls.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+                        ls.commit();
+                    }
+                    if let Some(w) = &self.window_wrapper {
+                        w.surface.commit();
+                    }
+                }
+                self.draw();
+                return true;
+            } else if local_x < -40.0 {
+                // Clicked ↻ Sync button (cx = 64.0)
+                let home = std::env::var("HOME").unwrap_or_default();
+                let sync_script =
+                    format!("{}/.config/quickshell-todo-widget/calendar_sync.py", home);
+                if std::path::Path::new(&sync_script).exists() {
+                    let _ = std::process::Command::new("python3")
+                        .arg(&sync_script)
+                        .spawn();
+                }
+                self.last_calendar_check = Instant::now() - std::time::Duration::from_secs(10);
+                self.check_calendar();
+                self.draw();
+                return true;
+            }
+        }
+
+        // If clicking outside while editing, commit or close
+        if self.is_cal_editing {
+            self.is_cal_editing = false;
+            self.cal_input_buffer.clear();
+            if let Some(ls) = &self.layer_surface {
+                ls.set_keyboard_interactivity(KeyboardInteractivity::None);
+                ls.commit();
+            }
+            if let Some(w) = &self.window_wrapper {
+                w.surface.commit();
+            }
             self.draw();
             return true;
         }
 
-        // If clicking outside while editing, commit or close
         if self.is_editing {
             let text = self.input_buffer.trim().to_string();
             if !text.is_empty() {
@@ -858,6 +1040,7 @@ impl AppData {
         !self.tab_spring.is_at_rest()
             || !self.filter_spring.is_at_rest()
             || self.is_editing
+            || self.is_cal_editing
             || slide_animating
             || self.is_sliding
     }
@@ -1107,9 +1290,12 @@ impl AppData {
                     (row_primary, FontWeight::Bold)
                 };
 
-                // Slide-to-Delete: Red delete reveal underneath and sliding card top
+                // Slide-to-Delete: Pure optical translucent liquid glass
                 if slide_x < -1.0 {
-                    // Underneath: Red slide-to-delete background
+                    let reveal_t = (-slide_x / 80.0).clamp(0.0, 1.0);
+                    let glass_red_fill = [235, 45, 65, (reveal_t * 52.0) as u8];
+                    let glass_red_rim = [255, 90, 115, (reveal_t * 95.0) as u8];
+
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
@@ -1119,8 +1305,21 @@ impl AppData {
                         156.0,
                         18.0,
                         9.0,
-                        [225, 45, 65, 235],
+                        glass_red_fill,
                     );
+                    UIFont::draw_rounded_rect_stroke(
+                        buf,
+                        self.width,
+                        self.height,
+                        180.0,
+                        cy,
+                        156.0,
+                        18.0,
+                        9.0,
+                        1.2,
+                        glass_red_rim,
+                    );
+
                     let label = if slide_x < -75.0 {
                         "Release to delete"
                     } else {
@@ -1134,21 +1333,21 @@ impl AppData {
                         270.0,
                         cy,
                         11.5,
-                        [255, 255, 255, 255],
+                        [255, 235, 240, 220],
                         [0, 0, 0, 0],
                         FontWeight::Bold,
                     );
 
-                    // Top: Sliding glass card
-                    let card_bg = if row_is_light {
-                        [245, 248, 252, 240]
+                    // Top: Translucent sliding liquid glass row
+                    let slide_rim = if row_is_light {
+                        [160, 175, 200, 70]
                     } else {
-                        [24, 30, 42, 240]
+                        [255, 255, 255, 75]
                     };
-                    let card_rim = if row_is_light {
-                        [190, 200, 215, 200]
+                    let slide_fill = if row_is_light {
+                        [255, 255, 255, 20]
                     } else {
-                        [75, 90, 120, 200]
+                        [255, 255, 255, 14]
                     };
                     UIFont::draw_rounded_rect_fill(
                         buf,
@@ -1159,7 +1358,7 @@ impl AppData {
                         156.0,
                         18.0,
                         9.0,
-                        card_bg,
+                        slide_fill,
                     );
                     UIFont::draw_rounded_rect_stroke(
                         buf,
@@ -1171,7 +1370,7 @@ impl AppData {
                         18.0,
                         9.0,
                         1.0,
-                        card_rim,
+                        slide_rim,
                     );
                 }
 
@@ -1391,11 +1590,23 @@ impl AppData {
                     self.height,
                     "No upcoming events",
                     180.0,
-                    200.0,
-                    14.0,
+                    190.0,
+                    14.5,
                     col_dimmed,
                     col_shadow,
                     FontWeight::Medium,
+                );
+                self.font.draw_text_centered(
+                    buf,
+                    self.width,
+                    self.height,
+                    "Click ⚙ Secret below to connect Google Calendar",
+                    180.0,
+                    216.0,
+                    11.5,
+                    col_secondary,
+                    col_shadow,
+                    FontWeight::Regular,
                 );
             } else {
                 for (idx, item) in self.events.iter().enumerate().take(6) {
@@ -1455,20 +1666,135 @@ impl AppData {
                 }
             }
 
-            // Bottom Status Bar (y = +185.0, cy = 412.5): "CALENDAR • {N} EVENTS"
-            let cal_status = format!("CALENDAR • {} EVENTS", self.events.len());
-            self.font.draw_text_centered(
-                buf,
-                self.width,
-                self.height,
-                &cal_status,
-                180.0,
-                412.5,
-                12.0,
-                col_secondary,
-                col_shadow,
-                FontWeight::SemiBold,
-            );
+            // Bottom Agenda Bar (y = +185.0, cy = 412.5)
+            if self.is_cal_editing {
+                let input_str = if self.cal_input_buffer.is_empty() {
+                    "Paste Google iCal secret link..."
+                } else {
+                    &self.cal_input_buffer
+                };
+                let input_col = if self.cal_input_buffer.is_empty() {
+                    col_dimmed
+                } else {
+                    col_primary
+                };
+
+                let end_x = self.font.draw_text_centered_y(
+                    buf,
+                    self.width,
+                    self.height,
+                    input_str,
+                    38.0,
+                    412.5,
+                    12.0,
+                    input_col,
+                    col_shadow,
+                    FontWeight::Medium,
+                );
+
+                let elapsed_ms = self.cal_edit_start_time.elapsed().as_millis();
+                if (elapsed_ms / 500).is_multiple_of(2) {
+                    let cursor_x = if self.cal_input_buffer.is_empty() {
+                        38.0
+                    } else {
+                        end_x + 2.0
+                    };
+                    QuicksandFont::draw_cursor(
+                        buf,
+                        self.width,
+                        self.height,
+                        cursor_x,
+                        412.5 - 9.0,
+                        18.0,
+                        2.0,
+                        col_primary,
+                    );
+                }
+
+                self.font.draw_text_centered(
+                    buf,
+                    self.width,
+                    self.height,
+                    "↵ Save",
+                    315.0,
+                    412.5,
+                    11.5,
+                    col_primary,
+                    col_shadow,
+                    FontWeight::Bold,
+                );
+            } else {
+                let btn_bg = if self.is_wallpaper_light {
+                    [220, 226, 238, 120]
+                } else {
+                    [50, 58, 75, 120]
+                };
+
+                // 1. Sync button pill (cx = 64.0)
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    64.0,
+                    412.5,
+                    32.0,
+                    12.0,
+                    8.0,
+                    btn_bg,
+                );
+                self.font.draw_text_centered(
+                    buf,
+                    self.width,
+                    self.height,
+                    "↻ Sync",
+                    64.0,
+                    412.5,
+                    11.5,
+                    col_primary,
+                    col_shadow,
+                    FontWeight::Bold,
+                );
+
+                // 2. Events status count (cx = 175.0)
+                let cal_status = format!("{} Events", self.events.len());
+                self.font.draw_text_centered(
+                    buf,
+                    self.width,
+                    self.height,
+                    &cal_status,
+                    175.0,
+                    412.5,
+                    12.0,
+                    col_secondary,
+                    col_shadow,
+                    FontWeight::SemiBold,
+                );
+
+                // 3. Settings / Secret button pill (cx = 286.0)
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    286.0,
+                    412.5,
+                    36.0,
+                    12.0,
+                    8.0,
+                    btn_bg,
+                );
+                self.font.draw_text_centered(
+                    buf,
+                    self.width,
+                    self.height,
+                    "⚙ Secret",
+                    286.0,
+                    412.5,
+                    11.5,
+                    col_primary,
+                    col_shadow,
+                    FontWeight::Bold,
+                );
+            }
         }
     }
 
@@ -1846,6 +2172,10 @@ fn main() {
         is_editing: false,
         input_buffer: String::new(),
         edit_start_time: Instant::now(),
+
+        is_cal_editing: false,
+        cal_input_buffer: String::new(),
+        cal_edit_start_time: Instant::now(),
 
         slide_offsets: [0.0; 6],
         task_pressed_row: None,
