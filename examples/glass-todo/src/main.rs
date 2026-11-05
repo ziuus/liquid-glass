@@ -108,6 +108,7 @@ struct AppData {
     events: Vec<CalendarEvent>,
     last_calendar_check: Instant,
     last_calendar_mtime: Option<std::time::SystemTime>,
+    last_calendar_sync: Instant,
     active_tab: u32,    // 0 = Tasks, 1 = Agenda
     active_filter: u32, // 0 = All, 1 = Active, 2 = Done
 
@@ -778,6 +779,19 @@ impl AppData {
             return;
         }
         self.last_calendar_check = Instant::now();
+
+        // Auto-sync Google Calendar via calendar_sync.py every 15 minutes
+        if self.last_calendar_sync.elapsed().as_secs() >= 900 {
+            self.last_calendar_sync = Instant::now();
+            let home = std::env::var("HOME").unwrap_or_default();
+            let sync_script = format!("{}/.config/quickshell-todo-widget/calendar_sync.py", home);
+            if std::path::Path::new(&sync_script).exists() {
+                let _ = std::process::Command::new("python3")
+                    .arg(&sync_script)
+                    .spawn();
+            }
+        }
+
         let home = std::env::var("HOME").unwrap_or_default();
         let path = format!("{}/.local/state/calendar_events.json", home);
         if let Ok(meta) = std::fs::metadata(&path) {
@@ -1825,6 +1839,7 @@ fn main() {
         events,
         last_calendar_check: Instant::now(),
         last_calendar_mtime: None,
+        last_calendar_sync: Instant::now() - std::time::Duration::from_secs(900),
         active_tab: 0,
         active_filter: 0,
 
