@@ -135,7 +135,6 @@ pub struct AppData {
     primary_output: Option<wl_output::WlOutput>,
     is_wallpaper_light: bool,
     wallpaper_mgr: glass_platform::WallpaperManager,
-    last_screencopy_poll: Instant,
 }
 
 struct WaylandWindow {
@@ -334,16 +333,6 @@ impl AppData {
     }
 
     fn check_wallpaper(&mut self) {
-        if let Some(data) = self.screencopy.data.take() {
-            if let Some(renderer) = &mut self.renderer {
-                if data.len() == (self.width * self.height * 4) as usize {
-                    self.is_wallpaper_light = is_buffer_light(&data);
-                    renderer.update_background(self.width, self.height, &data);
-                    return;
-                }
-            }
-        }
-
         if self.wallpaper_mgr.check_update() {
             if let (Some(cache), Some(renderer)) =
                 (self.wallpaper_mgr.cached_buffer(), &mut self.renderer)
@@ -355,7 +344,6 @@ impl AppData {
                     self.width,
                     self.height,
                 );
-                self.is_wallpaper_light = is_buffer_light(&crop);
                 renderer.update_background(self.width, self.height, &crop);
             }
         }
@@ -1499,7 +1487,6 @@ fn main() {
         primary_output: None,
         is_wallpaper_light: false,
         wallpaper_mgr: glass_platform::WallpaperManager::new(),
-        last_screencopy_poll: Instant::now() - Duration::from_secs(5),
     };
 
     let surface = app_data.compositor_state.create_surface(&qh);
@@ -1538,23 +1525,6 @@ fn main() {
         let _ = conn.flush();
 
         app_data.check_ipc();
-
-        // Periodically capture actual pixels behind the island (windows, desktop)
-        if !app_data.screencopy.is_capturing
-            && app_data.last_screencopy_poll.elapsed() >= Duration::from_millis(100)
-        {
-            if let Some(output) = app_data.primary_output.clone() {
-                app_data.last_screencopy_poll = Instant::now();
-                app_data.screencopy.capture(
-                    &output,
-                    app_data.pos_x,
-                    app_data.pos_y,
-                    app_data.width as i32,
-                    app_data.height as i32,
-                    &qh,
-                );
-            }
-        }
 
         let now = Instant::now();
         let dt = (now - last_frame).as_secs_f32().clamp(0.001, 0.05);
