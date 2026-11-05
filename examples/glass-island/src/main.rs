@@ -135,6 +135,7 @@ pub struct AppData {
     primary_output: Option<wl_output::WlOutput>,
     is_wallpaper_light: bool,
     wallpaper_mgr: glass_platform::WallpaperManager,
+    start_time: Instant,
 }
 
 struct WaylandWindow {
@@ -585,6 +586,33 @@ impl AppData {
 
                 // Next
                 UIFont::draw_next_icon(buf, self.width, self.height, next_cx, ctrl_y, 8.5, col_ink);
+
+                // Audio Spectrum Visualizer (5 dynamic harmonic bars)
+                let viz_x = prev_cx - 40.0;
+                let t_sec = self.start_time.elapsed().as_secs_f32();
+                for i in 0..5 {
+                    let bx = viz_x + (i as f32) * 5.5;
+                    let h_half = if self.music.is_playing {
+                        let freq = 4.2 + (i as f32) * 1.8;
+                        let phase = (i as f32) * 0.95;
+                        let wave = ((t_sec * freq + phase).sin() * 0.5 + 0.5)
+                            * ((t_sec * 2.1 + phase * 1.4).cos() * 0.3 + 0.7);
+                        2.5 + wave * 9.5
+                    } else {
+                        2.0
+                    };
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        bx,
+                        ctrl_y,
+                        1.5,
+                        h_half,
+                        1.5,
+                        col_green,
+                    );
+                }
 
                 // Progress Bar
                 let bar_y = island_top + 108.0;
@@ -1491,6 +1519,7 @@ fn main() {
         primary_output: None,
         is_wallpaper_light: false,
         wallpaper_mgr: glass_platform::WallpaperManager::new(),
+        start_time: Instant::now(),
     };
 
     let surface = app_data.compositor_state.create_surface(&qh);
