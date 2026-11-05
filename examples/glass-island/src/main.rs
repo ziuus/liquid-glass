@@ -311,7 +311,7 @@ impl AppData {
             IslandMode::SystemOverview => Some(1),
             IslandMode::QuickAccess => Some(2),
             IslandMode::PowerMenu => Some(3),
-            IslandMode::Notification => Some(0),
+            IslandMode::Notification => None,
             _ => None,
         }
     }
@@ -795,30 +795,12 @@ impl AppData {
         let island_h = self.current_h;
         let island_cy = island_top + island_h * 0.5;
 
-        // Base Island Physical Glass Body (Apple-grade Obsidian Near-Opaque Dark Glass)
+        // Base Island Physical Glass Body (Apple Liquid Glass rendered by WGPU glass shader)
         let island_r = if self.mode == IslandMode::CompactPill {
             island_h * 0.5
         } else {
             Tokens::RADIUS_OUTER
         };
-
-        let backdrop_col = if is_light {
-            Tokens::CLEAR_BACKDROP_LIGHT
-        } else {
-            Tokens::OBSIDIAN_BACKDROP
-        };
-
-        UIFont::draw_rounded_rect_fill(
-            buf,
-            self.width,
-            self.height,
-            island_cx,
-            island_cy,
-            island_w * 0.5,
-            island_h * 0.5,
-            island_r,
-            backdrop_col,
-        );
 
         // Specular outer rim highlight (ONLY on outer shell)
         UIFont::draw_rounded_rect_stroke(

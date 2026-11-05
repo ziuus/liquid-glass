@@ -1052,25 +1052,7 @@ impl AppData {
         let tasks_offset_x = -self.tab_spring.value * (self.width as f32);
         let agenda_offset_x = (1.0 - self.tab_spring.value) * (self.width as f32);
 
-        // 1. Soft tinted glass substrate (physical depth and optical contrast)
-        let card_bg = if self.is_wallpaper_light {
-            Tokens::CLEAR_BACKDROP_LIGHT
-        } else {
-            [16, 20, 28, 110] // ~43% dark obsidian glass tint
-        };
-        UIFont::draw_rounded_rect_fill(
-            buf,
-            self.width,
-            self.height,
-            180.0,
-            card_h * 0.5,
-            178.0,
-            card_h * 0.5 - 2.0,
-            Tokens::RADIUS_OUTER,
-            card_bg,
-        );
-
-        // 2. 1px Outer Specular Rim (ONLY on outer shell)
+        // 1. 1px Outer Specular Rim (ONLY on outer shell)
         UIFont::draw_rounded_rect_stroke(
             buf,
             self.width,
@@ -1088,7 +1070,7 @@ impl AppData {
             },
         );
 
-        // 3. Top Specular Bevel Highlight
+        // 2. Top Specular Bevel Highlight
         UIFont::draw_segment(
             buf,
             self.width,
@@ -1103,14 +1085,14 @@ impl AppData {
             },
         );
 
-        // Apple macOS Sequoia Typography: Deep Obsidian Slate on Light Mode, Pure Crisp White on Dark Mode
+        // Apple macOS Typography & Contrast
         let (col_primary, col_secondary, col_dimmed, _col_accent, col_shadow) =
             if self.is_wallpaper_light {
                 (
-                    [8, 12, 20, 255],     // Primary text: Deep Obsidian Ink (WCAG AAA contrast 18:1)
+                    [8, 12, 20, 255],     // Primary text: Deep Obsidian Ink
                     [28, 36, 48, 250],    // Secondary text: Refined Slate
-                    [45, 55, 70, 245], // Tertiary/Dimmed: Muted Slate (High contrast, clearly visible)
-                    [6, 10, 16, 255],  // Accent text
+                    [45, 55, 70, 245],    // Tertiary/Dimmed: Muted Slate
+                    [6, 10, 16, 255],     // Accent text
                     [255, 255, 255, 110], // Subtle 1px ambient bottom lift
                 )
             } else {
@@ -1123,43 +1105,47 @@ impl AppData {
                 )
             };
 
-        // 1. Top Tab Labels: "Tasks ({count})" (cx = 104.0) & "Agenda" (cx = 240.0), cy = 32.5
-        let tasks_count = self.todos.tasks.len();
-        let tasks_label = format!("Tasks ({})", tasks_count);
-        // Active selected pill has bright near-white fill with dark ink; unselected uses regionally-adapted dimmed text
+        // ── Top Segmented Tabs: "Tasks ({count})" & "Agenda" (cy = 32.5) ──
         let selected_ink = [8, 12, 20, 255];
+        let tab_t = self.tab_spring.value.clamp(0.0, 1.0);
 
-        let tab1_is_light = self
-            .wallpaper_cache
-            .as_ref()
-            .map_or(self.is_wallpaper_light, |cache| {
-                sample_region_is_light(cache, self.pos_x + 50, self.pos_y + 20, 108, 25)
-            });
-        let tab2_is_light = self
-            .wallpaper_cache
-            .as_ref()
-            .map_or(self.is_wallpaper_light, |cache| {
-                sample_region_is_light(cache, self.pos_x + 220, self.pos_y + 20, 72, 25)
-            });
+        // Segmented Track (cx = 160.0, cy = 32.5, half_w = 138.0, half_h = 16.0, r = 10.0)
+        UIFont::draw_rounded_rect_fill(
+            buf,
+            self.width,
+            self.height,
+            160.0,
+            32.5,
+            138.0,
+            16.0,
+            10.0,
+            if self.is_wallpaper_light {
+                Tokens::INNER_TILE_BG_LIGHT
+            } else {
+                Tokens::INNER_TILE_BG_DARK
+            },
+        );
 
-        let tab1_unselected = if tab1_is_light {
-            [18, 24, 34, 255]
+        // Sliding Active Tab Pill
+        let tab_pill_cx = 96.0 * (1.0 - tab_t) + 224.0 * tab_t;
+        let pill_fill = if self.is_wallpaper_light {
+            [255, 255, 255, 235]
         } else {
-            [170, 178, 195, 230]
+            [255, 255, 255, 220]
         };
-        let tab2_unselected = if tab2_is_light {
-            [18, 24, 34, 255]
-        } else {
-            [170, 178, 195, 230]
-        };
+        UIFont::draw_rounded_rect_fill(
+            buf,
+            self.width,
+            self.height,
+            tab_pill_cx,
+            32.5,
+            64.0,
+            13.5,
+            8.0,
+            pill_fill,
+        );
 
-        let tab1_col = if self.active_tab == 0 {
-            selected_ink
-        } else {
-            tab1_unselected
-        };
-
-        // Top Right: Settings Icon Button (Accessible from both Tabs!)
+        // Top Right: Settings Icon Button
         let is_settings_active = self.is_cal_editing;
         UIFont::draw_rounded_rect_fill(
             buf,
@@ -1188,42 +1174,93 @@ impl AppData {
                 Tokens::TEXT_SECONDARY
             },
         );
+
+        let tasks_count = self.todos.tasks.len();
+        let tasks_label = format!("Tasks ({})", tasks_count);
+        let tab1_col = if tab_t < 0.5 {
+            selected_ink
+        } else if self.is_wallpaper_light {
+            [18, 24, 34, 255]
+        } else {
+            [170, 178, 195, 230]
+        };
         self.font.draw_text_centered(
             buf,
             self.width,
             self.height,
             &tasks_label,
-            104.0,
+            96.0,
             32.5,
-            15.5,
+            14.5,
             tab1_col,
             [0, 0, 0, 0],
-            FontWeight::Bold,
+            FontWeight::SemiBold,
         );
 
         let agenda_label = "Agenda";
-        let tab2_col = if self.active_tab == 1 {
+        let tab2_col = if tab_t >= 0.5 {
             selected_ink
+        } else if self.is_wallpaper_light {
+            [18, 24, 34, 255]
         } else {
-            tab2_unselected
+            [170, 178, 195, 230]
         };
         self.font.draw_text_centered(
             buf,
             self.width,
             self.height,
             agenda_label,
-            256.0,
+            224.0,
             32.5,
-            15.5,
+            14.5,
             tab2_col,
             [0, 0, 0, 0],
-            FontWeight::Bold,
+            FontWeight::SemiBold,
         );
 
         if tasks_offset_x > -(self.width as f32) + 2.0 {
             let add_bar_cy = tasks_add_bar_cy;
 
-            // 2. Filter Bar Labels: "All" (cx = 84.0), "Active" (cx = 156.0), "Done" (cx = 228.0), cy = 79.5
+            // 2. Filter Bar (cy = 79.5)
+            let filter_t = self.filter_spring.value.clamp(0.0, 2.0);
+            let filt_cx = 84.0 + filter_t * 72.0;
+
+            // Subtle filter track
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                156.0 + tasks_offset_x,
+                79.5,
+                108.0,
+                13.0,
+                8.0,
+                if self.is_wallpaper_light {
+                    [255, 255, 255, 60]
+                } else {
+                    Tokens::INNER_TILE_BG_DARK
+                },
+            );
+
+            // Sliding active filter pill
+            let filter_pill_fill = if self.is_wallpaper_light {
+                [255, 255, 255, 230]
+            } else {
+                [255, 255, 255, 45]
+            };
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                filt_cx + tasks_offset_x,
+                79.5,
+                32.0,
+                11.0,
+                7.0,
+                filter_pill_fill,
+            );
+
+            // Filter Bar Labels: "All" (cx = 84.0), "Active" (cx = 156.0), "Done" (cx = 228.0), cy = 79.5
             let f0_is_light = self
                 .wallpaper_cache
                 .as_ref()
@@ -1461,6 +1498,22 @@ impl AppData {
                         1.0,
                         slide_rim,
                     );
+                } else {
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        180.0 + slide_x + tasks_offset_x,
+                        cy,
+                        156.0,
+                        18.0,
+                        Tokens::RADIUS_INNER_TILE,
+                        if row_is_light {
+                            Tokens::INNER_TILE_BG_LIGHT
+                        } else {
+                            Tokens::INNER_TILE_BG_DARK
+                        },
+                    );
                 }
 
                 // Precision anti-aliased vector checkbox
@@ -1583,6 +1636,22 @@ impl AppData {
                     Tokens::TEXT_SECONDARY,
                 )
             };
+
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                180.0 + tasks_offset_x,
+                add_bar_cy,
+                156.0,
+                16.0,
+                Tokens::RADIUS_INNER_TILE,
+                if add_is_light {
+                    Tokens::INNER_TILE_BG_LIGHT
+                } else {
+                    Tokens::INNER_TILE_BG_DARK
+                },
+            );
 
             if self.is_editing {
                 let input_str = if self.input_buffer.is_empty() {
@@ -1719,6 +1788,22 @@ impl AppData {
             } else {
                 for (idx, item) in self.events.iter().enumerate().take(6) {
                     let cy = 122.5 + (idx as f32) * 44.0;
+
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        180.0 + agenda_offset_x,
+                        cy,
+                        156.0,
+                        18.0,
+                        Tokens::RADIUS_INNER_TILE,
+                        if self.is_wallpaper_light {
+                            Tokens::INNER_TILE_BG_LIGHT
+                        } else {
+                            Tokens::INNER_TILE_BG_DARK
+                        },
+                    );
 
                     // Time (cx = 64.0)
                     let time_str = if !item.time.is_empty() {
