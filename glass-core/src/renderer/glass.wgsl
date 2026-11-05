@@ -1652,7 +1652,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         // - At the rim (depth < 0.4 * bezel): 100% crisp refracted Snell optics (edge bending is sharp & visible)
         // - In the interior (depth > 1.1 * bezel): frosted diffusion across entire interior
         let w_blur = smoothstep(0.40 * bezel, 1.10 * bezel, depth);
-        let frosted_col = sample_frost_blur(uv, clamp(params.blur_radius, 8.0, 14.0));
+        let frosted_col = sample_frost_blur(uv, clamp(params.blur_radius, 4.0, 9.0));
         col = mix(sharp_col, frosted_col, w_blur);
     }
 

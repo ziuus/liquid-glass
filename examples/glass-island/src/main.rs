@@ -969,7 +969,7 @@ impl AppData {
                 .bevel(14.0)
                 .refraction(0.75)
                 .dispersion(0.025)
-                .blur(16.0)
+                .blur(7.0)
                 .specular(1.20)
                 .fresnel(0.75)
                 .tint(
