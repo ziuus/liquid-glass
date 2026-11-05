@@ -1,6 +1,5 @@
 use glass_core::font::{FontWeight, UIFont};
 use glass_core::{geometry::Shape, GlassRenderer, GlassSurface, Material};
-use glass_platform::WallpaperManager;
 mod capture;
 use raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle,
@@ -127,15 +126,14 @@ pub struct AppData {
     // Frame management
     width: u32,
     height: u32,
-    pos_x: i32,
+    _pos_x: i32,
     pos_y: i32,
     first_configure: bool,
     animating: bool,
+    needs_redraw: bool,
 
-    wallpaper_mgr: WallpaperManager,
     primary_output: Option<wl_output::WlOutput>,
     is_wallpaper_light: bool,
-    last_desktop_grab: Instant,
 }
 
 struct WaylandWindow {
@@ -160,34 +158,6 @@ impl HasDisplayHandle for WaylandWindow {
         let raw = WaylandDisplayHandle::new(std::ptr::NonNull::new(self.display).unwrap());
         unsafe { Ok(DisplayHandle::borrow_raw(RawDisplayHandle::Wayland(raw))) }
     }
-}
-
-fn capture_desktop_under_island(x: i32, y: i32, width: u32, height: u32) -> Option<Vec<u8>> {
-    let geom = format!("{},{} {}x{}", x, y, width, height);
-    let output = Command::new("grim")
-        .args(["-g", &geom, "-t", "ppm", "-"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let data = output.stdout;
-    let header_marker = b"255\n";
-    let pos = data.windows(4).position(|w| w == header_marker)?;
-    let raw_rgb = &data[pos + 4..];
-    let expected_rgb_len = (width * height * 3) as usize;
-    if raw_rgb.len() < expected_rgb_len {
-        return None;
-    }
-
-    let mut rgba = Vec::with_capacity((width * height * 4) as usize);
-    for chunk in raw_rgb[..expected_rgb_len].as_chunks::<3>().0 {
-        rgba.push(chunk[0]);
-        rgba.push(chunk[1]);
-        rgba.push(chunk[2]);
-        rgba.push(255);
-    }
-    Some(rgba)
 }
 
 impl AppData {
@@ -231,6 +201,7 @@ impl AppData {
             }
         }
         self.animating = true;
+        self.needs_redraw = true;
     }
 
     fn toggle(&mut self) {
@@ -354,37 +325,6 @@ impl AppData {
                         }
                     }
                 }
-            }
-        }
-    }
-
-    fn check_desktop_backdrop(&mut self) {
-        if self.last_desktop_grab.elapsed() > Duration::from_millis(800) {
-            self.last_desktop_grab = Instant::now();
-            if let Some(desktop_rgba) =
-                capture_desktop_under_island(self.pos_x, self.pos_y, self.width, self.height)
-            {
-                self.is_wallpaper_light = is_buffer_light(&desktop_rgba);
-                if let Some(r) = &mut self.renderer {
-                    r.update_background(self.width, self.height, &desktop_rgba);
-                }
-                return;
-            }
-        }
-
-        if self.wallpaper_mgr.check_update() {
-            if let (Some(cache), Some(renderer)) =
-                (self.wallpaper_mgr.cached_buffer(), &mut self.renderer)
-            {
-                let crop = WallpaperManager::get_wallpaper_crop(
-                    cache,
-                    self.pos_x as u32,
-                    self.pos_y as u32,
-                    self.width,
-                    self.height,
-                );
-                self.is_wallpaper_light = is_buffer_light(&crop);
-                renderer.update_background(self.width, self.height, &crop);
             }
         }
     }
@@ -829,7 +769,6 @@ impl AppData {
     fn draw(&mut self) -> bool {
         self.check_ipc();
         self.check_music();
-        self.check_desktop_backdrop();
 
         self.render_ui_overlay();
 
@@ -865,7 +804,7 @@ impl AppData {
                     self.current_alpha,
                     is_light,
                 )
-                .element_type(25.0)
+                .element_type(27.0)
                 .pointer_pos(self.cursor_pos[0], self.cursor_pos[1]);
 
             let _ = renderer.render(&[island]);
@@ -955,6 +894,7 @@ impl AppData {
     }
 }
 
+#[allow(dead_code)]
 fn is_buffer_light(buf: &[u8]) -> bool {
     let mut total_lum = 0.0f64;
     let mut count = 0usize;
@@ -1052,26 +992,9 @@ impl LayerShellHandler for AppData {
 
         if self.renderer.is_none() {
             if let Some(window) = &self.window_wrapper {
-                let mut renderer =
+                let renderer =
                     pollster::block_on(GlassRenderer::new(window.clone(), self.width, self.height))
                         .expect("Failed to initialize GlassRenderer for Dynamic Island");
-
-                if let Some(desktop_rgba) =
-                    capture_desktop_under_island(self.pos_x, self.pos_y, self.width, self.height)
-                {
-                    self.is_wallpaper_light = is_buffer_light(&desktop_rgba);
-                    renderer.update_background(self.width, self.height, &desktop_rgba);
-                } else if let Some(cache) = self.wallpaper_mgr.cached_buffer() {
-                    let crop = WallpaperManager::get_wallpaper_crop(
-                        cache,
-                        self.pos_x as u32,
-                        self.pos_y as u32,
-                        self.width,
-                        self.height,
-                    );
-                    self.is_wallpaper_light = is_buffer_light(&crop);
-                    renderer.update_background(self.width, self.height, &crop);
-                }
 
                 self.overlay_buffer = vec![0u8; (self.width * self.height * 4) as usize];
                 self.renderer = Some(renderer);
@@ -1311,8 +1234,6 @@ fn main() {
     start_fifo_listener(tx);
     start_dbus_monitor();
 
-    let wallpaper_mgr = WallpaperManager::new();
-
     let screen_w: i32 = 1920;
     let width: u32 = 540;
     let height: u32 = 160;
@@ -1373,14 +1294,13 @@ fn main() {
 
         width,
         height,
-        pos_x,
+        _pos_x: pos_x,
         pos_y,
         first_configure: true,
         animating: true,
-        wallpaper_mgr,
+        needs_redraw: true,
         primary_output: None,
         is_wallpaper_light: false,
-        last_desktop_grab: Instant::now() - Duration::from_secs(10),
     };
 
     let surface = app_data.compositor_state.create_surface(&qh);
@@ -1425,8 +1345,9 @@ fn main() {
         last_frame = now;
 
         let active = app_data.update_physics(dt);
-        if active {
+        if active || app_data.needs_redraw {
             app_data.draw();
+            app_data.needs_redraw = false;
             let _ = conn.flush();
         }
 

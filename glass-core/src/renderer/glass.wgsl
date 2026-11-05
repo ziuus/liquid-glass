@@ -1761,10 +1761,30 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     fin = mix(fin, app.glyph_color, app.glyph_mask);
 
-    // Composite dynamic Quicksand typography & interactive UI overlay
-    let overlay = textureSampleLevel(overlay_texture, background_sampler, uv, 0.0);
-    fin = mix(fin, overlay.rgb, overlay.a);
+    var fin_a = 1.0;
+    if params.padding >= 26.9 && params.padding <= 27.1 {
+        // Dynamic Island Overlay: Hyprland provides hardware dual-Kawase blur behind this layer surface.
+        // We render deep obsidian liquid glass tint + Snell specular bevel + vector overlay.
+        let base_body = mix(vec3<f32>(0.07, 0.08, 0.11), vec3<f32>(0.95, 0.96, 0.98), is_light);
+        let base_alpha = mix(0.72, 0.76, is_light);
+        
+        // Specular highlight rim: bright thin specular contour
+        var island_col = base_body + vec3<f32>(spec_rim * 1.15);
+        island_col += flare_rgb;
+        
+        let rim_alpha = smoothstep(2.5, 0.0, depth) * 0.25;
+        let surface_alpha = clamp(base_alpha + rim_alpha, 0.0, 1.0);
+        
+        // Composite dynamic overlay
+        let overlay = textureSampleLevel(overlay_texture, background_sampler, uv, 0.0);
+        fin = mix(island_col, overlay.rgb, overlay.a);
+        fin_a = mix(surface_alpha, 1.0, overlay.a);
+    } else {
+        // Standard desktop-level widget rendering (samples background wallpaper)
+        let overlay = textureSampleLevel(overlay_texture, background_sampler, uv, 0.0);
+        fin = mix(fin, overlay.rgb, overlay.a);
+    }
 
     let aa = 1.0 - smoothstep(-1.0, 0.0, sdf);
-    return vec4<f32>(fin * aa, aa);
+    return vec4<f32>(fin * aa, fin_a * aa);
 }

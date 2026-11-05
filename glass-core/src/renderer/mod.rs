@@ -516,68 +516,90 @@ impl GlassRenderer {
         );
 
         let layers = crate::geometry::overlap::find_non_overlapping_layers(surfaces);
-        for (layer_idx, layer) in layers.iter().enumerate() {
-            if layer_idx > 0 {
-                // Copy swapchain content to background texture so the next layer refracts it
-                encoder.copy_texture_to_texture(
-                    wgpu::ImageCopyTexture {
-                        texture: &output.texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    wgpu::ImageCopyTexture {
-                        texture: &self.bg_texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    wgpu::Extent3d {
-                        width: self.surface_config.width,
-                        height: self.surface_config.height,
-                        depth_or_array_layers: 1,
-                    },
-                );
-            }
 
-            // Note: we only measure the first pass if there are multiple layers for simplicity
-            let timestamp_writes = if layer_idx == 0 {
-                self.query_set
-                    .as_ref()
-                    .map(|qs| wgpu::RenderPassTimestampWrites {
-                        query_set: qs,
-                        beginning_of_pass_write_index: Some(0),
-                        end_of_pass_write_index: Some(1),
-                    })
-            } else {
-                None
-            };
-
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Layer Render Pass"),
+        if surfaces.is_empty() {
+            let render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Empty Clear Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: if layer_idx == 0 {
-                            wgpu::LoadOp::Clear(wgpu::Color {
-                                r: 0.0,
-                                g: 0.0,
-                                b: 0.0,
-                                a: 0.0,
-                            })
-                        } else {
-                            wgpu::LoadOp::Load
-                        },
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
+                            a: 0.0,
+                        }),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes,
+                timestamp_writes: None,
                 occlusion_query_set: None,
             });
+            drop(render_pass);
+        } else {
+            for (layer_idx, layer) in layers.iter().enumerate() {
+                if layer_idx > 0 {
+                    // Copy swapchain content to background texture so the next layer refracts it
+                    encoder.copy_texture_to_texture(
+                        wgpu::ImageCopyTexture {
+                            texture: &output.texture,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d::ZERO,
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        wgpu::ImageCopyTexture {
+                            texture: &self.bg_texture,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d::ZERO,
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        wgpu::Extent3d {
+                            width: self.surface_config.width,
+                            height: self.surface_config.height,
+                            depth_or_array_layers: 1,
+                        },
+                    );
+                }
 
-            if !surfaces.is_empty() {
+                // Note: we only measure the first pass if there are multiple layers for simplicity
+                let timestamp_writes = if layer_idx == 0 {
+                    self.query_set
+                        .as_ref()
+                        .map(|qs| wgpu::RenderPassTimestampWrites {
+                            query_set: qs,
+                            beginning_of_pass_write_index: Some(0),
+                            end_of_pass_write_index: Some(1),
+                        })
+                } else {
+                    None
+                };
+
+                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Layer Render Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: if layer_idx == 0 {
+                                wgpu::LoadOp::Clear(wgpu::Color {
+                                    r: 0.0,
+                                    g: 0.0,
+                                    b: 0.0,
+                                    a: 0.0,
+                                })
+                            } else {
+                                wgpu::LoadOp::Load
+                            },
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes,
+                    occlusion_query_set: None,
+                });
+
                 render_pass.set_pipeline(&self.render_pipeline);
                 render_pass.set_bind_group(1, &self.bg_bind_group, &[]);
 
