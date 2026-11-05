@@ -46,6 +46,8 @@ pub enum IslandMode {
     MusicExpanded,
     Notification,
     QuickAccess,
+    SystemOverview,
+    PowerMenu,
 }
 
 #[derive(Debug, Clone)]
@@ -66,10 +68,129 @@ pub struct MusicState {
     pub elapsed_sec: f32,
 }
 
+#[derive(Debug, Clone)]
+pub struct SysStats {
+    pub cpu_pct: u32,
+    pub ram_used_gb: f32,
+    pub ram_total_gb: f32,
+    pub bat_pct: u32,
+    pub bat_charging: bool,
+    pub uptime_hrs: u32,
+    pub uptime_mins: u32,
+    prev_idle: u64,
+    prev_total: u64,
+    last_poll: Instant,
+}
+
+impl SysStats {
+    pub fn new() -> Self {
+        Self {
+            cpu_pct: 0,
+            ram_used_gb: 0.0,
+            ram_total_gb: 1.0,
+            bat_pct: 100,
+            bat_charging: false,
+            uptime_hrs: 0,
+            uptime_mins: 0,
+            prev_idle: 0,
+            prev_total: 0,
+            last_poll: Instant::now() - Duration::from_secs(5),
+        }
+    }
+}
+
+impl Default for SysStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SysStats {
+    pub fn poll(&mut self) {
+        if self.last_poll.elapsed() < Duration::from_millis(1500) {
+            return;
+        }
+        self.last_poll = Instant::now();
+
+        // Sample CPU from /proc/stat
+        if let Ok(s) = std::fs::read_to_string("/proc/stat") {
+            if let Some(line) = s.lines().next() {
+                let parts: Vec<u64> = line
+                    .split_whitespace()
+                    .skip(1)
+                    .filter_map(|x| x.parse().ok())
+                    .collect();
+                if parts.len() >= 4 {
+                    let idle = parts[3];
+                    let total: u64 = parts.iter().sum();
+                    let d_idle = idle.saturating_sub(self.prev_idle);
+                    let d_total = total.saturating_sub(self.prev_total);
+                    if d_total > 0 {
+                        self.cpu_pct = (((d_total - d_idle) as f32 / d_total as f32) * 100.0)
+                            .clamp(0.0, 100.0) as u32;
+                    }
+                    self.prev_idle = idle;
+                    self.prev_total = total;
+                }
+            }
+        }
+
+        // Sample RAM from /proc/meminfo
+        if let Ok(s) = std::fs::read_to_string("/proc/meminfo") {
+            let mut total_kb = 0u64;
+            let mut avail_kb = 0u64;
+            for line in s.lines() {
+                if line.starts_with("MemTotal:") {
+                    total_kb = line
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|x| x.parse().ok())
+                        .unwrap_or(0);
+                } else if line.starts_with("MemAvailable:") {
+                    avail_kb = line
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|x| x.parse().ok())
+                        .unwrap_or(0);
+                }
+            }
+            if total_kb > 0 {
+                self.ram_total_gb = total_kb as f32 / 1024.0 / 1024.0;
+                self.ram_used_gb = total_kb.saturating_sub(avail_kb) as f32 / 1024.0 / 1024.0;
+            }
+        }
+
+        // Sample Battery
+        if let Ok(s) = std::fs::read_to_string("/sys/class/power_supply/BAT0/capacity")
+            .or_else(|_| std::fs::read_to_string("/sys/class/power_supply/BAT1/capacity"))
+        {
+            self.bat_pct = s.trim().parse().unwrap_or(100);
+        }
+        if let Ok(s) = std::fs::read_to_string("/sys/class/power_supply/BAT0/status")
+            .or_else(|_| std::fs::read_to_string("/sys/class/power_supply/BAT1/status"))
+        {
+            self.bat_charging = s.trim().eq_ignore_ascii_case("charging");
+        }
+
+        // Sample Uptime
+        if let Ok(s) = std::fs::read_to_string("/proc/uptime") {
+            if let Some(sec_str) = s.split_whitespace().next() {
+                if let Ok(sec) = sec_str.parse::<f32>() {
+                    let total_sec = sec as u32;
+                    self.uptime_hrs = total_sec / 3600;
+                    self.uptime_mins = (total_sec % 3600) / 60;
+                }
+            }
+        }
+    }
+}
+
 pub enum IslandIpcEvent {
     Toggle,
     ShowMode(IslandMode),
     Notification(NotificationData),
+    NextMenu,
+    PrevMenu,
 }
 
 pub struct AppData {
@@ -122,6 +243,14 @@ pub struct AppData {
     // Typography & UI overlay
     font: UIFont,
     overlay_buffer: Vec<u8>,
+
+    // Interaction & Swipe Navigation
+    press_pos: [f32; 2],
+    is_swiping: bool,
+    last_interaction: Instant,
+
+    // System Monitoring
+    sys_stats: SysStats,
 
     // Frame management
     width: u32,
@@ -201,9 +330,46 @@ impl AppData {
                 self.target_y = 12.0;
                 self.target_alpha = 1.0;
             }
+            IslandMode::SystemOverview => {
+                self.target_w = 460.0;
+                self.target_h = 115.0;
+                self.target_y = 12.0;
+                self.target_alpha = 1.0;
+            }
+            IslandMode::PowerMenu => {
+                self.target_w = 440.0;
+                self.target_h = 110.0;
+                self.target_y = 12.0;
+                self.target_alpha = 1.0;
+            }
         }
+        self.last_interaction = Instant::now();
         self.animating = true;
         self.needs_redraw = true;
+    }
+
+    fn cycle_mode_forward(&mut self) {
+        let next = match self.mode {
+            IslandMode::Hidden | IslandMode::CompactPill => IslandMode::MusicExpanded,
+            IslandMode::MusicExpanded => IslandMode::SystemOverview,
+            IslandMode::SystemOverview => IslandMode::QuickAccess,
+            IslandMode::QuickAccess => IslandMode::PowerMenu,
+            IslandMode::PowerMenu => IslandMode::MusicExpanded,
+            IslandMode::Notification => IslandMode::MusicExpanded,
+        };
+        self.set_mode(next);
+    }
+
+    fn cycle_mode_backward(&mut self) {
+        let prev = match self.mode {
+            IslandMode::Hidden | IslandMode::CompactPill => IslandMode::PowerMenu,
+            IslandMode::MusicExpanded => IslandMode::PowerMenu,
+            IslandMode::SystemOverview => IslandMode::MusicExpanded,
+            IslandMode::QuickAccess => IslandMode::SystemOverview,
+            IslandMode::PowerMenu => IslandMode::QuickAccess,
+            IslandMode::Notification => IslandMode::QuickAccess,
+        };
+        self.set_mode(prev);
     }
 
     fn toggle(&mut self) {
@@ -218,6 +384,8 @@ impl AppData {
             match evt {
                 IslandIpcEvent::Toggle => self.toggle(),
                 IslandIpcEvent::ShowMode(m) => self.set_mode(m),
+                IslandIpcEvent::NextMenu => self.cycle_mode_forward(),
+                IslandIpcEvent::PrevMenu => self.cycle_mode_backward(),
                 IslandIpcEvent::Notification(notif) => {
                     let text_len = notif.summary.len().max(notif.body.len());
                     self.target_w = (text_len as f32 * 8.0 + 190.0).clamp(380.0, 480.0);
@@ -288,6 +456,21 @@ impl AppData {
                 (self.music.elapsed_sec / self.music.duration_sec).clamp(0.0, 1.0);
         }
 
+        // Auto-hide / auto-collapse after inactivity (8 seconds)
+        if !self.is_hovered
+            && !self.is_pressed
+            && matches!(
+                self.mode,
+                IslandMode::MusicExpanded
+                    | IslandMode::QuickAccess
+                    | IslandMode::SystemOverview
+                    | IslandMode::PowerMenu
+            )
+            && self.last_interaction.elapsed() >= Duration::from_secs(8)
+        {
+            self.set_mode(IslandMode::CompactPill);
+        }
+
         !settling || (self.music.is_playing && self.mode != IslandMode::Hidden) || self.is_hovered
     }
 
@@ -351,6 +534,47 @@ impl AppData {
                 );
                 renderer.update_background(self.width, self.height, &crop);
             }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn draw_page_dots(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        island_cx: f32,
+        island_top: f32,
+        island_w: f32,
+        is_light: bool,
+        active_idx: usize,
+    ) {
+        let dot_start_x = island_cx + island_w * 0.5 - 65.0;
+        let dot_y = island_top + 22.0;
+
+        for i in 0..4 {
+            let dx = dot_start_x + (i as f32) * 11.0;
+            let (half_r, col) = if i == active_idx {
+                (
+                    3.2f32,
+                    if is_light {
+                        [40, 50, 70, 255]
+                    } else {
+                        [255, 255, 255, 255]
+                    },
+                )
+            } else {
+                (
+                    2.0f32,
+                    if is_light {
+                        [160, 170, 185, 180]
+                    } else {
+                        [255, 255, 255, 90]
+                    },
+                )
+            };
+            UIFont::draw_rounded_rect_fill(
+                buf, width, height, dx, dot_y, half_r, half_r, half_r, col,
+            );
         }
     }
 
@@ -457,6 +681,17 @@ impl AppData {
                 }
             }
             IslandMode::MusicExpanded => {
+                Self::draw_page_dots(
+                    buf,
+                    self.width,
+                    self.height,
+                    island_cx,
+                    island_top,
+                    island_w,
+                    is_light,
+                    0,
+                );
+
                 // Header: NOW PLAYING
                 let header_y = island_top + 22.0;
                 self.font.draw_text(
@@ -789,6 +1024,17 @@ impl AppData {
                 }
             }
             IslandMode::QuickAccess => {
+                Self::draw_page_dots(
+                    buf,
+                    self.width,
+                    self.height,
+                    island_cx,
+                    island_top,
+                    island_w,
+                    is_light,
+                    2,
+                );
+
                 // Header
                 self.font.draw_text(
                     buf,
@@ -961,6 +1207,244 @@ impl AppData {
                     );
                 }
             }
+            IslandMode::SystemOverview => {
+                Self::draw_page_dots(
+                    buf,
+                    self.width,
+                    self.height,
+                    island_cx,
+                    island_top,
+                    island_w,
+                    is_light,
+                    1,
+                );
+                self.sys_stats.poll();
+
+                // Header
+                self.font.draw_text(
+                    buf,
+                    self.width,
+                    self.height,
+                    "SYSTEM OVERVIEW",
+                    island_cx - island_w * 0.5 + 32.0,
+                    island_top + 24.0,
+                    11.0,
+                    col_dim,
+                    FontWeight::Bold,
+                );
+
+                // 4 Metric cards: CPU, RAM, Battery, Uptime
+                let stat_items = [
+                    (
+                        "CPU",
+                        format!("{}%", self.sys_stats.cpu_pct),
+                        if self.sys_stats.cpu_pct > 80 {
+                            [240, 80, 80, 255]
+                        } else {
+                            col_green
+                        },
+                    ),
+                    (
+                        "RAM",
+                        format!("{:.1}G", self.sys_stats.ram_used_gb),
+                        col_accent,
+                    ),
+                    (
+                        if self.sys_stats.bat_charging {
+                            "BAT ⚡"
+                        } else {
+                            "BAT"
+                        },
+                        format!("{}%", self.sys_stats.bat_pct),
+                        if self.sys_stats.bat_pct <= 20 {
+                            [240, 80, 80, 255]
+                        } else {
+                            col_green
+                        },
+                    ),
+                    (
+                        "UPTIME",
+                        format!(
+                            "{}h {}m",
+                            self.sys_stats.uptime_hrs, self.sys_stats.uptime_mins
+                        ),
+                        [180, 160, 255, 255],
+                    ),
+                ];
+
+                let item_w = (island_w - 52.0) / 4.0;
+                let start_x = island_cx - island_w * 0.5 + 26.0 + item_w * 0.5;
+                let cy = island_top + 65.0;
+
+                for (idx, (lbl, val, accent)) in stat_items.iter().enumerate() {
+                    let cx = start_x + (idx as f32) * item_w;
+
+                    // Container pill
+                    let tile_bg = if is_light {
+                        [235, 240, 248, 180]
+                    } else {
+                        [28, 34, 46, 190]
+                    };
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        cx,
+                        cy,
+                        (item_w - 10.0) * 0.5,
+                        25.0,
+                        12.0,
+                        tile_bg,
+                    );
+
+                    // Label (top)
+                    self.font.draw_text_centered(
+                        buf,
+                        self.width,
+                        self.height,
+                        lbl,
+                        cx,
+                        cy - 11.0,
+                        10.5,
+                        col_dim,
+                        col_shadow,
+                        FontWeight::Medium,
+                    );
+
+                    // Value (bottom large)
+                    self.font.draw_text_centered(
+                        buf,
+                        self.width,
+                        self.height,
+                        val,
+                        cx,
+                        cy + 9.0,
+                        14.5,
+                        *accent,
+                        col_shadow,
+                        FontWeight::Bold,
+                    );
+                }
+            }
+            IslandMode::PowerMenu => {
+                Self::draw_page_dots(
+                    buf,
+                    self.width,
+                    self.height,
+                    island_cx,
+                    island_top,
+                    island_w,
+                    is_light,
+                    3,
+                );
+
+                // Header
+                self.font.draw_text(
+                    buf,
+                    self.width,
+                    self.height,
+                    "SESSION & POWER",
+                    island_cx - island_w * 0.5 + 32.0,
+                    island_top + 24.0,
+                    11.0,
+                    col_dim,
+                    FontWeight::Bold,
+                );
+
+                // 4 Action buttons: Lock, Suspend, Restart, Shut Down
+                let actions = [
+                    ("Lock", "🔒", [90, 155, 255, 255]),
+                    ("Suspend", "🌙", [160, 150, 255, 255]),
+                    ("Restart", "↻", [255, 175, 70, 255]),
+                    ("Power Off", "⏻", [245, 75, 75, 255]),
+                ];
+
+                let item_w = (island_w - 52.0) / 4.0;
+                let start_x = island_cx - island_w * 0.5 + 26.0 + item_w * 0.5;
+                let cy = island_top + 64.0;
+
+                let cur_lx = self.cursor_pos[0] * (self.width as f32);
+                let cur_ly = self.cursor_pos[1] * (self.height as f32);
+
+                for (idx, (name, icon, accent_col)) in actions.iter().enumerate() {
+                    let cx = start_x + (idx as f32) * item_w;
+
+                    let is_tile_hover = self.is_hovered
+                        && (cur_lx - cx).abs() <= (item_w - 10.0) * 0.5
+                        && (cur_ly - cy).abs() <= 25.0;
+
+                    let tile_bg = if is_tile_hover {
+                        if is_light {
+                            [215, 222, 238, 240]
+                        } else {
+                            [65, 78, 108, 220]
+                        }
+                    } else if is_light {
+                        [235, 240, 248, 180]
+                    } else {
+                        [28, 34, 46, 190]
+                    };
+
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        cx,
+                        cy,
+                        (item_w - 10.0) * 0.5,
+                        25.0,
+                        12.0,
+                        tile_bg,
+                    );
+
+                    if is_tile_hover {
+                        UIFont::draw_rounded_rect_stroke(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            cy,
+                            (item_w - 10.0) * 0.5,
+                            25.0,
+                            12.0,
+                            1.2,
+                            *accent_col,
+                        );
+                    }
+
+                    // Icon (top)
+                    self.font.draw_text_centered(
+                        buf,
+                        self.width,
+                        self.height,
+                        icon,
+                        cx,
+                        cy - 10.0,
+                        14.0,
+                        *accent_col,
+                        col_shadow,
+                        FontWeight::Bold,
+                    );
+
+                    // Text (bottom)
+                    self.font.draw_text_centered(
+                        buf,
+                        self.width,
+                        self.height,
+                        name,
+                        cx,
+                        cy + 10.0,
+                        11.0,
+                        if is_light {
+                            [20, 28, 40, 255]
+                        } else {
+                            [225, 232, 244, 255]
+                        },
+                        col_shadow,
+                        FontWeight::Medium,
+                    );
+                }
+            }
             IslandMode::Hidden => {}
         }
     }
@@ -1035,6 +1519,24 @@ impl AppData {
             return;
         }
 
+        // Page dot clicks across all expanded modes
+        let dot_start_x = island_cx + island_w * 0.5 - 65.0;
+        let dot_y = island_top + 22.0;
+        if ly >= dot_y - 10.0
+            && ly <= dot_y + 10.0
+            && lx >= dot_start_x - 8.0
+            && lx <= dot_start_x + 45.0
+        {
+            let dot_idx = (((lx - dot_start_x + 5.0) / 11.0).floor() as usize).min(3);
+            match dot_idx {
+                0 => self.set_mode(IslandMode::MusicExpanded),
+                1 => self.set_mode(IslandMode::SystemOverview),
+                2 => self.set_mode(IslandMode::QuickAccess),
+                _ => self.set_mode(IslandMode::PowerMenu),
+            }
+            return;
+        }
+
         match self.mode {
             IslandMode::CompactPill => {
                 self.set_mode(IslandMode::MusicExpanded);
@@ -1091,6 +1593,44 @@ impl AppData {
                     if (lx - cx).abs() <= item_w * 0.45 && (ly - cy).abs() <= 25.0 {
                         let _ = Command::new(cmd).spawn();
                         self.set_mode(IslandMode::CompactPill);
+                        break;
+                    }
+                }
+            }
+            IslandMode::SystemOverview => {
+                // Clicking outside tiles collapses or cycles to QuickAccess
+                if lx < island_cx - island_w * 0.5 + 80.0 {
+                    self.set_mode(IslandMode::CompactPill);
+                }
+            }
+            IslandMode::PowerMenu => {
+                let item_w = (island_w - 52.0) / 4.0;
+                let start_x = island_cx - island_w * 0.5 + 26.0 + item_w * 0.5;
+                let cy = island_top + 64.0;
+
+                for idx in 0..4 {
+                    let cx = start_x + (idx as f32) * item_w;
+                    if (lx - cx).abs() <= (item_w - 10.0) * 0.5 && (ly - cy).abs() <= 25.0 {
+                        match idx {
+                            0 => {
+                                // Lock screen
+                                let _ = Command::new("hyprlock").spawn();
+                                self.set_mode(IslandMode::CompactPill);
+                            }
+                            1 => {
+                                // Suspend
+                                let _ = Command::new("systemctl").arg("suspend").spawn();
+                                self.set_mode(IslandMode::CompactPill);
+                            }
+                            2 => {
+                                // Reboot
+                                let _ = Command::new("systemctl").arg("reboot").spawn();
+                            }
+                            _ => {
+                                // Power Off
+                                let _ = Command::new("systemctl").arg("poweroff").spawn();
+                            }
+                        }
                         break;
                     }
                 }
@@ -1270,6 +1810,7 @@ impl PointerHandler for AppData {
             match event.kind {
                 PointerEventKind::Enter { .. } => {
                     self.is_hovered = true;
+                    self.last_interaction = Instant::now();
                     self.cursor_pos = [
                         (event.position.0 as f32) / (self.width as f32),
                         (event.position.1 as f32) / (self.height as f32),
@@ -1278,24 +1819,54 @@ impl PointerHandler for AppData {
                 PointerEventKind::Leave { .. } => {
                     self.is_hovered = false;
                     self.is_pressed = false;
+                    self.is_swiping = false;
                     self.cursor_pos = [-1.0, -1.0];
                 }
                 PointerEventKind::Motion { .. } => {
+                    self.last_interaction = Instant::now();
                     self.cursor_pos = [
                         (event.position.0 as f32) / (self.width as f32),
                         (event.position.1 as f32) / (self.height as f32),
                     ];
+                    if self.is_pressed && !self.is_swiping {
+                        let dx = event.position.0 as f32 - self.press_pos[0];
+                        if dx.abs() > 25.0 {
+                            self.is_swiping = true;
+                            if dx > 0.0 {
+                                self.cycle_mode_backward();
+                            } else {
+                                self.cycle_mode_forward();
+                            }
+                        }
+                    }
                 }
                 PointerEventKind::Press { .. } => {
                     self.is_pressed = true;
+                    self.is_swiping = false;
+                    self.last_interaction = Instant::now();
                     let lx = event.position.0 as f32;
                     let ly = event.position.1 as f32;
-                    self.handle_click(lx, ly);
+                    self.press_pos = [lx, ly];
                 }
                 PointerEventKind::Release { .. } => {
+                    let lx = event.position.0 as f32;
+                    let ly = event.position.1 as f32;
+                    if !self.is_swiping {
+                        self.handle_click(lx, ly);
+                    }
                     self.is_pressed = false;
+                    self.is_swiping = false;
                 }
-                PointerEventKind::Axis { .. } => {}
+                PointerEventKind::Axis { horizontal, .. } => {
+                    self.last_interaction = Instant::now();
+                    if horizontal.absolute.abs() > 15.0 {
+                        if horizontal.absolute > 0.0 {
+                            self.cycle_mode_forward();
+                        } else {
+                            self.cycle_mode_backward();
+                        }
+                    }
+                }
             }
         }
     }
@@ -1347,8 +1918,16 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>) {
                         let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::CompactPill));
                     } else if trimmed == "music" {
                         let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::MusicExpanded));
+                    } else if trimmed == "sys" || trimmed == "system" {
+                        let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::SystemOverview));
+                    } else if trimmed == "power" {
+                        let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::PowerMenu));
                     } else if trimmed == "apps" || trimmed == "quick" {
                         let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::QuickAccess));
+                    } else if trimmed == "next" {
+                        let _ = tx.send(IslandIpcEvent::NextMenu);
+                    } else if trimmed == "prev" {
+                        let _ = tx.send(IslandIpcEvent::PrevMenu);
                     } else if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
                         if val.get("type").and_then(|t| t.as_str()) == Some("notification") {
                             let app = val
@@ -1508,6 +2087,11 @@ fn main() {
         ipc_rx: rx,
         font: UIFont::new(),
         overlay_buffer: Vec::new(),
+
+        press_pos: [-1.0, -1.0],
+        is_swiping: false,
+        last_interaction: Instant::now(),
+        sys_stats: SysStats::new(),
 
         width,
         height,
