@@ -380,25 +380,11 @@ impl KeyboardHandler for AppData {
                     }
                     self.is_cal_editing = false;
                     self.cal_input_buffer.clear();
-                    if let Some(ls) = &self.layer_surface {
-                        ls.set_keyboard_interactivity(KeyboardInteractivity::None);
-                        ls.commit();
-                    }
-                    if let Some(w) = &self.window_wrapper {
-                        w.surface.commit();
-                    }
                     self.draw();
                 }
                 Keysym::Escape => {
                     self.is_cal_editing = false;
                     self.cal_input_buffer.clear();
-                    if let Some(ls) = &self.layer_surface {
-                        ls.set_keyboard_interactivity(KeyboardInteractivity::None);
-                        ls.commit();
-                    }
-                    if let Some(w) = &self.window_wrapper {
-                        w.surface.commit();
-                    }
                     self.draw();
                 }
                 Keysym::BackSpace => {
@@ -455,25 +441,11 @@ impl KeyboardHandler for AppData {
                 }
                 self.is_editing = false;
                 self.input_buffer.clear();
-                if let Some(ls) = &self.layer_surface {
-                    ls.set_keyboard_interactivity(KeyboardInteractivity::None);
-                    ls.commit();
-                }
-                if let Some(w) = &self.window_wrapper {
-                    w.surface.commit();
-                }
                 self.draw();
             }
             Keysym::Escape => {
                 self.is_editing = false;
                 self.input_buffer.clear();
-                if let Some(ls) = &self.layer_surface {
-                    ls.set_keyboard_interactivity(KeyboardInteractivity::None);
-                    ls.commit();
-                }
-                if let Some(w) = &self.window_wrapper {
-                    w.surface.commit();
-                }
                 self.draw();
             }
             Keysym::BackSpace => {
@@ -716,10 +688,6 @@ impl AppData {
             if self.is_editing {
                 self.is_editing = false;
                 self.input_buffer.clear();
-                if let Some(ls) = &self.layer_surface {
-                    ls.set_keyboard_interactivity(KeyboardInteractivity::None);
-                    ls.commit();
-                }
             }
             if local_x <= 0.0 {
                 self.active_tab = 0;
@@ -777,50 +745,10 @@ impl AppData {
 
         // Check Add task button in Tasks view (bot_y = 185.0, cy = 412.5)
         if self.active_tab == 0 && (local_y - 185.0).abs() <= 24.0 {
-            // Spawn an interactive overlay prompt via wofi/zenity so keyboard focus is 100% reliable
-            std::thread::spawn(|| {
-                if let Ok(child) = std::process::Command::new("wofi")
-                    .args([
-                        "--dmenu",
-                        "-p",
-                        "✍ New Task",
-                        "--lines",
-                        "0",
-                        "--prompt",
-                        "Add new task...",
-                    ])
-                    .stdin(std::process::Stdio::piped())
-                    .stdout(std::process::Stdio::piped())
-                    .spawn()
-                {
-                    if let Ok(out) = child.wait_with_output() {
-                        let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                        if !text.is_empty() {
-                            let home = std::env::var("HOME").unwrap_or_default();
-                            let path = format!("{}/.local/state/todos.json", home);
-                            if let Ok(content) = std::fs::read_to_string(&path) {
-                                if let Ok(mut data) =
-                                    serde_json::from_str::<serde_json::Value>(&content)
-                                {
-                                    if let Some(arr) =
-                                        data.get_mut("tasks").and_then(|t| t.as_array_mut())
-                                    {
-                                        arr.push(serde_json::json!({
-                                            "text": text,
-                                            "done": false,
-                                            "type": "todo",
-                                            "lastCompletedDate": ""
-                                        }));
-                                        if let Ok(updated) = serde_json::to_string_pretty(&data) {
-                                            let _ = std::fs::write(&path, updated);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            });
+            self.is_editing = true;
+            self.input_buffer.clear();
+            self.edit_start_time = Instant::now();
+            self.draw();
             return true;
         }
 
@@ -854,13 +782,6 @@ impl AppData {
                 }
                 self.is_cal_editing = false;
                 self.cal_input_buffer.clear();
-                if let Some(ls) = &self.layer_surface {
-                    ls.set_keyboard_interactivity(KeyboardInteractivity::None);
-                    ls.commit();
-                }
-                if let Some(w) = &self.window_wrapper {
-                    w.surface.commit();
-                }
                 self.draw();
                 return true;
             }
@@ -890,14 +811,6 @@ impl AppData {
                             }
                         }
                     }
-
-                    if let Some(ls) = &self.layer_surface {
-                        ls.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
-                        ls.commit();
-                    }
-                    if let Some(w) = &self.window_wrapper {
-                        w.surface.commit();
-                    }
                 }
                 self.draw();
                 return true;
@@ -922,13 +835,6 @@ impl AppData {
         if self.is_cal_editing {
             self.is_cal_editing = false;
             self.cal_input_buffer.clear();
-            if let Some(ls) = &self.layer_surface {
-                ls.set_keyboard_interactivity(KeyboardInteractivity::None);
-                ls.commit();
-            }
-            if let Some(w) = &self.window_wrapper {
-                w.surface.commit();
-            }
             self.draw();
             return true;
         }
@@ -946,13 +852,6 @@ impl AppData {
             }
             self.is_editing = false;
             self.input_buffer.clear();
-            if let Some(ls) = &self.layer_surface {
-                ls.set_keyboard_interactivity(KeyboardInteractivity::None);
-                ls.commit();
-            }
-            if let Some(w) = &self.window_wrapper {
-                w.surface.commit();
-            }
             self.draw();
             return true;
         }
@@ -2234,7 +2133,7 @@ fn main() {
     layer_surface.set_size(app_data.width, app_data.height);
     layer_surface.set_margin(app_data.pos_y, 0, 0, app_data.pos_x);
     layer_surface.set_exclusive_zone(0);
-    layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
+    layer_surface.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
     layer_surface.commit();
 
     app_data.layer_surface = Some(layer_surface);
