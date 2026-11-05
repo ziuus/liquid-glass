@@ -28,7 +28,6 @@ use smithay_client_toolkit::{
     },
 };
 use std::fs::OpenOptions;
-use std::io::Read;
 use std::os::fd::{AsFd, AsRawFd};
 use std::process::Command;
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -1192,45 +1191,47 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>) {
         }
 
         loop {
-            if let Ok(mut file) = OpenOptions::new().read(true).open(FIFO_PATH) {
-                let mut content = String::new();
-                if file.read_to_string(&mut content).is_ok() {
-                    for line in content.lines() {
-                        let trimmed = line.trim();
-                        if trimmed == "toggle" {
-                            let _ = tx.send(IslandIpcEvent::Toggle);
-                        } else if trimmed == "hide" {
-                            let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::Hidden));
-                        } else if trimmed == "show" || trimmed == "compact" {
-                            let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::CompactPill));
-                        } else if trimmed == "music" {
-                            let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::MusicExpanded));
-                        } else if trimmed == "apps" || trimmed == "quick" {
-                            let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::QuickAccess));
-                        } else if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
-                            if val.get("type").and_then(|t| t.as_str()) == Some("notification") {
-                                let app = val
-                                    .get("app")
-                                    .and_then(|a| a.as_str())
-                                    .unwrap_or("System")
-                                    .to_string();
-                                let summary = val
-                                    .get("summary")
-                                    .and_then(|s| s.as_str())
-                                    .unwrap_or("")
-                                    .to_string();
-                                let body = val
-                                    .get("body")
-                                    .and_then(|b| b.as_str())
-                                    .unwrap_or("")
-                                    .to_string();
-                                let _ = tx.send(IslandIpcEvent::Notification(NotificationData {
-                                    app,
-                                    summary,
-                                    body,
-                                    timestamp: Instant::now(),
-                                }));
-                            }
+            // Open with read-write so the descriptor remains open across client invocations
+            // and read never returns premature EOF on FIFO close!
+            let file = OpenOptions::new().read(true).write(true).open(FIFO_PATH);
+            if let Ok(f) = file {
+                use std::io::{BufRead, BufReader};
+                let reader = BufReader::new(f);
+                for line in reader.lines().map_while(Result::ok) {
+                    let trimmed = line.trim();
+                    if trimmed == "toggle" {
+                        let _ = tx.send(IslandIpcEvent::Toggle);
+                    } else if trimmed == "hide" {
+                        let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::Hidden));
+                    } else if trimmed == "show" || trimmed == "compact" {
+                        let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::CompactPill));
+                    } else if trimmed == "music" {
+                        let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::MusicExpanded));
+                    } else if trimmed == "apps" || trimmed == "quick" {
+                        let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::QuickAccess));
+                    } else if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                        if val.get("type").and_then(|t| t.as_str()) == Some("notification") {
+                            let app = val
+                                .get("app")
+                                .and_then(|a| a.as_str())
+                                .unwrap_or("System")
+                                .to_string();
+                            let summary = val
+                                .get("summary")
+                                .and_then(|s| s.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let body = val
+                                .get("body")
+                                .and_then(|b| b.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let _ = tx.send(IslandIpcEvent::Notification(NotificationData {
+                                app,
+                                summary,
+                                body,
+                                timestamp: Instant::now(),
+                            }));
                         }
                     }
                 }
@@ -1334,24 +1335,24 @@ fn main() {
         is_pressed: false,
         is_hovered: false,
 
-        current_w: 160.0,
-        target_w: 160.0,
+        current_w: 210.0,
+        target_w: 210.0,
         vel_w: 0.0,
 
-        current_h: 10.0,
-        target_h: 10.0,
+        current_h: 42.0,
+        target_h: 42.0,
         vel_h: 0.0,
 
-        current_alpha: 0.0,
-        target_alpha: 0.0,
+        current_alpha: 1.0,
+        target_alpha: 1.0,
         vel_alpha: 0.0,
 
-        current_y: -30.0,
-        target_y: -30.0,
+        current_y: 12.0,
+        target_y: 12.0,
         vel_y: 0.0,
 
-        mode: IslandMode::Hidden,
-        prev_mode: IslandMode::Hidden,
+        mode: IslandMode::CompactPill,
+        prev_mode: IslandMode::CompactPill,
 
         music: MusicState {
             title: "Starboy".to_string(),
@@ -1417,6 +1418,8 @@ fn main() {
         let _ = event_queue.dispatch_pending(&mut app_data);
         let _ = conn.flush();
 
+        app_data.check_ipc();
+
         let now = Instant::now();
         let dt = (now - last_frame).as_secs_f32().clamp(0.001, 0.05);
         last_frame = now;
@@ -1430,7 +1433,7 @@ fn main() {
         let timeout_ms = if active || app_data.is_hovered {
             16
         } else {
-            200
+            32
         };
 
         let guard = match conn.prepare_read() {
