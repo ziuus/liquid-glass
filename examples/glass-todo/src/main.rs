@@ -985,7 +985,7 @@ impl AppData {
                 let (mean_lum, spread, _) = if let Some(cache) = &self.wallpaper_cache {
                     sample_region_stats(
                         cache,
-                        self.pos_x + 58,
+                        self.pos_x + 68,
                         (self.pos_y as f32 + cy - 13.0).max(0.0) as i32,
                         text_w,
                         26,
@@ -1020,8 +1020,8 @@ impl AppData {
                     (row_primary, FontWeight::Bold)
                 };
 
-                // Precision anti-aliased vector checkbox
-                let chk_cx = 38.0;
+                // Precision anti-aliased vector checkbox (comfortable 10px padding from row left edge)
+                let chk_cx = 44.0;
                 if task.done {
                     let bg_box = if row_is_light {
                         [10, 14, 22, 255]
@@ -1085,7 +1085,7 @@ impl AppData {
                     self.width,
                     self.height,
                     &display_text,
-                    58.0,
+                    68.0,
                     cy,
                     15.5,
                     text_col,

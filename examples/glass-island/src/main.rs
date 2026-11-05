@@ -126,7 +126,7 @@ pub struct AppData {
     // Frame management
     width: u32,
     height: u32,
-    _pos_x: i32,
+    pos_x: i32,
     pos_y: i32,
     first_configure: bool,
     animating: bool,
@@ -134,6 +134,7 @@ pub struct AppData {
 
     primary_output: Option<wl_output::WlOutput>,
     is_wallpaper_light: bool,
+    wallpaper_mgr: glass_platform::WallpaperManager,
 }
 
 struct WaylandWindow {
@@ -217,6 +218,8 @@ impl AppData {
                 IslandIpcEvent::Toggle => self.toggle(),
                 IslandIpcEvent::ShowMode(m) => self.set_mode(m),
                 IslandIpcEvent::Notification(notif) => {
+                    let text_len = notif.summary.len().max(notif.body.len());
+                    self.target_w = (text_len as f32 * 8.0 + 190.0).clamp(380.0, 480.0);
                     self.active_notif = Some(notif);
                     self.set_mode(IslandMode::Notification);
                 }
@@ -325,6 +328,23 @@ impl AppData {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    fn check_wallpaper(&mut self) {
+        if self.wallpaper_mgr.check_update() {
+            if let (Some(cache), Some(renderer)) =
+                (self.wallpaper_mgr.cached_buffer(), &mut self.renderer)
+            {
+                let crop = glass_platform::WallpaperManager::get_wallpaper_crop(
+                    cache,
+                    self.pos_x.max(0) as u32,
+                    self.pos_y.max(0) as u32,
+                    self.width,
+                    self.height,
+                );
+                renderer.update_background(self.width, self.height, &crop);
             }
         }
     }
@@ -614,7 +634,7 @@ impl AppData {
             }
             IslandMode::Notification => {
                 if let Some(notif) = &self.active_notif {
-                    // Left App Icon badge (half_w = 20.0, half_h = 20.0)
+                    // Left App Icon badge (half_w = 20.0, half_h = 20.0) with deep royal accent
                     let badge_cx = island_cx - island_w * 0.5 + 42.0;
                     UIFont::draw_rounded_rect_fill(
                         buf,
@@ -625,7 +645,7 @@ impl AppData {
                         20.0,
                         20.0,
                         14.0,
-                        col_accent,
+                        [30, 96, 220, 255], // Deep royal blue badge (>5.5:1 against white bell)
                     );
                     UIFont::draw_bell_icon(
                         buf,
@@ -637,7 +657,7 @@ impl AppData {
                         [255, 255, 255, 255],
                     );
 
-                    // App Name & Time
+                    // App Name Header
                     let content_x = island_cx - island_w * 0.5 + 76.0;
                     self.font.draw_text(
                         buf,
@@ -646,14 +666,14 @@ impl AppData {
                         &notif.app.to_uppercase(),
                         content_x,
                         island_top + 28.0,
-                        10.5,
-                        col_accent,
+                        11.0,
+                        [200, 224, 255, 255], // Crisp #c8e0ff (>6:1 contrast)
                         FontWeight::Bold,
                     );
 
                     // Summary
-                    let summary = if notif.summary.len() > 34 {
-                        format!("{}...", &notif.summary[..32])
+                    let summary = if notif.summary.len() > 30 {
+                        format!("{}...", &notif.summary[..28])
                     } else {
                         notif.summary.clone()
                     };
@@ -670,8 +690,8 @@ impl AppData {
                     );
 
                     // Body
-                    let body = if notif.body.len() > 42 {
-                        format!("{}...", &notif.body[..40])
+                    let body = if notif.body.len() > 38 {
+                        format!("{}...", &notif.body[..36])
                     } else {
                         notif.body.clone()
                     };
@@ -685,6 +705,54 @@ impl AppData {
                         13.0,
                         col_dim,
                         FontWeight::Medium,
+                    );
+
+                    // Right-side metadata: "now" badge pill + "✕" dismiss button
+                    let right_x = island_cx + island_w * 0.5 - 34.0;
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        right_x - 38.0,
+                        island_top + 26.0,
+                        18.0,
+                        8.5,
+                        6.0,
+                        [255, 255, 255, 28],
+                    );
+                    self.font.draw_text_centered(
+                        buf,
+                        self.width,
+                        self.height,
+                        "now",
+                        right_x - 38.0,
+                        island_top + 26.0,
+                        10.5,
+                        [200, 224, 255, 255],
+                        col_shadow,
+                        FontWeight::Medium,
+                    );
+
+                    // Close/dismiss button circle (r = 13.0)
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        right_x,
+                        island_cy,
+                        13.0,
+                        13.0,
+                        13.0,
+                        [255, 255, 255, 24],
+                    );
+                    UIFont::draw_close_icon(
+                        buf,
+                        self.width,
+                        self.height,
+                        right_x,
+                        island_cy,
+                        5.0,
+                        col_dim,
                     );
                 }
             }
@@ -703,13 +771,33 @@ impl AppData {
                 );
 
                 let apps = ["Terminal", "Browser", "Editor", "Files", "Music"];
+                let key_hints = ["1", "2", "3", "4", "5"];
 
                 let item_w = (island_w - 50.0) / (apps.len() as f32);
                 let start_x = island_cx - island_w * 0.5 + 25.0 + item_w * 0.5;
 
+                let cur_lx = self.cursor_pos[0] * (self.width as f32);
+                let cur_ly = self.cursor_pos[1] * (self.height as f32);
+
                 for (idx, name) in apps.iter().enumerate() {
                     let cx = start_x + (idx as f32) * item_w;
                     let cy = island_top + 62.0;
+
+                    let is_tile_hover = self.is_hovered
+                        && (cur_lx - cx).abs() <= (item_w - 10.0) * 0.5
+                        && (cur_ly - cy).abs() <= 25.0;
+
+                    let tile_bg = if is_tile_hover {
+                        if is_light {
+                            [215, 222, 238, 240]
+                        } else {
+                            [65, 78, 108, 220]
+                        }
+                    } else if is_light {
+                        [235, 240, 248, 180]
+                    } else {
+                        [28, 34, 46, 190]
+                    };
 
                     // Container pill (half_w = (item_w - 10) * 0.5, half_h = 25.0)
                     UIFont::draw_rounded_rect_fill(
@@ -721,11 +809,62 @@ impl AppData {
                         (item_w - 10.0) * 0.5,
                         25.0,
                         12.0,
+                        tile_bg,
+                    );
+
+                    // If hovered, draw a crisp 1.2px highlight rim
+                    if is_tile_hover {
+                        UIFont::draw_rounded_rect_stroke(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            cy,
+                            (item_w - 10.0) * 0.5,
+                            25.0,
+                            12.0,
+                            1.2,
+                            if is_light {
+                                [90, 140, 240, 200]
+                            } else {
+                                [210, 225, 255, 180]
+                            },
+                        );
+                    }
+
+                    // Key hint badge at top-right of tile (1..5)
+                    let hint_cx = cx + (item_w - 10.0) * 0.5 - 9.0;
+                    let hint_cy = cy - 15.0;
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        hint_cx,
+                        hint_cy,
+                        6.5,
+                        6.5,
+                        3.5,
                         if is_light {
-                            [240, 243, 250, 160]
+                            [200, 208, 222, 200]
                         } else {
-                            [45, 52, 70, 160]
+                            [45, 54, 72, 220]
                         },
+                    );
+                    self.font.draw_text_centered(
+                        buf,
+                        self.width,
+                        self.height,
+                        key_hints[idx],
+                        hint_cx,
+                        hint_cy,
+                        8.5,
+                        if is_light {
+                            [40, 50, 70, 255]
+                        } else {
+                            [200, 215, 235, 255]
+                        },
+                        col_shadow,
+                        FontWeight::Bold,
                     );
 
                     let icon_cy = cy - 8.0;
@@ -779,8 +918,12 @@ impl AppData {
                         name,
                         cx,
                         cy + 12.0,
-                        10.5,
-                        col_dim,
+                        11.0,
+                        if is_light {
+                            [20, 28, 40, 255]
+                        } else {
+                            [225, 232, 244, 255]
+                        },
                         col_shadow,
                         FontWeight::Medium,
                     );
@@ -793,6 +936,7 @@ impl AppData {
     fn draw(&mut self) -> bool {
         self.check_ipc();
         self.check_music();
+        self.check_wallpaper();
 
         self.render_ui_overlay();
 
@@ -1022,9 +1166,20 @@ impl LayerShellHandler for AppData {
 
         if self.renderer.is_none() {
             if let Some(window) = &self.window_wrapper {
-                let renderer =
+                let mut renderer =
                     pollster::block_on(GlassRenderer::new(window.clone(), self.width, self.height))
                         .expect("Failed to initialize GlassRenderer for Dynamic Island");
+
+                if let Some(cache) = self.wallpaper_mgr.cached_buffer() {
+                    let crop = glass_platform::WallpaperManager::get_wallpaper_crop(
+                        cache,
+                        self.pos_x.max(0) as u32,
+                        self.pos_y.max(0) as u32,
+                        self.width,
+                        self.height,
+                    );
+                    renderer.update_background(self.width, self.height, &crop);
+                }
 
                 self.overlay_buffer = vec![0u8; (self.width * self.height * 4) as usize];
                 self.renderer = Some(renderer);
@@ -1324,13 +1479,14 @@ fn main() {
 
         width,
         height,
-        _pos_x: pos_x,
+        pos_x,
         pos_y,
         first_configure: true,
         animating: true,
         needs_redraw: true,
         primary_output: None,
         is_wallpaper_light: false,
+        wallpaper_mgr: glass_platform::WallpaperManager::new(),
     };
 
     let surface = app_data.compositor_state.create_surface(&qh);

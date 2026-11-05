@@ -841,7 +841,7 @@ impl UIFont {
         );
     }
 
-    /// Draw a precision browser globe icon
+    /// Draw a precision browser globe icon with meridian arcs (reads clearly as a 3D globe)
     pub fn draw_browser_icon(
         buf: &mut [u8],
         width: u32,
@@ -850,23 +850,59 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 6.5, 6.5, 6.5, 1.4, color);
+        // Outer spherical circle
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 7.0, 7.0, 7.0, 1.4, color);
+        // Horizontal equator line
         Self::draw_segment(
             buf,
             width,
             height,
-            (cx - 6.5, cy),
-            (cx + 6.5, cy),
+            (cx - 7.0, cy),
+            (cx + 7.0, cy),
             1.2,
+            color,
+        );
+        // Vertical meridian curved ellipse
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 3.4, 7.0, 3.4, 1.2, color);
+        // Vertical axis
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx, cy - 7.0),
+            (cx, cy + 7.0),
+            1.0,
+            color,
+        );
+    }
+
+    /// Draw a precision close/dismiss icon (X)
+    pub fn draw_close_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        r: f32,
+        color: [u8; 4],
+    ) {
+        let d = r * 0.707;
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - d, cy - d),
+            (cx + d, cy + d),
+            1.5,
             color,
         );
         Self::draw_segment(
             buf,
             width,
             height,
-            (cx, cy - 6.5),
-            (cx, cy + 6.5),
-            1.2,
+            (cx - d, cy + d),
+            (cx + d, cy - d),
+            1.5,
             color,
         );
     }

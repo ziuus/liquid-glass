@@ -129,10 +129,8 @@ fn sample_frost_blur(uv: vec2<f32>, radius: f32) -> vec3<f32> {
     var col = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb * 0.08;
     var total_w = 0.08;
 
-    // Optical boundary constraint: limit sample radius to distance from texture border
-    // to prevent clamp stretching / barcode scanline artifacts
-    let max_safe_rad = min(uv, vec2<f32>(1.0) - uv) * 0.90;
-    let safe_rad_uv = min(rad_uv, max_safe_rad);
+    // Uniform optical diffusion across entire interior
+    let safe_rad_uv = rad_uv;
 
     for (var i = 0.0; i < 24.0; i += 1.0) {
         let t = (i + 0.5) / 24.0;
@@ -1140,19 +1138,10 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
 
                 let is_item_done = ((mask_done & (1u << i)) != 0u);
 
-                // Checkbox (cx = -135.0, cy = row_y)
-                let p_box = local_p - vec2<f32>(-135.0, row_y);
-                let d_box = rr_sdf(p_box, vec2<f32>(8.5, 8.5), 4.5);
-                let c_rim = smoothstep(1.0, 0.0, abs(d_box)) * mix(0.18, 0.28, is_light) * task_view_weight;
-                let c_bg = (1.0 - smoothstep(-0.4, 0.4, d_box)) * mix(0.04, 0.08, is_light) * task_view_weight;
-                check_rims = max(check_rims, max(c_rim, c_bg));
-
-                if is_item_done {
-                    let c_fill = (1.0 - smoothstep(-0.4, 0.4, d_box)) * task_view_weight;
-                    check_fills = max(check_fills, c_fill);
-                    let d_cm = draw_checkmark(p_box, 1.05);
-                    check_marks = max(check_marks, (1.0 - smoothstep(-0.35, 0.35, d_cm)) * task_view_weight);
-                }
+                // Checkboxes rendered cleanly via UI overlay to eliminate redundant 8px offset shadow
+                check_rims = 0.0;
+                check_fills = 0.0;
+                check_marks = 0.0;
 
                 // Daily Tag Badge (cx = 124.0, cy = row_y, half = 22.0x7.5, r = 7.5) - rendered via overlay when present
                 // Kept clean in shader background pass
@@ -1598,9 +1587,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 2. ANALYTIC CONVEX SQUIRCLE BEZEL & 3D NORMAL
     // ════════════════════════════════════════════
     let depth = max(-sdf, 0.0);
-    // Meniscus bezel proportional to element size: max 35% of min(w, h), floor of 4.0px
-    let max_element_bezel = max(0.35 * min(bounds_px.z, bounds_px.w), 4.0);
-    let bezel = clamp(params.bevel, 4.0, max_element_bezel); // Liquid edge thickness
+    // Meniscus bezel proportional to element size: max 35% of min(w, h), floor of 14.0px
+    let max_element_bezel = max(0.35 * min(bounds_px.z, bounds_px.w), 14.0);
+    let bezel = clamp(params.bevel, 14.0, max_element_bezel); // Liquid edge thickness (14-18px)
     let t = clamp(depth / bezel, 0.0, 1.0);                  // 0.0 at outer rim, 1.0 at flat interior
     let u = 1.0 - t;
 
@@ -1612,13 +1601,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let dh_dt = u / max(sqrt(1.0 - u * u), 0.28);
     let slope = dh_dt / bezel;
 
-    // Corner identification for focused corner glints & enhanced corner lensing
-    let corner_center = half_size - vec2<f32>(r);
-    let q_corner = abs(local_px) - corner_center;
-    let is_corner = (q_corner.x > 0.0) && (q_corner.y > 0.0);
-
     // Exact analytical 2D outward unit normal of rounded rectangle
     let grad_2d = rr_normal(local_px, half_size, r);
+
+    // C1-continuous corner curvature factor (0.0 on straight edges, 1.0 at 45-deg corner apex)
+    // Completely eliminates the 28px seam where straight edge meets corner arc!
+    let corner_factor = clamp(abs(grad_2d.x * grad_2d.y) * 4.0, 0.0, 1.0);
 
     // 3D Surface Normal from convex liquid bubble:
     // Strictly (0, 0, 1) in the flat interior, outward tilt along curved rim
@@ -1633,8 +1621,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let R = refract(vec3<f32>(0.0, 0.0, -1.0), N, eta);
 
     // Enhanced refraction at rim and corners: glass curvature bends background strongest at edges!
-    let corner_refract_boost = select(1.0, 1.85, is_corner);
-    let thickness_px = 24.0 * corner_refract_boost;
+    let corner_refract_boost = 1.0 + 0.45 * corner_factor;
+    let thickness_px = (0.75 * bezel) * corner_refract_boost;
     let rim_tilt = pow(1.0 - t, 0.70);
     let offset_px = (R.xy / max(-R.z, 0.001)) * (thickness_px * (0.35 + 0.65 * rim_tilt));
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
@@ -1661,10 +1649,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         col = sharp_col;
     } else {
         // Two-tier optical architecture:
-        // - At the rim (depth < 0.5 * bezel): crisp Snell refraction so wave edges visibly bend
-        // - In the interior (depth > 1.2 * bezel): deep frosted diffusion (eliminates leaf veins/hairs)
-        let w_blur = smoothstep(0.40 * bezel, 1.25 * bezel, depth);
-        let frosted_col = sample_frost_blur(uv, params.blur_radius * 1.85);
+        // - At the rim (depth < 0.4 * bezel): 100% crisp refracted Snell optics (edge bending is sharp & visible)
+        // - In the interior (depth > 1.1 * bezel): frosted diffusion across entire interior
+        let w_blur = smoothstep(0.40 * bezel, 1.10 * bezel, depth);
+        let frosted_col = sample_frost_blur(uv, clamp(params.blur_radius, 8.0, 14.0));
         col = mix(sharp_col, frosted_col, w_blur);
     }
 
@@ -1704,7 +1692,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 6. DIELECTRIC FRESNEL REFLECTION & CRISP DIRECTIONAL SPECULAR
     // ════════════════════════════════════════════
     // Thin 1-1.5px specular line: strong at top-left, ~30% at bottom-right, zero wide milky glow
-    let corner_mult = select(1.0, 1.45, is_corner);
+    let corner_mult = 1.0 + 0.35 * corner_factor;
     let edge_spec = smoothstep(1.5, 0.0, depth) * (light_facing * 0.70 + 0.30) * corner_mult;
     let soft_falloff = smoothstep(3.5, 0.0, depth) * 0.12 * light_facing;
     let spec_rim = (edge_spec + soft_falloff) * params.specular_strength;
@@ -1764,28 +1752,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     fin = mix(fin, app.glyph_color, app.glyph_mask);
 
+    // Composite dynamic interactive UI vector overlay
+    let overlay = textureSampleLevel(overlay_texture, background_sampler, uv, 0.0);
+    fin = mix(fin, overlay.rgb, overlay.a);
+
     var fin_a = 1.0;
     if params.padding >= 26.9 && params.padding <= 27.1 {
-        // Dynamic Island Overlay: Hyprland provides hardware dual-Kawase blur behind this layer surface.
-        // We render deep obsidian liquid glass tint (zero gray plastic veil: <=10% lift) + Snell specular bevel + vector overlay.
-        let base_body = mix(vec3<f32>(0.02, 0.025, 0.035), vec3<f32>(0.94, 0.95, 0.97), is_light);
-        let base_alpha = mix(0.50, 0.65, is_light);
-        
-        // Specular highlight rim: bright thin specular contour
-        var island_col = base_body + vec3<f32>(spec_rim * 1.35);
-        island_col += flare_rgb;
-        
-        let rim_alpha = smoothstep(2.5, 0.0, depth) * 0.35;
-        let surface_alpha = clamp(base_alpha + rim_alpha, 0.0, 1.0);
-        
-        // Composite dynamic overlay
-        let overlay = textureSampleLevel(overlay_texture, background_sampler, uv, 0.0);
-        fin = mix(island_col, overlay.rgb, overlay.a);
-        fin_a = mix(surface_alpha, 1.0, overlay.a);
-    } else {
-        // Standard desktop-level widget rendering (samples background wallpaper)
-        let overlay = textureSampleLevel(overlay_texture, background_sampler, uv, 0.0);
-        fin = mix(fin, overlay.rgb, overlay.a);
+        // Dynamic Island: smooth spring alpha fade during toggle/hide
+        fin_a = clamp(params.tint.z, 0.0, 1.0);
     }
 
     let aa = 1.0 - smoothstep(-1.0, 0.0, sdf);
