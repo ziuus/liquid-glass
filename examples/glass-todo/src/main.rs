@@ -663,6 +663,7 @@ impl PointerHandler for AppData {
                                     self.todos.tasks.remove(actual_idx);
                                     self.save_todos();
                                 }
+                                self.slide_offsets.fill(0.0);
                             }
                             self.is_sliding = false;
                         }
@@ -2255,12 +2256,17 @@ fn main() {
             let _ = conn.flush();
         }
 
-        let timeout_ms =
-            if animating || app_data.is_hovered || app_data.is_dragging || app_data.is_editing {
-                16
-            } else {
-                250
-            };
+        let timeout_ms = if animating
+            || app_data.is_hovered
+            || app_data.is_dragging
+            || app_data.is_editing
+            || app_data.is_cal_editing
+            || app_data.is_sliding
+        {
+            16
+        } else {
+            250
+        };
 
         let guard = match conn.prepare_read() {
             Some(g) => g,
