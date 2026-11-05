@@ -116,6 +116,12 @@ struct AppData {
     input_buffer: String,
     edit_start_time: Instant,
 
+    // Slide-to-Delete Interaction
+    slide_offsets: [f32; 6],
+    task_pressed_row: Option<usize>,
+    press_start_pos: [f32; 2],
+    is_sliding: bool,
+
     // Smooth Spring Animation States
     font: QuicksandFont,
     tab_spring: Spring,
@@ -352,7 +358,7 @@ impl KeyboardHandler for AppData {
                     self.todos.tasks.push(TodoItem {
                         text,
                         done: false,
-                        r#type: "daily".to_string(),
+                        r#type: "todo".to_string(),
                         lastCompletedDate: String::new(),
                     });
                     self.save_todos();
@@ -461,12 +467,20 @@ impl PointerHandler for AppData {
                 }
                 PointerEventKind::Motion { .. } => {
                     had_event = true;
-                    let new_x = event.position.0 as f32 / self.width as f32;
-                    let new_y = event.position.1 as f32 / self.height as f32;
+                    let px = event.position.0 as f32;
+                    let py = event.position.1 as f32;
+                    let new_x = px / self.width as f32;
+                    let new_y = py / self.height as f32;
 
                     self.cursor_pos = [new_x, new_y];
 
-                    if self.is_dragging {
+                    if let Some(row) = self.task_pressed_row {
+                        let dx = px - self.press_start_pos[0];
+                        if dx < -6.0 || self.is_sliding {
+                            self.is_sliding = true;
+                            self.slide_offsets[row] = dx.clamp(-140.0, 0.0);
+                        }
+                    } else if self.is_dragging {
                         let new_pos = if let Some((gx, gy)) = get_hyprland_cursor_pos() {
                             let tx =
                                 (gx - self.drag_grab_offset[0]).clamp(0, 1920 - self.width as i32);
@@ -514,14 +528,66 @@ impl PointerHandler for AppData {
                     let px = event.position.0 as f32;
                     let py = event.position.1 as f32;
                     let is_right = button == 0x111; // BTN_RIGHT (273)
-                    let handled = self.handle_click(px, py, is_right);
-                    if !handled {
-                        self.is_dragging = true;
-                        self.drag_grab_offset = [px as i32, py as i32];
+
+                    let half_w = self.width as f32 * 0.5;
+                    let half_h = self.height as f32 * 0.5;
+                    let local_x = px - half_w;
+                    let local_y = py - half_h;
+
+                    // If active_tab == 0, check if touching a task row
+                    let mut touched_row = None;
+                    if self.active_tab == 0 && !is_right {
+                        let visible_indices = self.filtered_indices();
+                        for (display_row, _) in visible_indices.iter().enumerate().take(6) {
+                            let row_y = -105.0 + (display_row as f32) * 44.0;
+                            if (-156.0..=156.0).contains(&local_x)
+                                && (local_y - row_y).abs() <= 18.0
+                            {
+                                touched_row = Some(display_row);
+                                break;
+                            }
+                        }
+                    }
+
+                    if let Some(r) = touched_row {
+                        self.task_pressed_row = Some(r);
+                        self.press_start_pos = [px, py];
+                        self.is_sliding = false;
+                    } else {
+                        let handled = self.handle_click(px, py, is_right);
+                        if !handled {
+                            self.is_dragging = true;
+                            self.drag_grab_offset = [px as i32, py as i32];
+                        }
                     }
                 }
                 PointerEventKind::Release { .. } => {
                     had_event = true;
+                    if self.is_sliding {
+                        if let Some(row) = self.task_pressed_row.take() {
+                            let off = self.slide_offsets[row];
+                            let visible = self.filtered_indices();
+                            if off < -75.0 && row < visible.len() {
+                                let actual_idx = visible[row];
+                                if actual_idx < self.todos.tasks.len() {
+                                    self.todos.tasks.remove(actual_idx);
+                                    self.save_todos();
+                                }
+                            }
+                            self.is_sliding = false;
+                        }
+                    } else if let Some(row) = self.task_pressed_row.take() {
+                        // Regular tap / click -> toggle task done
+                        let visible = self.filtered_indices();
+                        if row < visible.len() {
+                            let actual_idx = visible[row];
+                            if actual_idx < self.todos.tasks.len() {
+                                self.todos.tasks[actual_idx].done =
+                                    !self.todos.tasks[actual_idx].done;
+                                self.save_todos();
+                            }
+                        }
+                    }
                     self.is_dragging = false;
                 }
                 _ => {}
@@ -601,8 +667,8 @@ impl AppData {
             return true;
         }
 
-        // Check task row click (row_y = -105.0 + i * 44.0)
-        if self.active_tab == 0 {
+        // Check task row right-click to delete (row_y = -105.0 + i * 44.0)
+        if self.active_tab == 0 && is_right {
             let visible_indices = self.filtered_indices();
             for (display_row, &actual_idx) in visible_indices.iter().enumerate().take(6) {
                 let row_y = -105.0 + (display_row as f32) * 44.0;
@@ -610,19 +676,7 @@ impl AppData {
                     && (local_y - row_y).abs() <= 18.0
                     && actual_idx < self.todos.tasks.len()
                 {
-                    if is_right || local_x > 115.0 {
-                        if is_right {
-                            self.todos.tasks.remove(actual_idx);
-                        } else {
-                            if self.todos.tasks[actual_idx].r#type == "daily" {
-                                self.todos.tasks[actual_idx].r#type = "todo".to_string();
-                            } else {
-                                self.todos.tasks[actual_idx].r#type = "daily".to_string();
-                            }
-                        }
-                    } else {
-                        self.todos.tasks[actual_idx].done = !self.todos.tasks[actual_idx].done;
-                    }
+                    self.todos.tasks.remove(actual_idx);
                     self.save_todos();
                     self.draw();
                     return true;
@@ -668,7 +722,7 @@ impl AppData {
                 self.todos.tasks.push(TodoItem {
                     text,
                     done: false,
-                    r#type: "daily".to_string(),
+                    r#type: "todo".to_string(),
                     lastCompletedDate: String::new(),
                 });
                 self.save_todos();
@@ -773,7 +827,25 @@ impl AppData {
         self.tab_spring.update(dt);
         self.filter_spring.update(dt);
 
-        !self.tab_spring.is_at_rest() || !self.filter_spring.is_at_rest() || self.is_editing
+        let mut slide_animating = false;
+        if !self.is_sliding {
+            for off in &mut self.slide_offsets {
+                if *off != 0.0 {
+                    *off += (0.0 - *off) * (20.0 * dt).min(1.0);
+                    if off.abs() < 0.5 {
+                        *off = 0.0;
+                    } else {
+                        slide_animating = true;
+                    }
+                }
+            }
+        }
+
+        !self.tab_spring.is_at_rest()
+            || !self.filter_spring.is_at_rest()
+            || self.is_editing
+            || slide_animating
+            || self.is_sliding
     }
 
     fn render_ui_overlay(&self, buf: &mut [u8]) {
@@ -978,6 +1050,7 @@ impl AppData {
             for (row_idx, &actual_idx) in visible_indices.iter().enumerate().take(6) {
                 let cy = 122.5 + (row_idx as f32) * 44.0;
                 let task = &self.todos.tasks[actual_idx];
+                let slide_x = self.slide_offsets[row_idx];
 
                 // Regional luminance adaptation: sample the actual text's bounding box width
                 let text_w = (self.font.measure_text(&task.text, 15.5, FontWeight::Bold) as u32)
@@ -1020,8 +1093,76 @@ impl AppData {
                     (row_primary, FontWeight::Bold)
                 };
 
-                // Precision anti-aliased vector checkbox (comfortable 10px padding from row left edge)
-                let chk_cx = 44.0;
+                // Slide-to-Delete: Red delete reveal underneath and sliding card top
+                if slide_x < -1.0 {
+                    // Underneath: Red slide-to-delete background
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        180.0,
+                        cy,
+                        156.0,
+                        18.0,
+                        9.0,
+                        [225, 45, 65, 235],
+                    );
+                    let label = if slide_x < -75.0 {
+                        "Release to delete"
+                    } else {
+                        "Slide to delete"
+                    };
+                    self.font.draw_text_centered(
+                        buf,
+                        self.width,
+                        self.height,
+                        label,
+                        270.0,
+                        cy,
+                        11.5,
+                        [255, 255, 255, 255],
+                        [0, 0, 0, 0],
+                        FontWeight::Bold,
+                    );
+
+                    // Top: Sliding glass card
+                    let card_bg = if row_is_light {
+                        [245, 248, 252, 240]
+                    } else {
+                        [24, 30, 42, 240]
+                    };
+                    let card_rim = if row_is_light {
+                        [190, 200, 215, 200]
+                    } else {
+                        [75, 90, 120, 200]
+                    };
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        180.0 + slide_x,
+                        cy,
+                        156.0,
+                        18.0,
+                        9.0,
+                        card_bg,
+                    );
+                    UIFont::draw_rounded_rect_stroke(
+                        buf,
+                        self.width,
+                        self.height,
+                        180.0 + slide_x,
+                        cy,
+                        156.0,
+                        18.0,
+                        9.0,
+                        1.0,
+                        card_rim,
+                    );
+                }
+
+                // Precision anti-aliased vector checkbox
+                let chk_cx = 44.0 + slide_x;
                 if task.done {
                     let bg_box = if row_is_light {
                         [10, 14, 22, 255]
@@ -1080,12 +1221,13 @@ impl AppData {
                     display_text = format!("{}...", &display_text[..22]);
                 }
 
+                let text_x = 68.0 + slide_x;
                 let end_x = self.font.draw_text_centered_y(
                     buf,
                     self.width,
                     self.height,
                     &display_text,
-                    68.0,
+                    text_x,
                     cy,
                     15.5,
                     text_col,
@@ -1099,45 +1241,11 @@ impl AppData {
                         buf,
                         self.width,
                         self.height,
-                        57.0,
+                        57.0 + slide_x,
                         end_x + 2.0,
                         cy,
                         1.5,
                         col_dimmed,
-                    );
-                }
-
-                // "DAILY" pill badge centered at cx = 304.0, cy (only render if type differs from default or explicitly non-daily)
-                if task.r#type != "daily" && !task.r#type.is_empty() {
-                    let tag_text = task.r#type.to_uppercase();
-                    let tag_stroke = if self.is_wallpaper_light {
-                        [45, 55, 70, 160]
-                    } else {
-                        [200, 215, 235, 140]
-                    };
-                    UIFont::draw_rounded_rect_stroke(
-                        buf,
-                        self.width,
-                        self.height,
-                        304.0,
-                        cy,
-                        22.0,
-                        9.0,
-                        5.0,
-                        1.2,
-                        tag_stroke,
-                    );
-                    self.font.draw_text_centered(
-                        buf,
-                        self.width,
-                        self.height,
-                        &tag_text,
-                        304.0,
-                        cy,
-                        10.5,
-                        col_secondary,
-                        col_shadow,
-                        FontWeight::Bold,
                     );
                 }
             }
@@ -1724,6 +1832,11 @@ fn main() {
         input_buffer: String::new(),
         edit_start_time: Instant::now(),
 
+        slide_offsets: [0.0; 6],
+        task_pressed_row: None,
+        press_start_pos: [0.0, 0.0],
+        is_sliding: false,
+
         font,
         tab_spring: Spring::with_params(0.0, spring_params),
         filter_spring: Spring::with_params(0.0, spring_params),
@@ -1761,6 +1874,15 @@ fn main() {
         for seat in app_data.seat_state.seats() {
             if let Ok(ptr) = app_data.seat_state.get_pointer(&qh, &seat) {
                 app_data.pointer = Some(ptr);
+                break;
+            }
+        }
+    }
+
+    if app_data.keyboard.is_none() {
+        for seat in app_data.seat_state.seats() {
+            if let Ok(kbd) = app_data.seat_state.get_keyboard(&qh, &seat, None) {
+                app_data.keyboard = Some(kbd);
                 break;
             }
         }
