@@ -249,8 +249,15 @@ pub struct AppData {
     is_swiping: bool,
     last_interaction: Instant,
 
+    // Power Menu Hold-to-Confirm: (tile_idx, press_start_time)
+    power_held: Option<(usize, Instant)>,
+
     // System Monitoring
     sys_stats: SysStats,
+
+    // Hyprland Window Occlusion Auto-Hiding
+    is_window_overlapping: bool,
+    last_window_check: Instant,
 
     // Frame management
     width: u32,
@@ -397,6 +404,22 @@ impl AppData {
     }
 
     fn update_physics(&mut self, dt: f32) -> bool {
+        self.check_window_overlap();
+
+        // If a window is overlapping and user is NOT hovering, smoothly retract upwards & fade
+        let effective_target_y =
+            if self.is_window_overlapping && !self.is_hovered && !self.is_pressed {
+                -self.target_h - 10.0
+            } else {
+                self.target_y
+            };
+        let effective_target_alpha =
+            if self.is_window_overlapping && !self.is_hovered && !self.is_pressed {
+                0.0
+            } else {
+                self.target_alpha
+            };
+
         let spring_k = 380.0f32;
         let damping = 33.1f32;
 
@@ -408,19 +431,19 @@ impl AppData {
         self.vel_h += force_h * dt;
         self.current_h += self.vel_h * dt;
 
-        let force_y = -spring_k * (self.current_y - self.target_y) - damping * self.vel_y;
+        let force_y = -spring_k * (self.current_y - effective_target_y) - damping * self.vel_y;
         self.vel_y += force_y * dt;
         self.current_y += self.vel_y * dt;
 
         let force_a =
-            -spring_k * (self.current_alpha - self.target_alpha) - damping * self.vel_alpha;
+            -spring_k * (self.current_alpha - effective_target_alpha) - damping * self.vel_alpha;
         self.vel_alpha += force_a * dt;
         self.current_alpha = (self.current_alpha + self.vel_alpha * dt).clamp(0.0, 1.0);
 
         let settling = (self.current_w - self.target_w).abs() < 0.5
             && (self.current_h - self.target_h).abs() < 0.5
-            && (self.current_y - self.target_y).abs() < 0.5
-            && (self.current_alpha - self.target_alpha).abs() < 0.01
+            && (self.current_y - effective_target_y).abs() < 0.5
+            && (self.current_alpha - effective_target_alpha).abs() < 0.01
             && self.vel_w.abs() < 1.0
             && self.vel_h.abs() < 1.0
             && self.vel_y.abs() < 1.0;
@@ -428,8 +451,8 @@ impl AppData {
         if settling {
             self.current_w = self.target_w;
             self.current_h = self.target_h;
-            self.current_y = self.target_y;
-            self.current_alpha = self.target_alpha;
+            self.current_y = effective_target_y;
+            self.current_alpha = effective_target_alpha;
             self.vel_w = 0.0;
             self.vel_h = 0.0;
             self.vel_y = 0.0;
@@ -471,7 +494,29 @@ impl AppData {
             self.set_mode(IslandMode::CompactPill);
         }
 
-        !settling || (self.music.is_playing && self.mode != IslandMode::Hidden) || self.is_hovered
+        // Power menu hold-to-confirm progress update
+        let mut hold_active = false;
+        if let Some((idx, start)) = self.power_held {
+            hold_active = true;
+            if start.elapsed() >= Duration::from_millis(1200) {
+                self.power_held = None;
+                match idx {
+                    2 => {
+                        let _ = Command::new("systemctl").arg("reboot").spawn();
+                    }
+                    3 => {
+                        let _ = Command::new("systemctl").arg("poweroff").spawn();
+                    }
+                    _ => {}
+                }
+                self.set_mode(IslandMode::CompactPill);
+            }
+        }
+
+        !settling
+            || (self.music.is_playing && self.mode != IslandMode::Hidden)
+            || self.is_hovered
+            || hold_active
     }
 
     fn check_music(&mut self) {
@@ -518,6 +563,112 @@ impl AppData {
         } else {
             self.music.is_playing = false;
         }
+    }
+
+    fn check_window_overlap(&mut self) {
+        if self.last_window_check.elapsed() < Duration::from_millis(300) {
+            return;
+        }
+        self.last_window_check = Instant::now();
+
+        // Query active workspace and client geometries via Hyprland UNIX socket
+        let overlapping =
+            Self::query_hyprland_overlap(self.pos_x, self.pos_y, self.width as i32, 90);
+        if overlapping != self.is_window_overlapping {
+            self.is_window_overlapping = overlapping;
+            self.animating = true;
+            self.needs_redraw = true;
+        }
+    }
+
+    fn query_hyprland_overlap(island_x: i32, island_y: i32, island_w: i32, island_h: i32) -> bool {
+        use std::io::{Read, Write};
+        use std::os::unix::net::UnixStream;
+
+        let his = match std::env::var("HYPRLAND_INSTANCE_SIGNATURE") {
+            Ok(h) => h,
+            Err(_) => return false,
+        };
+        let xdg = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
+            let uid = unsafe { libc::getuid() };
+            format!("/run/user/{}", uid)
+        });
+        let sock_path = format!("{}/hypr/{}/.socket.sock", xdg, his);
+
+        // 1. Get active workspace ID
+        let mut active_ws_id = None;
+        if let Ok(mut stream) = UnixStream::connect(&sock_path) {
+            if stream.write_all(b"j/activeworkspace").is_ok() {
+                let mut resp = Vec::new();
+                if stream.read_to_end(&mut resp).is_ok() {
+                    if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&resp) {
+                        active_ws_id = val.get("id").and_then(|id| id.as_i64());
+                    }
+                }
+            }
+        }
+
+        let ws_id = match active_ws_id {
+            Some(id) => id,
+            None => return false,
+        };
+
+        // 2. Query clients on active workspace
+        if let Ok(mut stream) = UnixStream::connect(&sock_path) {
+            if stream.write_all(b"j/clients").is_ok() {
+                let mut resp = Vec::new();
+                if stream.read_to_end(&mut resp).is_ok() {
+                    if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&resp) {
+                        if let Some(arr) = val.as_array() {
+                            let island_r = island_x + island_w;
+                            let island_b = island_y + island_h;
+
+                            for client in arr {
+                                let mapped = client
+                                    .get("mapped")
+                                    .and_then(|m| m.as_bool())
+                                    .unwrap_or(false);
+                                let hidden = client
+                                    .get("hidden")
+                                    .and_then(|h| h.as_bool())
+                                    .unwrap_or(false);
+                                let client_ws = client
+                                    .get("workspace")
+                                    .and_then(|w| w.get("id"))
+                                    .and_then(|id| id.as_i64());
+
+                                if mapped && !hidden && client_ws == Some(ws_id) {
+                                    let at = client.get("at").and_then(|a| a.as_array());
+                                    let sz = client.get("size").and_then(|s| s.as_array());
+                                    if let (Some(at), Some(sz)) = (at, sz) {
+                                        if at.len() >= 2 && sz.len() >= 2 {
+                                            let wx = at[0].as_i64().unwrap_or(0) as i32;
+                                            let wy = at[1].as_i64().unwrap_or(0) as i32;
+                                            let ww = sz[0].as_i64().unwrap_or(0) as i32;
+                                            let wh = sz[1].as_i64().unwrap_or(0) as i32;
+
+                                            let wr = wx + ww;
+                                            let wb = wy + wh;
+
+                                            // Check AABB intersection with the island top zone
+                                            if wx < island_r
+                                                && wr > island_x
+                                                && wy < island_b
+                                                && wb > island_y
+                                            {
+                                                return true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        false
     }
 
     fn check_wallpaper(&mut self) {
@@ -1067,17 +1218,17 @@ impl AppData {
 
                     let tile_bg = if is_tile_hover {
                         if is_light {
-                            [215, 222, 238, 240]
+                            [255, 255, 255, 140]
                         } else {
-                            [65, 78, 108, 220]
+                            [255, 255, 255, 48]
                         }
                     } else if is_light {
-                        [235, 240, 248, 180]
+                        [255, 255, 255, 75]
                     } else {
-                        [28, 34, 46, 190]
+                        [255, 255, 255, 20]
                     };
 
-                    // Container pill (half_w = (item_w - 10) * 0.5, half_h = 25.0)
+                    // Container pill: pure optical translucent liquid glass
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
@@ -1090,25 +1241,29 @@ impl AppData {
                         tile_bg,
                     );
 
-                    // If hovered, draw a crisp 1.2px highlight rim
-                    if is_tile_hover {
-                        UIFont::draw_rounded_rect_stroke(
-                            buf,
-                            self.width,
-                            self.height,
-                            cx,
-                            cy,
-                            (item_w - 10.0) * 0.5,
-                            25.0,
-                            12.0,
-                            1.2,
+                    // Specular rim highlight (subtle 1px glass edge)
+                    UIFont::draw_rounded_rect_stroke(
+                        buf,
+                        self.width,
+                        self.height,
+                        cx,
+                        cy,
+                        (item_w - 10.0) * 0.5,
+                        25.0,
+                        12.0,
+                        1.0,
+                        if is_tile_hover {
                             if is_light {
-                                [90, 140, 240, 200]
+                                [90, 150, 255, 200]
                             } else {
-                                [210, 225, 255, 180]
-                            },
-                        );
-                    }
+                                [255, 255, 255, 190]
+                            }
+                        } else if is_light {
+                            [255, 255, 255, 180]
+                        } else {
+                            [255, 255, 255, 55]
+                        },
+                    );
 
                     // Key hint badge at top-right of tile (1..5)
                     let hint_cx = cx + (item_w - 10.0) * 0.5 - 9.0;
@@ -1279,11 +1434,11 @@ impl AppData {
                 for (idx, (lbl, val, accent)) in stat_items.iter().enumerate() {
                     let cx = start_x + (idx as f32) * item_w;
 
-                    // Container pill
+                    // Container pill: pure optical translucent liquid glass
                     let tile_bg = if is_light {
-                        [235, 240, 248, 180]
+                        [255, 255, 255, 75]
                     } else {
-                        [28, 34, 46, 190]
+                        [255, 255, 255, 20]
                     };
                     UIFont::draw_rounded_rect_fill(
                         buf,
@@ -1295,6 +1450,24 @@ impl AppData {
                         25.0,
                         12.0,
                         tile_bg,
+                    );
+
+                    // Specular rim highlight (subtle 1px glass edge)
+                    UIFont::draw_rounded_rect_stroke(
+                        buf,
+                        self.width,
+                        self.height,
+                        cx,
+                        cy,
+                        (item_w - 10.0) * 0.5,
+                        25.0,
+                        12.0,
+                        1.0,
+                        if is_light {
+                            [255, 255, 255, 180]
+                        } else {
+                            [255, 255, 255, 55]
+                        },
                     );
 
                     // Label (top)
@@ -1373,18 +1546,36 @@ impl AppData {
                         && (cur_lx - cx).abs() <= (item_w - 10.0) * 0.5
                         && (cur_ly - cy).abs() <= 25.0;
 
-                    let tile_bg = if is_tile_hover {
-                        if is_light {
-                            [215, 222, 238, 240]
+                    let is_tile_pressed = self.power_held.is_some_and(|(h_idx, _)| h_idx == idx);
+                    let hold_progress = if let Some((h_idx, start)) = self.power_held {
+                        if h_idx == idx {
+                            (start.elapsed().as_secs_f32() / 1.2).clamp(0.0, 1.0)
                         } else {
-                            [65, 78, 108, 220]
+                            0.0
                         }
-                    } else if is_light {
-                        [235, 240, 248, 180]
                     } else {
-                        [28, 34, 46, 190]
+                        0.0
                     };
 
+                    let tile_bg = if is_tile_pressed {
+                        if is_light {
+                            [255, 200, 200, 245]
+                        } else {
+                            [120, 35, 45, 230]
+                        }
+                    } else if is_tile_hover {
+                        if is_light {
+                            [255, 255, 255, 140]
+                        } else {
+                            [255, 255, 255, 48]
+                        }
+                    } else if is_light {
+                        [255, 255, 255, 75]
+                    } else {
+                        [255, 255, 255, 20]
+                    };
+
+                    // Translucent optical glass tile
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
@@ -1397,18 +1588,46 @@ impl AppData {
                         tile_bg,
                     );
 
-                    if is_tile_hover {
-                        UIFont::draw_rounded_rect_stroke(
+                    // Specular rim highlight (subtle translucent 1px bevel)
+                    let stroke_col = if is_tile_pressed {
+                        [255, 60, 60, 255]
+                    } else if is_tile_hover {
+                        if is_light {
+                            [90, 150, 255, 200]
+                        } else {
+                            [255, 255, 255, 190]
+                        }
+                    } else if is_light {
+                        [255, 255, 255, 180]
+                    } else {
+                        [255, 255, 255, 55]
+                    };
+                    UIFont::draw_rounded_rect_stroke(
+                        buf,
+                        self.width,
+                        self.height,
+                        cx,
+                        cy,
+                        (item_w - 10.0) * 0.5,
+                        25.0,
+                        12.0,
+                        1.0,
+                        stroke_col,
+                    );
+
+                    // If holding Restart or Power Off, draw progress fill bar
+                    if is_tile_pressed && (idx == 2 || idx == 3) && hold_progress > 0.05 {
+                        let fill_w = ((item_w - 12.0) * hold_progress) * 0.5;
+                        UIFont::draw_rounded_rect_fill(
                             buf,
                             self.width,
                             self.height,
                             cx,
-                            cy,
-                            (item_w - 10.0) * 0.5,
-                            25.0,
-                            12.0,
-                            1.2,
-                            *accent_col,
+                            cy + 22.0,
+                            fill_w,
+                            1.8,
+                            1.5,
+                            [255, 60, 60, 255],
                         );
                     }
 
@@ -1427,21 +1646,26 @@ impl AppData {
                     );
 
                     // Text (bottom)
+                    let display_text = if is_tile_pressed && (idx == 2 || idx == 3) {
+                        "Hold..."
+                    } else {
+                        name
+                    };
                     self.font.draw_text_centered(
                         buf,
                         self.width,
                         self.height,
-                        name,
+                        display_text,
                         cx,
                         cy + 10.0,
-                        11.0,
+                        10.5,
                         if is_light {
-                            [20, 28, 40, 255]
+                            [15, 22, 32, 255]
                         } else {
-                            [225, 232, 244, 255]
+                            [240, 245, 255, 255]
                         },
                         col_shadow,
-                        FontWeight::Medium,
+                        FontWeight::SemiBold,
                     );
                 }
             }
@@ -1453,6 +1677,7 @@ impl AppData {
         self.check_ipc();
         self.check_music();
         self.check_wallpaper();
+        self.check_window_overlap();
 
         self.render_ui_overlay();
 
@@ -1613,23 +1838,18 @@ impl AppData {
                     if (lx - cx).abs() <= (item_w - 10.0) * 0.5 && (ly - cy).abs() <= 25.0 {
                         match idx {
                             0 => {
-                                // Lock screen
+                                // Lock screen (safe immediate)
                                 let _ = Command::new("hyprlock").spawn();
                                 self.set_mode(IslandMode::CompactPill);
                             }
                             1 => {
-                                // Suspend
+                                // Suspend (safe immediate)
                                 let _ = Command::new("systemctl").arg("suspend").spawn();
                                 self.set_mode(IslandMode::CompactPill);
                             }
-                            2 => {
-                                // Reboot
-                                let _ = Command::new("systemctl").arg("reboot").spawn();
-                            }
-                            _ => {
-                                // Power Off
-                                let _ = Command::new("systemctl").arg("poweroff").spawn();
-                            }
+                            // 2 (Restart) and 3 (Power Off) require Hold-to-Confirm!
+                            // Instant clicks do nothing to prevent accidents.
+                            _ => {}
                         }
                         break;
                     }
@@ -1847,6 +2067,24 @@ impl PointerHandler for AppData {
                     let lx = event.position.0 as f32;
                     let ly = event.position.1 as f32;
                     self.press_pos = [lx, ly];
+
+                    // Check if pressing Restart (idx=2) or Power Off (idx=3) in PowerMenu
+                    if self.mode == IslandMode::PowerMenu {
+                        let island_cx = (self.width as f32) * 0.5;
+                        let island_top = self.current_y;
+                        let island_w = self.current_w;
+                        let item_w = (island_w - 52.0) / 4.0;
+                        let start_x = island_cx - island_w * 0.5 + 26.0 + item_w * 0.5;
+                        let cy = island_top + 64.0;
+
+                        for idx in 2..=3 {
+                            let cx = start_x + (idx as f32) * item_w;
+                            if (lx - cx).abs() <= (item_w - 10.0) * 0.5 && (ly - cy).abs() <= 25.0 {
+                                self.power_held = Some((idx, Instant::now()));
+                                break;
+                            }
+                        }
+                    }
                 }
                 PointerEventKind::Release { .. } => {
                     let lx = event.position.0 as f32;
@@ -1856,6 +2094,7 @@ impl PointerHandler for AppData {
                     }
                     self.is_pressed = false;
                     self.is_swiping = false;
+                    self.power_held = None;
                 }
                 PointerEventKind::Axis { horizontal, .. } => {
                     self.last_interaction = Instant::now();
@@ -2091,7 +2330,10 @@ fn main() {
         press_pos: [-1.0, -1.0],
         is_swiping: false,
         last_interaction: Instant::now(),
+        power_held: None,
         sys_stats: SysStats::new(),
+        is_window_overlapping: false,
+        last_window_check: Instant::now() - Duration::from_secs(5),
 
         width,
         height,
