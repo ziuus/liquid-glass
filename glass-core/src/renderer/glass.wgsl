@@ -1346,19 +1346,27 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Crisp, stable rounded-rectangle SDF
     let sdf = rr_sdf(local_px, half_size, r);
     
-    // Outside the rounded rectangle (e.g. at corner cuts):
-    // 100% transparent. Eliminates any ugly square box / clipped outer shadow!
+    // Soft ambient drop shadow outside rounded bounds (within shadow_radius)
+    let shadow_radius = 22.0;
     if sdf > 0.0 {
-        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+        if sdf > shadow_radius {
+            return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+        }
+        let shadow_t = clamp(1.0 - sdf / shadow_radius, 0.0, 1.0);
+        let shadow_alpha = pow(shadow_t, 2.2) * 0.38;
+        let bg_col = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
+        let shadow_col = bg_col * (1.0 - shadow_alpha);
+        let shadow_fade = smoothstep(shadow_radius, shadow_radius - 1.5, sdf);
+        return vec4<f32>(shadow_col * shadow_fade, shadow_fade);
     }
     
     // ════════════════════════════════════════════
     // 2. ANALYTIC CONVEX SQUIRCLE BEZEL & 3D NORMAL
     // ════════════════════════════════════════════
     let depth = max(-sdf, 0.0);
-    // Meniscus bezel proportional to element size: max 35% of min(w, h), floor of 14.0px
-    let max_element_bezel = max(0.35 * min(bounds_px.z, bounds_px.w), 14.0);
-    let bezel = clamp(params.bevel, 14.0, max_element_bezel); // Liquid edge thickness (14-18px)
+    // Meniscus bezel proportional to element size: max 38% of min(w, h), floor of 18.0px
+    let max_element_bezel = max(0.38 * min(bounds_px.z, bounds_px.w), 18.0);
+    let bezel = clamp(params.bevel, 18.0, max_element_bezel); // Liquid edge thickness (18-24px)
     let t = clamp(depth / bezel, 0.0, 1.0);                  // 0.0 at outer rim, 1.0 at flat interior
     let u = 1.0 - t;
 
@@ -1367,7 +1375,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // Analytic slope: dh/d(depth) = u / (bezel * sqrt(1.0 - u^2))
     // Strictly zero at t = 1.0 (flat interior), physically bounded contact angle at rim
-    let dh_dt = u / max(sqrt(1.0 - u * u), 0.28);
+    let dh_dt = u / max(sqrt(1.0 - u * u), 0.25);
     let slope = dh_dt / bezel;
 
     // Exact analytical 2D outward unit normal of rounded rectangle
@@ -1379,7 +1387,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // 3D Surface Normal from convex liquid bubble:
     // Strictly (0, 0, 1) in the flat interior, outward tilt along curved rim
-    let N = normalize(vec3<f32>(grad_2d * (slope * 22.0), 1.0));
+    let N = normalize(vec3<f32>(grad_2d * (slope * 24.0), 1.0));
     let N_2d = N.xy;
 
     // ════════════════════════════════════════════
@@ -1389,16 +1397,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let eta = 1.0 / 1.52;
     let R = refract(vec3<f32>(0.0, 0.0, -1.0), N, eta);
 
-    // Enhanced refraction at rim and corners: glass curvature bends background strongest at edges!
-    let corner_refract_boost = 1.0 + 0.45 * corner_factor;
-    let thickness_px = (0.75 * bezel) * corner_refract_boost;
-    let rim_tilt = pow(1.0 - t, 0.70);
-    let offset_px = (R.xy / max(-R.z, 0.001)) * (thickness_px * (0.35 + 0.65 * rim_tilt));
+    // Liquid lensing profile: strong outward/inward magnification bulge along the perimeter
+    let corner_refract_boost = 1.0 + 0.40 * corner_factor;
+    let meniscus_lensing = pow(1.0 - t, 1.5) * corner_refract_boost;
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
-    let base_uv = uv + offset_px * px_to_uv;
 
-    // Cauchy chromatic dispersion along optical ray
-    let ca_offset = R.xy * (params.dispersion * 14.0 * px_to_uv);
+    // Base optical ray deflection: bends background coordinates into the bevel
+    let refr_px = (R.xy / max(-R.z, 0.001)) * (bezel * 1.35 * meniscus_lensing * params.refraction_strength);
+    let base_uv = uv + refr_px * px_to_uv;
+
+    // Cauchy chromatic dispersion along optical refraction gradient
+    // Separates red, green, and blue rays along the curve for genuine prismatic edge fringes
+    let disp_px = (grad_2d * (params.dispersion * 120.0 + 4.2) + refr_px * 0.15) * meniscus_lensing;
+    let ca_offset = disp_px * px_to_uv;
 
     let uv_r = clamp(base_uv - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
     let uv_g = clamp(base_uv, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1417,11 +1428,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if params.blur_radius <= 0.5 {
         col = sharp_col;
     } else {
-        // Continuous variable blur: smoothly scales from rim to interior over 3.0x bezel
-        // completely eliminating the sharp spotlight boundary ring
-        let blur_t = smoothstep(0.0, 3.0 * bezel, depth);
-        let cur_radius = clamp(params.blur_radius * blur_t, 0.0, 6.0);
-        if cur_radius <= 0.3 {
+        // Continuous variable blur: smoothly scales from sharp refractive rim to deep frosted interior
+        let blur_t = smoothstep(0.0, 2.2 * bezel, depth);
+        let cur_radius = clamp(params.blur_radius * blur_t, 0.0, 24.0);
+        if cur_radius <= 0.4 {
             col = sharp_col;
         } else {
             let frosted_col = sample_frost_blur(uv, cur_radius);
@@ -1457,19 +1467,27 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let light_vec_2d = normalize(vec2<f32>(-0.45, -0.65));
     let light_facing = max(dot(N_2d, light_vec_2d), 0.0);
 
-    // Fresnel grazing factor: pow(1.0 - dot(N, V), 3.0)
+    // Fresnel grazing factor: physical dielectric reflection at steep angles
     let N_dot_V = max(dot(N, view_dir_3d), 0.0);
-    let fresnel_grazing = pow(1.0 - N_dot_V, 3.0);
+    let fresnel_grazing = pow(1.0 - N_dot_V, 2.6);
 
     // ════════════════════════════════════════════
     // 6. DIELECTRIC FRESNEL REFLECTION & CRISP DIRECTIONAL SPECULAR
     // ════════════════════════════════════════════
+    // Soft milky ambient reflection across the curved meniscus (signature Apple glass sheen)
+    let milky_sheen = vec3<f32>(0.96, 0.98, 1.0) * (fresnel_grazing * params.fresnel_strength * 0.32);
+    col += milky_sheen;
+
+    // Subtle caustic shoulder line at the transition where bevel meets flat interior (t ≈ 0.88)
+    let caustic_line = smoothstep(0.10, 0.0, abs(t - 0.88)) * 0.16 * params.specular_strength;
+    col += vec3<f32>(caustic_line);
+
     // Pure directional specular glint: strong at top-left, fading cleanly to zero at bottom rim (no bottom smudge)
     let corner_mult = 1.0 + 0.35 * corner_factor;
-    let dir_spec = pow(light_facing, 1.35);
-    let edge_spec = smoothstep(1.4, 0.0, depth) * dir_spec * corner_mult;
-    let soft_falloff = smoothstep(3.0, 0.0, depth) * 0.10 * dir_spec;
-    let spec_rim = (edge_spec + soft_falloff) * params.specular_strength;
+    let dir_spec = pow(light_facing, 1.40);
+    let edge_spec = smoothstep(1.5, 0.0, depth) * dir_spec * corner_mult;
+    let soft_falloff = smoothstep(3.5, 0.0, depth) * 0.12 * dir_spec;
+    let spec_rim = (edge_spec + soft_falloff) * params.specular_strength * 1.15;
 
     // On light backdrops: directional dark contour dip to prevent washed-out white-on-white edges
     let dark_edge = smoothstep(1.8, 0.0, depth) * (1.0 - light_facing * 0.60) * mix(0.0, 0.28, is_light);

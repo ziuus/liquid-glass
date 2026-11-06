@@ -728,6 +728,7 @@ dependencies = [
  "bytemuck",
  "image",
  "log",
+ "pollster",
  "raw-window-handle",
  "serde",
  "serde_json",

@@ -449,6 +449,9 @@ impl IslandWidget {
                     (event.position.0 as f32) / (self.width as f32),
                     (event.position.1 as f32) / (self.height as f32),
                 ];
+                if self.mode == IslandMode::Hidden {
+                    self.set_mode(IslandMode::CompactPill);
+                }
                 true
             }
             PointerEventKind::Leave { .. } => {
@@ -456,6 +459,7 @@ impl IslandWidget {
                 self.is_pressed = false;
                 self.is_swiping = false;
                 self.cursor_pos = [-1.0, -1.0];
+                self.last_interaction = Instant::now() - Duration::from_millis(1000);
                 true
             }
             PointerEventKind::Motion { .. } => {
@@ -680,18 +684,21 @@ impl IslandWidget {
         self.check_window_overlap();
 
         // If a window is overlapping and user is NOT hovering, smoothly retract upwards & fade
-        let effective_target_y =
-            if self.is_window_overlapping && !self.is_hovered && !self.is_pressed {
-                -self.target_h - 10.0
-            } else {
-                self.target_y
-            };
-        let effective_target_alpha =
-            if self.is_window_overlapping && !self.is_hovered && !self.is_pressed {
-                0.0
-            } else {
-                self.target_alpha
-            };
+        // EXCEPT when displaying an active notification or when user is interacting
+        let is_alerting = self.mode == IslandMode::Notification;
+        let should_retract_for_window =
+            self.is_window_overlapping && !self.is_hovered && !self.is_pressed && !is_alerting;
+
+        let effective_target_y = if should_retract_for_window {
+            -self.target_h - 10.0
+        } else {
+            self.target_y
+        };
+        let effective_target_alpha = if should_retract_for_window {
+            0.0
+        } else {
+            self.target_alpha
+        };
 
         let spring_k = 380.0f32;
         let damping = 33.1f32;
@@ -773,7 +780,8 @@ impl IslandWidget {
                 (self.music.elapsed_sec / self.music.duration_sec).clamp(0.0, 1.0);
         }
 
-        // Auto-hide / auto-collapse after inactivity (8 seconds)
+        // Auto-hide / auto-collapse after inactivity:
+        // When expanded, retract back after 3.5s of no user interaction
         if !self.is_hovered
             && !self.is_pressed
             && matches!(
@@ -783,9 +791,25 @@ impl IslandWidget {
                     | IslandMode::SystemOverview
                     | IslandMode::PowerMenu
             )
-            && self.last_interaction.elapsed() >= Duration::from_secs(8)
+            && self.last_interaction.elapsed() >= Duration::from_millis(3500)
         {
-            self.set_mode(IslandMode::CompactPill);
+            if self.music.is_playing {
+                self.set_mode(IslandMode::CompactPill);
+            } else {
+                self.set_mode(IslandMode::Hidden);
+            }
+        }
+
+        // Clean desktop presence: when idle in CompactPill with no media playing and no notification,
+        // smoothly hide after 6 seconds of inactivity
+        if !self.is_hovered
+            && !self.is_pressed
+            && self.mode == IslandMode::CompactPill
+            && !self.music.is_playing
+            && self.active_notif.is_none()
+            && self.last_interaction.elapsed() >= Duration::from_millis(6000)
+        {
+            self.set_mode(IslandMode::Hidden);
         }
 
         // Power menu hold-to-confirm progress update
@@ -828,7 +852,11 @@ impl IslandWidget {
         if let Ok(out) = Command::new("playerctl").args(["status"]).output() {
             if out.status.success() {
                 let status_str = String::from_utf8_lossy(&out.stdout).trim().to_lowercase();
+                let was_playing = self.music.is_playing;
                 self.music.is_playing = status_str.contains("playing");
+                if self.music.is_playing && !was_playing && self.mode == IslandMode::Hidden {
+                    self.set_mode(IslandMode::CompactPill);
+                }
 
                 if let Ok(meta_out) = Command::new("playerctl")
                     .args([
@@ -2231,13 +2259,13 @@ impl IslandWidget {
                 .material(Material::LiquidGlass)
                 .shape(island_shape)
                 .bounds(x_norm, y_norm, w_norm, h_norm)
-                .curvature(0.06)
-                .bevel(14.0)
-                .refraction(0.75)
-                .dispersion(0.025)
-                .blur(7.0)
-                .specular(1.20)
-                .fresnel(0.75)
+                .curvature(0.08)
+                .bevel(22.0)
+                .refraction(1.25)
+                .dispersion(0.045)
+                .blur(18.0)
+                .specular(1.35)
+                .fresnel(0.85)
                 .tint(
                     if self.music.is_playing { 1.0 } else { 0.0 },
                     if self.is_pressed { 1.0 } else { 0.0 },
@@ -2525,7 +2553,7 @@ try:
     bus = dbus.SessionBus()
     bus_obj = bus.get_object('org.freedesktop.DBus', '/org/freedesktop/DBus')
     bus_iface = dbus.Interface(bus_obj, 'org.freedesktop.DBus.Monitoring')
-    bus_iface.BecomeMonitor(["type='method_call',interface='org.freedesktop.Notifications',member='Notify'"], 0)
+    bus_iface.BecomeMonitor(["interface='org.freedesktop.Notifications'"], 0)
 
     def msg_handler(bus, msg):
         if msg.get_member() == 'Notify':
@@ -2536,8 +2564,9 @@ try:
             payload = json.dumps({"type": "notification", "app": app_name, "summary": summary, "body": body})
             try:
                 if os.path.exists(FIFO_PATH):
-                    with open(FIFO_PATH, "a") as f:
-                        f.write(payload + "\n")
+                    fd = os.open(FIFO_PATH, os.O_WRONLY | os.O_NONBLOCK)
+                    os.write(fd, (payload + "\n").encode())
+                    os.close(fd)
             except Exception:
                 pass
 

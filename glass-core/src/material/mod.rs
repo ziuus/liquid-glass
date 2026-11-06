@@ -246,13 +246,13 @@ impl Material {
     pub fn default_params(&self) -> MaterialParams {
         match self {
             Material::LiquidGlass => MaterialParams {
-                ior: 1.33,
+                ior: 1.52,
                 roughness: 0.05,
-                refraction_strength: 0.8,
-                dispersion: 0.08,
-                fresnel_strength: 0.7,
-                specular_strength: 0.9,
-                blur_radius: 16.0,
+                refraction_strength: 1.25,
+                dispersion: 0.045,
+                fresnel_strength: 0.85,
+                specular_strength: 1.35,
+                blur_radius: 18.0,
                 ..Default::default()
             },
             Material::FrostedGlass => MaterialParams {

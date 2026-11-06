@@ -431,18 +431,21 @@ impl AppData {
         self.check_window_overlap();
 
         // If a window is overlapping and user is NOT hovering, smoothly retract upwards & fade
-        let effective_target_y =
-            if self.is_window_overlapping && !self.is_hovered && !self.is_pressed {
-                -self.target_h - 10.0
-            } else {
-                self.target_y
-            };
-        let effective_target_alpha =
-            if self.is_window_overlapping && !self.is_hovered && !self.is_pressed {
-                0.0
-            } else {
-                self.target_alpha
-            };
+        // EXCEPT when displaying an active notification or when user is interacting
+        let is_alerting = self.mode == IslandMode::Notification;
+        let should_retract_for_window =
+            self.is_window_overlapping && !self.is_hovered && !self.is_pressed && !is_alerting;
+
+        let effective_target_y = if should_retract_for_window {
+            -self.target_h - 10.0
+        } else {
+            self.target_y
+        };
+        let effective_target_alpha = if should_retract_for_window {
+            0.0
+        } else {
+            self.target_alpha
+        };
 
         let spring_k = 380.0f32;
         let damping = 33.1f32;
@@ -2004,13 +2007,13 @@ impl AppData {
                 .material(Material::LiquidGlass)
                 .shape(island_shape)
                 .bounds(x_norm, y_norm, w_norm, h_norm)
-                .curvature(0.06)
-                .bevel(14.0)
-                .refraction(0.75)
-                .dispersion(0.025)
-                .blur(7.0)
-                .specular(1.20)
-                .fresnel(0.75)
+                .curvature(0.08)
+                .bevel(22.0)
+                .refraction(1.25)
+                .dispersion(0.045)
+                .blur(18.0)
+                .specular(1.35)
+                .fresnel(0.85)
                 .tint(
                     if self.music.is_playing { 1.0 } else { 0.0 },
                     if self.is_pressed { 1.0 } else { 0.0 },
@@ -2596,7 +2599,7 @@ try:
     bus = dbus.SessionBus()
     bus_obj = bus.get_object('org.freedesktop.DBus', '/org/freedesktop/DBus')
     bus_iface = dbus.Interface(bus_obj, 'org.freedesktop.DBus.Monitoring')
-    bus_iface.BecomeMonitor(["type='method_call',interface='org.freedesktop.Notifications',member='Notify'"], 0)
+    bus_iface.BecomeMonitor(["interface='org.freedesktop.Notifications'"], 0)
 
     def msg_handler(bus, msg):
         if msg.get_member() == 'Notify':
@@ -2607,8 +2610,9 @@ try:
             payload = json.dumps({"type": "notification", "app": app_name, "summary": summary, "body": body})
             try:
                 if os.path.exists(FIFO_PATH):
-                    with open(FIFO_PATH, "a") as f:
-                        f.write(payload + "\n")
+                    fd = os.open(FIFO_PATH, os.O_WRONLY | os.O_NONBLOCK)
+                    os.write(fd, (payload + "\n").encode())
+                    os.close(fd)
             except Exception:
                 pass
 
