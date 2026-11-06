@@ -1527,4 +1527,218 @@ impl UIFont {
             color,
         );
     }
+
+    /// Draws a photorealistic spinning vinyl disc with concentric groove rings,
+    /// rotating anisotropic specular sheen, colored inner core, and spindle hole.
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_spinning_vinyl(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        radius: f32,
+        angle_rad: f32,
+        is_light: bool,
+    ) {
+        let x_min = (cx - radius - 1.5).max(0.0) as i32;
+        let x_max = (cx + radius + 1.5).min(width as f32 - 1.0) as i32;
+        let y_min = (cy - radius - 1.5).max(0.0) as i32;
+        let y_max = (cy + radius + 1.5).min(height as f32 - 1.0) as i32;
+
+        let base_body: [u8; 3] = if is_light { [24, 28, 38] } else { [16, 20, 28] };
+        let core_color: [u8; 3] = if is_light {
+            [235, 240, 252]
+        } else {
+            [245, 248, 255]
+        };
+        let hole_color: [u8; 3] = [10, 12, 16];
+
+        let core_r = radius * 0.38;
+        let hole_r = radius * 0.12;
+
+        for py in y_min..=y_max {
+            for px in x_min..=x_max {
+                let dx = px as f32 - cx;
+                let dy = py as f32 - cy;
+                let dist = (dx * dx + dy * dy).sqrt();
+
+                if dist > radius + 1.0 {
+                    continue;
+                }
+
+                let outer_aa = (radius - dist).clamp(0.0, 1.0);
+                if outer_aa <= 0.0 {
+                    continue;
+                }
+
+                let pixel_angle = dy.atan2(dx);
+                // Rotating anisotropic light sheen: produces two rotating specular lobes (bow-tie sheen)
+                let rel_angle = pixel_angle - angle_rad;
+                let sheen = rel_angle.sin().abs().powi(6) * 0.32;
+
+                // Micro-groove pattern (hairline concentric tracks)
+                let groove = ((dist * 1.8).sin() * 0.5 + 0.5) * 0.08;
+
+                let final_rgb = if dist <= hole_r {
+                    // Center spindle hole
+                    let hole_aa = (hole_r - dist).clamp(0.0, 1.0);
+                    let mix_r = (core_color[0] as f32 * (1.0 - hole_aa)
+                        + hole_color[0] as f32 * hole_aa) as u8;
+                    let mix_g = (core_color[1] as f32 * (1.0 - hole_aa)
+                        + hole_color[1] as f32 * hole_aa) as u8;
+                    let mix_b = (core_color[2] as f32 * (1.0 - hole_aa)
+                        + hole_color[2] as f32 * hole_aa) as u8;
+                    [mix_r, mix_g, mix_b]
+                } else if dist <= core_r {
+                    // Center label / core with subtle rotating marker notch
+                    let notch_angle = (rel_angle.cos() * 0.5 + 0.5).powi(12) * 0.15;
+                    let r = (core_color[0] as f32 * (1.0 - notch_angle)).clamp(0.0, 255.0) as u8;
+                    let g = (core_color[1] as f32 * (1.0 - notch_angle)).clamp(0.0, 255.0) as u8;
+                    let b = (core_color[2] as f32 * (1.0 - notch_angle)).clamp(0.0, 255.0) as u8;
+                    [r, g, b]
+                } else {
+                    // Vinyl grooves + rotating specular reflection
+                    let light_boost = (sheen + groove).clamp(0.0, 0.45);
+                    let r = (base_body[0] as f32 + 255.0 * light_boost).clamp(0.0, 255.0) as u8;
+                    let g = (base_body[1] as f32 + 255.0 * light_boost).clamp(0.0, 255.0) as u8;
+                    let b = (base_body[2] as f32 + 255.0 * light_boost).clamp(0.0, 255.0) as u8;
+                    [r, g, b]
+                };
+
+                // Alpha blend onto destination buffer
+                let alpha = (outer_aa * 255.0) as u8;
+                let idx = ((py as usize) * (width as usize) + (px as usize)) * 4;
+                let src_a = alpha as f32 / 255.0;
+                let dst_a = buf[idx + 3] as f32 / 255.0;
+                let out_a = src_a + dst_a * (1.0 - src_a);
+
+                if out_a > 0.0 {
+                    buf[idx] = ((final_rgb[0] as f32 * src_a
+                        + buf[idx] as f32 * dst_a * (1.0 - src_a))
+                        / out_a) as u8;
+                    buf[idx + 1] = ((final_rgb[1] as f32 * src_a
+                        + buf[idx + 1] as f32 * dst_a * (1.0 - src_a))
+                        / out_a) as u8;
+                    buf[idx + 2] = ((final_rgb[2] as f32 * src_a
+                        + buf[idx + 2] as f32 * dst_a * (1.0 - src_a))
+                        / out_a) as u8;
+                    buf[idx + 3] = (out_a * 255.0).min(255.0) as u8;
+                }
+            }
+        }
+    }
+
+    /// Draws a dynamic 6-bar reactive audio frequency spectrum visualizer with smooth rounded pills
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_audio_visualizer(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        t_sec: f32,
+        is_playing: bool,
+        col: [u8; 4],
+    ) {
+        let bar_count = 6;
+        let bar_w = 2.4f32;
+        let spacing = 6.0f32;
+        let total_w = (bar_count as f32 - 1.0) * spacing;
+        let start_x = cx - total_w * 0.5;
+
+        for i in 0..bar_count {
+            let bx = start_x + (i as f32) * spacing;
+            let half_h = if is_playing {
+                let fi = i as f32;
+                let wave1 = (t_sec * (8.0 + fi * 2.5)).sin();
+                let wave2 = (t_sec * (13.0 - fi * 1.8)).cos();
+                let wave3 = (t_sec * (5.5 + fi * 3.8)).sin();
+                let combined = (wave1 * 0.40 + wave2 * 0.35 + wave3 * 0.25).abs();
+                (combined * 10.0 + 3.0).clamp(2.5, 14.0)
+            } else {
+                2.2f32
+            };
+
+            Self::draw_rounded_rect_fill(
+                buf,
+                width,
+                height,
+                bx,
+                cy,
+                bar_w * 0.5,
+                half_h,
+                bar_w * 0.5,
+                col,
+            );
+        }
+    }
+
+    /// Draws a rounded RGBA thumbnail (e.g. 46x46 album art) with smooth corner clipping
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_rounded_thumbnail(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        thumb_rgba: &[u8],
+        thumb_w: u32,
+        thumb_h: u32,
+        corner_radius: f32,
+    ) {
+        let half_w = (thumb_w as f32) * 0.5;
+        let half_h = (thumb_h as f32) * 0.5;
+        let x_min = (cx - half_w).max(0.0) as i32;
+        let x_max = (cx + half_w).min(width as f32 - 1.0) as i32;
+        let y_min = (cy - half_h).max(0.0) as i32;
+        let y_max = (cy + half_h).min(height as f32 - 1.0) as i32;
+
+        let r = corner_radius.min(half_w).min(half_h);
+
+        for py in y_min..=y_max {
+            for px in x_min..=x_max {
+                let lx = px as f32 - cx;
+                let ly = py as f32 - cy;
+
+                let qx = lx.abs() - half_w + r;
+                let qy = ly.abs() - half_h + r;
+                let sdf =
+                    (qx.max(qy)).min(0.0) + (qx.max(0.0).powi(2) + qy.max(0.0).powi(2)).sqrt() - r;
+
+                if sdf > 0.5 {
+                    continue;
+                }
+                let aa = (0.5 - sdf).clamp(0.0, 1.0);
+
+                let tx = (((lx + half_w) / (half_w * 2.0)) * (thumb_w as f32))
+                    .clamp(0.0, thumb_w as f32 - 1.0) as u32;
+                let ty = (((ly + half_h) / (half_h * 2.0)) * (thumb_h as f32))
+                    .clamp(0.0, thumb_h as f32 - 1.0) as u32;
+                let t_idx = ((ty * thumb_w + tx) * 4) as usize;
+
+                if t_idx + 3 >= thumb_rgba.len() {
+                    continue;
+                }
+
+                let src_a = (thumb_rgba[t_idx + 3] as f32 / 255.0) * aa;
+                let d_idx = ((py as usize) * (width as usize) + (px as usize)) * 4;
+                let dst_a = buf[d_idx + 3] as f32 / 255.0;
+                let out_a = src_a + dst_a * (1.0 - src_a);
+
+                if out_a > 0.0 {
+                    buf[d_idx] = ((thumb_rgba[t_idx] as f32 * src_a
+                        + buf[d_idx] as f32 * dst_a * (1.0 - src_a))
+                        / out_a) as u8;
+                    buf[d_idx + 1] = ((thumb_rgba[t_idx + 1] as f32 * src_a
+                        + buf[d_idx + 1] as f32 * dst_a * (1.0 - src_a))
+                        / out_a) as u8;
+                    buf[d_idx + 2] = ((thumb_rgba[t_idx + 2] as f32 * src_a
+                        + buf[d_idx + 2] as f32 * dst_a * (1.0 - src_a))
+                        / out_a) as u8;
+                    buf[d_idx + 3] = (out_a * 255.0).min(255.0) as u8;
+                }
+            }
+        }
+    }
 }

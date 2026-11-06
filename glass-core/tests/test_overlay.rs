@@ -693,28 +693,19 @@ fn test_render_slide_carousel_and_lucide_overlays() {
             Tokens::TEXT_TERTIARY,
             FontWeight::Bold,
         );
-        // Vinyl (clean monochrome)
-        UIFont::draw_rounded_rect_fill(
+        // Spinning Vinyl Disc
+        UIFont::draw_spinning_vinyl(&mut buf, iw, ih, 50.0, 68.0, 23.0, 0.85, false);
+
+        // Audio Frequency Spectrum Visualizer
+        UIFont::draw_audio_visualizer(
             &mut buf,
             iw,
             ih,
-            50.0,
+            island_cx + 42.0,
             68.0,
-            23.0,
-            23.0,
-            23.0,
-            [235, 240, 252, 255],
-        );
-        UIFont::draw_rounded_rect_fill(
-            &mut buf,
-            iw,
-            ih,
-            50.0,
-            68.0,
-            9.0,
-            9.0,
-            9.0,
-            [16, 20, 28, 255],
+            1.5,
+            true,
+            Tokens::TEXT_PRIMARY,
         );
         font.draw_text(
             &mut buf,

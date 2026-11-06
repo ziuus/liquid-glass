@@ -66,6 +66,9 @@ pub struct MusicState {
     pub progress: f32,
     pub duration_sec: f32,
     pub elapsed_sec: f32,
+    pub art_url: String,
+    pub art_thumbnail: Option<Vec<u8>>,
+    pub disc_rotation: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -508,9 +511,10 @@ impl AppData {
             }
         }
 
-        // Advance live/simulated music playback
+        // Advance live/simulated music playback and spinning disc
         if self.music.is_playing && self.mode != IslandMode::Hidden {
             self.music.elapsed_sec += dt;
+            self.music.disc_rotation += dt * 3.5;
             if self.music.elapsed_sec >= self.music.duration_sec {
                 self.music.elapsed_sec = 0.0;
             }
@@ -574,7 +578,7 @@ impl AppData {
                     .args([
                         "metadata",
                         "--format",
-                        "{{title}}||{{artist}}||{{mpris:length}}",
+                        "{{title}}||{{artist}}||{{mpris:length}}||{{mpris:artUrl}}",
                     ])
                     .output()
                 {
@@ -591,6 +595,27 @@ impl AppData {
                             if let Ok(len_us) = parts[2].parse::<f32>() {
                                 if len_us > 1000.0 {
                                     self.music.duration_sec = len_us / 1_000_000.0;
+                                }
+                            }
+                        }
+                        if parts.len() > 3 {
+                            let art_url = parts[3].trim().to_string();
+                            if art_url != self.music.art_url {
+                                self.music.art_url = art_url.clone();
+                                self.music.art_thumbnail = None;
+                                if art_url.starts_with("file://") {
+                                    let raw_path = art_url.trim_start_matches("file://");
+                                    let clean_path = raw_path.replace("%20", " ");
+                                    if let Ok(img) = image::open(&clean_path) {
+                                        let thumb = img
+                                            .resize_exact(
+                                                46,
+                                                46,
+                                                image::imageops::FilterType::Triangle,
+                                            )
+                                            .to_rgba8();
+                                        self.music.art_thumbnail = Some(thumb.into_raw());
+                                    }
                                 }
                             }
                         }
@@ -899,14 +924,16 @@ impl AppData {
 
                 if self.music.is_playing {
                     // ── Active Music Playing Mode ──
-                    // Left: Clean Music Lucide Icon
-                    UIFont::draw_music_icon(
+                    // Left: Realistic Spinning Vinyl Record Disc (11px radius)
+                    UIFont::draw_spinning_vinyl(
                         buf,
                         self.width,
                         self.height,
                         disc_cx,
                         island_cy,
-                        col_ink,
+                        11.0,
+                        self.music.disc_rotation,
+                        is_light,
                     );
 
                     // Center: Track Title
@@ -1067,39 +1094,63 @@ impl AppData {
                     FontWeight::Bold,
                 );
 
-                // Vinyl Album Disc (half_w = 23.0, half_h = 23.0)
+                // Album Art Thumbnail or Spinning Vinyl Disc (radius = 23.0)
                 let disc_cx = cx - island_w * 0.5 + 50.0;
                 let disc_cy = island_top + 68.0;
-                UIFont::draw_rounded_rect_fill(
+                if let Some(thumb) = &self.music.art_thumbnail {
+                    UIFont::draw_rounded_thumbnail(
+                        buf,
+                        self.width,
+                        self.height,
+                        disc_cx,
+                        disc_cy,
+                        thumb,
+                        46,
+                        46,
+                        8.0,
+                    );
+                    UIFont::draw_rounded_rect_stroke(
+                        buf,
+                        self.width,
+                        self.height,
+                        disc_cx,
+                        disc_cy,
+                        23.0,
+                        23.0,
+                        8.0,
+                        1.0,
+                        if is_light {
+                            [0, 0, 0, 45]
+                        } else {
+                            [255, 255, 255, 70]
+                        },
+                    );
+                } else {
+                    UIFont::draw_spinning_vinyl(
+                        buf,
+                        self.width,
+                        self.height,
+                        disc_cx,
+                        disc_cy,
+                        23.0,
+                        self.music.disc_rotation,
+                        is_light,
+                    );
+                }
+
+                // Dynamic Multi-Bar Audio Frequency Spectrum Visualizer (placed in center channel)
+                let vis_cx = cx + 42.0;
+                let vis_cy = island_top + 68.0;
+                let t_sec = self.start_time.elapsed().as_secs_f32();
+                UIFont::draw_audio_visualizer(
                     buf,
                     self.width,
                     self.height,
-                    disc_cx,
-                    disc_cy,
-                    23.0,
-                    23.0,
-                    23.0,
-                    if is_light {
-                        [25, 30, 42, 255]
-                    } else {
-                        [235, 240, 252, 255]
-                    },
-                );
-                // Center core (half_w = 9.0, half_h = 9.0)
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    disc_cx,
-                    disc_cy,
-                    9.0,
-                    9.0,
-                    9.0,
-                    if is_light {
-                        [255, 255, 255, 240]
-                    } else {
-                        [16, 20, 28, 255]
-                    },
+                    vis_cx,
+                    vis_cy,
+                    t_sec,
+                    self.music.is_playing,
+                    col_ink,
                 );
 
                 // Track details
@@ -2554,6 +2605,9 @@ fn main() {
             progress: 0.0,
             duration_sec: 1.0,
             elapsed_sec: 0.0,
+            art_url: String::new(),
+            art_thumbnail: None,
+            disc_rotation: 0.0,
         },
         last_music_poll: Instant::now() - Duration::from_secs(5),
 
