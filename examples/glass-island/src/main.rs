@@ -873,8 +873,10 @@ impl AppData {
 
         match self.mode {
             IslandMode::CompactPill => {
-                // Left: Clean Music Lucide Icon Disc (22px from left edge)
                 let disc_cx = island_cx - island_w * 0.5 + 22.0;
+                let right_x = island_cx + island_w * 0.5 - 22.0;
+
+                // Subtle inner disc backing
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
@@ -890,41 +892,39 @@ impl AppData {
                         Tokens::INNER_TILE_BG_DARK
                     },
                 );
-                UIFont::draw_music_icon(
-                    buf,
-                    self.width,
-                    self.height,
-                    disc_cx,
-                    island_cy,
-                    if self.music.is_playing {
-                        col_ink
-                    } else {
-                        col_dim
-                    },
-                );
 
-                // Center: Track Title (truly centered between left and right indicators)
-                let title = if self.music.title.len() > 18 {
-                    format!("{}…", &self.music.title[..16])
-                } else {
-                    self.music.title.clone()
-                };
-                self.font.draw_text_centered(
-                    buf,
-                    self.width,
-                    self.height,
-                    &title,
-                    island_cx,
-                    island_cy,
-                    Tokens::TYPE_BODY_SM,
-                    col_ink,
-                    col_shadow,
-                    FontWeight::SemiBold,
-                );
-
-                // Right: Equalizer waveform bars or minimal pause bars (22px from right edge)
-                let right_x = island_cx + island_w * 0.5 - 22.0;
                 if self.music.is_playing {
+                    // ── Active Music Playing Mode ──
+                    // Left: Clean Music Lucide Icon
+                    UIFont::draw_music_icon(
+                        buf,
+                        self.width,
+                        self.height,
+                        disc_cx,
+                        island_cy,
+                        col_ink,
+                    );
+
+                    // Center: Track Title
+                    let title = if self.music.title.len() > 18 {
+                        format!("{}…", &self.music.title[..16])
+                    } else {
+                        self.music.title.clone()
+                    };
+                    self.font.draw_text_centered(
+                        buf,
+                        self.width,
+                        self.height,
+                        &title,
+                        island_cx,
+                        island_cy,
+                        Tokens::TYPE_BODY_SM,
+                        col_ink,
+                        col_shadow,
+                        FontWeight::SemiBold,
+                    );
+
+                    // Right: Dynamic animated 3-bar equalizer
                     let t_sec = self.start_time.elapsed().as_secs_f32();
                     for i in 0..3 {
                         let bx = right_x - 6.0 + (i as f32) * 6.0;
@@ -942,28 +942,43 @@ impl AppData {
                         );
                     }
                 } else {
-                    // Clean minimalist vertical pause bars matching equalizer width
-                    UIFont::draw_rounded_rect_fill(
+                    // ── Idle / Paused Mode (Dynamic Status Island) ──
+                    // Left: Clean Clock Lucide Icon
+                    UIFont::draw_clock_icon(
                         buf,
                         self.width,
                         self.height,
-                        right_x - 3.0,
+                        disc_cx,
                         island_cy,
-                        1.2,
-                        4.5,
-                        1.0,
-                        col_dim,
+                        col_ink,
                     );
-                    UIFont::draw_rounded_rect_fill(
+
+                    // Center: High-legibility Digital Clock
+                    let now = chrono::Local::now();
+                    let time_str = now.format("%I:%M %p").to_string();
+                    self.font.draw_text_centered(
                         buf,
                         self.width,
                         self.height,
-                        right_x + 3.0,
+                        &time_str,
+                        island_cx,
                         island_cy,
-                        1.2,
-                        4.5,
-                        1.0,
-                        col_dim,
+                        Tokens::TYPE_BODY_SM,
+                        col_ink,
+                        col_shadow,
+                        FontWeight::Bold,
+                    );
+
+                    // Right: Crisp Live Battery Indicator
+                    UIFont::draw_battery_icon(
+                        buf,
+                        self.width,
+                        self.height,
+                        right_x,
+                        island_cy,
+                        self.sys_stats.bat_pct,
+                        self.sys_stats.bat_charging,
+                        col_ink,
                     );
                 }
             }

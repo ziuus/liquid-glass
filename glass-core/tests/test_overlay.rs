@@ -1161,7 +1161,7 @@ fn test_render_light_and_dark_island_modes() {
                 },
             );
 
-            // Left music icon disc
+            // Left clock icon disc
             let disc_cx = 22.0f32;
             UIFont::draw_rounded_rect_fill(
                 &mut buf,
@@ -1178,46 +1178,25 @@ fn test_render_light_and_dark_island_modes() {
                     Tokens::INNER_TILE_BG_DARK
                 },
             );
-            UIFont::draw_music_icon(&mut buf, pw, ph, disc_cx, pcy, col_dim);
+            UIFont::draw_clock_icon(&mut buf, pw, ph, disc_cx, pcy, col_ink);
 
-            // Title
+            // Center: Digital Clock (e.g. 10:28 AM)
             font.draw_text_centered(
                 &mut buf,
                 pw,
                 ph,
-                "No Media Playing",
+                "10:28 AM",
                 pcx,
                 pcy,
                 Tokens::TYPE_BODY_SM,
                 col_ink,
                 col_shadow,
-                FontWeight::SemiBold,
+                FontWeight::Bold,
             );
 
-            // Right minimalist pause bars
+            // Right live battery indicator
             let right_x = pw as f32 - 22.0;
-            UIFont::draw_rounded_rect_fill(
-                &mut buf,
-                pw,
-                ph,
-                right_x - 3.0,
-                pcy,
-                1.2,
-                4.5,
-                1.0,
-                col_dim,
-            );
-            UIFont::draw_rounded_rect_fill(
-                &mut buf,
-                pw,
-                ph,
-                right_x + 3.0,
-                pcy,
-                1.2,
-                4.5,
-                1.0,
-                col_dim,
-            );
+            UIFont::draw_battery_icon(&mut buf, pw, ph, right_x, pcy, 85u32, true, col_ink);
 
             let _ = image::save_buffer(
                 format!("{}/island_{}_compact.png", target_dir.display(), mode_str),
