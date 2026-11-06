@@ -252,8 +252,10 @@ pub struct AppData {
 
     // Interaction & Swipe Navigation
     press_pos: [f32; 2],
+    press_time: Instant,
     is_swiping: bool,
     last_interaction: Instant,
+    last_mode_cycle: Instant,
 
     // Power Menu Hold-to-Confirm: (tile_idx, press_start_time)
     power_held: Option<(usize, Instant)>,
@@ -368,6 +370,8 @@ impl AppData {
             }
         }
         self.last_interaction = Instant::now();
+        self.last_mode_cycle = Instant::now();
+        self.power_held = None;
         self.animating = true;
         self.needs_redraw = true;
     }
@@ -1893,6 +1897,11 @@ impl AppData {
     }
 
     fn handle_click(&mut self, lx: f32, ly: f32) {
+        // Discard any clicks within 400ms of a mode switch / swipe to prevent accidental triggers
+        if self.last_mode_cycle.elapsed() < Duration::from_millis(400) {
+            return;
+        }
+
         let island_cx = (self.width as f32) * 0.5;
         let island_top = self.current_y;
         let island_w = self.current_w;
@@ -2216,9 +2225,18 @@ impl PointerHandler for AppData {
                         (event.position.0 as f32) / (self.width as f32),
                         (event.position.1 as f32) / (self.height as f32),
                     ];
-                    if self.is_pressed && !self.is_swiping {
+                    if self.is_pressed {
                         let dx = event.position.0 as f32 - self.press_pos[0];
-                        if dx.abs() > 25.0 {
+                        let dy = event.position.1 as f32 - self.press_pos[1];
+                        let dist = (dx * dx + dy * dy).sqrt();
+
+                        // Cancel button hold/press immediately on movement
+                        if dist > 8.0 {
+                            self.power_held = None;
+                        }
+
+                        // Trigger swipe mode change
+                        if !self.is_swiping && dx.abs() > 25.0 {
                             self.is_swiping = true;
                             if dx > 0.0 {
                                 self.cycle_mode_backward();
@@ -2231,13 +2249,17 @@ impl PointerHandler for AppData {
                 PointerEventKind::Press { .. } => {
                     self.is_pressed = true;
                     self.is_swiping = false;
+                    self.press_time = Instant::now();
                     self.last_interaction = Instant::now();
                     let lx = event.position.0 as f32;
                     let ly = event.position.1 as f32;
                     self.press_pos = [lx, ly];
 
                     // Check if pressing Restart (idx=2) or Power Off (idx=3) in PowerMenu
-                    if self.mode == IslandMode::PowerMenu {
+                    // ONLY if not immediately after a page switch
+                    if self.mode == IslandMode::PowerMenu
+                        && self.last_mode_cycle.elapsed() >= Duration::from_millis(400)
+                    {
                         let island_cx = (self.width as f32) * 0.5;
                         let island_top = self.current_y;
                         let island_w = self.current_w;
@@ -2257,17 +2279,45 @@ impl PointerHandler for AppData {
                 PointerEventKind::Release { .. } => {
                     let lx = event.position.0 as f32;
                     let ly = event.position.1 as f32;
-                    if !self.is_swiping {
-                        self.handle_click(lx, ly);
+                    let dist = ((lx - self.press_pos[0]).powi(2)
+                        + (ly - self.press_pos[1]).powi(2))
+                    .sqrt();
+
+                    // Strict click validation: finger did NOT drag (>8px), was not a swipe,
+                    // and was not immediately after a page transition
+                    if !self.is_swiping
+                        && dist < 8.0
+                        && self.press_time.elapsed() < Duration::from_millis(600)
+                        && self.last_mode_cycle.elapsed() >= Duration::from_millis(400)
+                    {
+                        self.handle_click(self.press_pos[0], self.press_pos[1]);
                     }
                     self.is_pressed = false;
                     self.is_swiping = false;
                     self.power_held = None;
                 }
-                PointerEventKind::Axis { horizontal, .. } => {
+                PointerEventKind::Axis {
+                    horizontal,
+                    vertical,
+                    ..
+                } => {
                     self.last_interaction = Instant::now();
-                    if horizontal.absolute.abs() > 15.0 {
-                        if horizontal.absolute > 0.0 {
+                    self.is_swiping = true;
+                    self.power_held = None;
+
+                    // Handle both horizontal swipe and vertical scroll on touchpads
+                    let delta = if horizontal.absolute.abs() > 10.0 {
+                        horizontal.absolute
+                    } else if vertical.absolute.abs() > 10.0 {
+                        vertical.absolute
+                    } else {
+                        0.0
+                    };
+
+                    if delta.abs() > 10.0
+                        && self.last_mode_cycle.elapsed() > Duration::from_millis(350)
+                    {
+                        if delta > 0.0 {
                             self.cycle_mode_forward();
                         } else {
                             self.cycle_mode_backward();
@@ -2515,8 +2565,10 @@ fn main() {
         overlay_buffer: Vec::new(),
 
         press_pos: [-1.0, -1.0],
+        press_time: Instant::now(),
         is_swiping: false,
         last_interaction: Instant::now(),
+        last_mode_cycle: Instant::now() - Duration::from_secs(1),
         power_held: None,
         sys_stats: SysStats::new(),
         is_window_overlapping: false,
