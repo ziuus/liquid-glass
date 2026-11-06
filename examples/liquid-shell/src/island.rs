@@ -179,6 +179,8 @@ pub enum IslandIpcEvent {
     Notification(NotificationData),
     NextMenu,
     PrevMenu,
+    SetStyle(f32),
+    CycleStyle,
 }
 
 pub struct WaylandWindow {
@@ -275,6 +277,7 @@ pub struct IslandWidget {
     pub is_wallpaper_light: bool,
     pub wallpaper_crop: Option<Vec<u8>>,
     pub start_time: Instant,
+    pub style_mode: f32,
 }
 
 impl IslandWidget {
@@ -398,6 +401,7 @@ impl IslandWidget {
             is_wallpaper_light: false,
             wallpaper_crop: None,
             start_time: Instant::now(),
+            style_mode: 0.0,
         }
     }
 
@@ -672,6 +676,14 @@ impl IslandWidget {
                 IslandIpcEvent::ShowMode(m) => self.set_mode(m),
                 IslandIpcEvent::NextMenu => self.cycle_mode_forward(),
                 IslandIpcEvent::PrevMenu => self.cycle_mode_backward(),
+                IslandIpcEvent::SetStyle(s) => {
+                    self.style_mode = s;
+                    self.needs_redraw = true;
+                }
+                IslandIpcEvent::CycleStyle => {
+                    self.style_mode = (self.style_mode + 1.0) % 3.0;
+                    self.needs_redraw = true;
+                }
                 IslandIpcEvent::Notification(notif) => {
                     self.active_notif = Some(notif);
                     self.set_mode(IslandMode::Notification);
@@ -2259,13 +2271,14 @@ impl IslandWidget {
                 .material(Material::LiquidGlass)
                 .shape(island_shape)
                 .bounds(x_norm, y_norm, w_norm, h_norm)
-                .curvature(0.08)
-                .bevel(22.0)
-                .refraction(1.25)
-                .dispersion(0.045)
-                .blur(18.0)
-                .specular(1.35)
-                .fresnel(0.85)
+                .curvature(0.04)
+                .bevel(14.0)
+                .refraction(0.40)
+                .dispersion(0.015)
+                .blur(8.0)
+                .specular(1.10)
+                .fresnel(0.60)
+                .style_mode(self.style_mode)
                 .tint(
                     if self.music.is_playing { 1.0 } else { 0.0 },
                     if self.is_pressed { 1.0 } else { 0.0 },
@@ -2499,6 +2512,24 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>) {
                         let _ = tx.send(IslandIpcEvent::NextMenu);
                     } else if trimmed == "prev" {
                         let _ = tx.send(IslandIpcEvent::PrevMenu);
+                    } else if trimmed == "style obsidian"
+                        || trimmed == "obsidian"
+                        || trimmed == "style 0"
+                    {
+                        let _ = tx.send(IslandIpcEvent::SetStyle(0.0));
+                    } else if trimmed == "style frost"
+                        || trimmed == "style glassmorphism"
+                        || trimmed == "frost"
+                        || trimmed == "style 1"
+                    {
+                        let _ = tx.send(IslandIpcEvent::SetStyle(1.0));
+                    } else if trimmed == "style liquid"
+                        || trimmed == "liquid"
+                        || trimmed == "style 2"
+                    {
+                        let _ = tx.send(IslandIpcEvent::SetStyle(2.0));
+                    } else if trimmed == "style" || trimmed == "style cycle" {
+                        let _ = tx.send(IslandIpcEvent::CycleStyle);
                     } else if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
                         if val.get("type").and_then(|t| t.as_str()) == Some("notification") {
                             let app = val

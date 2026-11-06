@@ -1870,15 +1870,16 @@ impl TodoWidget {
                     radius: Tokens::RADIUS_OUTER,
                 })
                 .bounds(0.0, 0.0, 1.0, h_norm)
-                .curvature(0.08)
-                .bevel(22.0)
-                .refraction(1.25)
+                .curvature(0.04)
+                .bevel(14.0)
+                .refraction(0.40)
                 .dispersion(filter_val) // Continuous Filter spring
-                .blur(18.0)
+                .blur(8.0)
                 .tint(0.0, progress_packed, 0.0, is_light_f32)
                 .roughness(-1.0)
-                .specular(1.35)
-                .fresnel(0.85)
+                .specular(1.10)
+                .fresnel(0.60)
+                .style_mode(1.0)
                 .element_type(26.0)
                 .deformation(tab_val) // Continuous Tab spring
                 .pointer_pos(px, py);

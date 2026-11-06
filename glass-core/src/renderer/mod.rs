@@ -498,7 +498,7 @@ impl GlassRenderer {
                 ],
                 is_light: params.tint[3].max(0.0),
                 padding: glass.element_type,
-                _pad: [0.0, 0.0],
+                _pad: [glass.style_mode, 0.0],
             };
 
             let offset = i as u32 * padded_size as u32;

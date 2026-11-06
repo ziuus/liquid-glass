@@ -2007,13 +2007,13 @@ impl AppData {
                 .material(Material::LiquidGlass)
                 .shape(island_shape)
                 .bounds(x_norm, y_norm, w_norm, h_norm)
-                .curvature(0.08)
-                .bevel(22.0)
-                .refraction(1.25)
-                .dispersion(0.045)
-                .blur(18.0)
-                .specular(1.35)
-                .fresnel(0.85)
+                .curvature(0.04)
+                .bevel(14.0)
+                .refraction(0.40)
+                .dispersion(0.015)
+                .blur(8.0)
+                .specular(1.10)
+                .fresnel(0.60)
                 .tint(
                     if self.music.is_playing { 1.0 } else { 0.0 },
                     if self.is_pressed { 1.0 } else { 0.0 },

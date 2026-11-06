@@ -21,6 +21,7 @@ pub struct GlassSurface {
     pub pointer_pos: [f32; 2],
     pub element_type: f32,
     pub deformation: f32,
+    pub style_mode: f32,
 }
 
 impl GlassSurface {
@@ -35,6 +36,7 @@ impl GlassSurface {
             pointer_pos: [0.5, 0.5],
             element_type: 0.0,
             deformation: 0.0,
+            style_mode: 0.0,
         }
     }
 
@@ -122,6 +124,11 @@ impl GlassSurface {
 
     pub fn deformation(mut self, def: f32) -> Self {
         self.deformation = def;
+        self
+    }
+
+    pub fn style_mode(mut self, mode: f32) -> Self {
+        self.style_mode = mode;
         self
     }
 }

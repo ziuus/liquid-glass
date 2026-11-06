@@ -1346,27 +1346,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Crisp, stable rounded-rectangle SDF
     let sdf = rr_sdf(local_px, half_size, r);
     
-    // Soft ambient drop shadow outside rounded bounds (within shadow_radius)
-    let shadow_radius = 22.0;
+    // Outside the rounded rectangle: 100% transparent (no black halo / no square bounding shadow)
     if sdf > 0.0 {
-        if sdf > shadow_radius {
-            return vec4<f32>(0.0, 0.0, 0.0, 0.0);
-        }
-        let shadow_t = clamp(1.0 - sdf / shadow_radius, 0.0, 1.0);
-        let shadow_alpha = pow(shadow_t, 2.2) * 0.38;
-        let bg_col = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
-        let shadow_col = bg_col * (1.0 - shadow_alpha);
-        let shadow_fade = smoothstep(shadow_radius, shadow_radius - 1.5, sdf);
-        return vec4<f32>(shadow_col * shadow_fade, shadow_fade);
+        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
     
     // ════════════════════════════════════════════
     // 2. ANALYTIC CONVEX SQUIRCLE BEZEL & 3D NORMAL
     // ════════════════════════════════════════════
     let depth = max(-sdf, 0.0);
-    // Meniscus bezel proportional to element size: max 38% of min(w, h), floor of 18.0px
-    let max_element_bezel = max(0.38 * min(bounds_px.z, bounds_px.w), 18.0);
-    let bezel = clamp(params.bevel, 18.0, max_element_bezel); // Liquid edge thickness (18-24px)
+    // Meniscus bezel proportional to element size: max 35% of min(w, h), floor of 14.0px
+    let max_element_bezel = max(0.35 * min(bounds_px.z, bounds_px.w), 14.0);
+    let bezel = clamp(params.bevel, 14.0, max_element_bezel); // Clean edge bevel (14-18px)
     let t = clamp(depth / bezel, 0.0, 1.0);                  // 0.0 at outer rim, 1.0 at flat interior
     let u = 1.0 - t;
 
@@ -1375,19 +1366,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // Analytic slope: dh/d(depth) = u / (bezel * sqrt(1.0 - u^2))
     // Strictly zero at t = 1.0 (flat interior), physically bounded contact angle at rim
-    let dh_dt = u / max(sqrt(1.0 - u * u), 0.25);
+    let dh_dt = u / max(sqrt(1.0 - u * u), 0.28);
     let slope = dh_dt / bezel;
 
     // Exact analytical 2D outward unit normal of rounded rectangle
     let grad_2d = rr_normal(local_px, half_size, r);
 
     // C1-continuous corner curvature factor (0.0 on straight edges, 1.0 at 45-deg corner apex)
-    // Completely eliminates the 28px seam where straight edge meets corner arc!
     let corner_factor = clamp(abs(grad_2d.x * grad_2d.y) * 4.0, 0.0, 1.0);
 
     // 3D Surface Normal from convex liquid bubble:
-    // Strictly (0, 0, 1) in the flat interior, outward tilt along curved rim
-    let N = normalize(vec3<f32>(grad_2d * (slope * 24.0), 1.0));
+    let N = normalize(vec3<f32>(grad_2d * (slope * 20.0), 1.0));
     let N_2d = N.xy;
 
     // ════════════════════════════════════════════
@@ -1397,19 +1386,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let eta = 1.0 / 1.52;
     let R = refract(vec3<f32>(0.0, 0.0, -1.0), N, eta);
 
-    // Liquid lensing profile: strong outward/inward magnification bulge along the perimeter
-    let corner_refract_boost = 1.0 + 0.40 * corner_factor;
-    let meniscus_lensing = pow(1.0 - t, 1.5) * corner_refract_boost;
+    // Smooth, physically bounded optical ray deflection (subtle, non-distorted glass lens)
+    let corner_refract_boost = 1.0 + 0.30 * corner_factor;
+    let meniscus_lensing = pow(1.0 - t, 1.4) * corner_refract_boost;
     let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
 
-    // Base optical ray deflection: bends background coordinates into the bevel
-    let refr_px = (R.xy / max(-R.z, 0.001)) * (bezel * 1.35 * meniscus_lensing * params.refraction_strength);
+    let refr_px = (R.xy / max(-R.z, 0.001)) * (bezel * 0.28 * meniscus_lensing * params.refraction_strength);
     let base_uv = uv + refr_px * px_to_uv;
 
-    // Cauchy chromatic dispersion along optical refraction gradient
-    // Separates red, green, and blue rays along the curve for genuine prismatic edge fringes
-    let disp_px = (grad_2d * (params.dispersion * 120.0 + 4.2) + refr_px * 0.15) * meniscus_lensing;
-    let ca_offset = disp_px * px_to_uv;
+    // Clean, sub-pixel Cauchy dispersion (prevents wavy artifacts / rainbow smear)
+    let ca_offset = grad_2d * (params.dispersion * 16.0 * meniscus_lensing) * px_to_uv;
 
     let uv_r = clamp(base_uv - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
     let uv_g = clamp(base_uv, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -1418,7 +1404,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     // 4. TRUE PHYSICAL LIQUID GLASS TRANSMISSION
     // ════════════════════════════════════════════
-    // Pure optical refraction sampled across separated RGB channels
     let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
     let sharp_g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
     let sharp_b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
@@ -1428,9 +1413,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if params.blur_radius <= 0.5 {
         col = sharp_col;
     } else {
-        // Continuous variable blur: smoothly scales from sharp refractive rim to deep frosted interior
-        let blur_t = smoothstep(0.0, 2.2 * bezel, depth);
-        let cur_radius = clamp(params.blur_radius * blur_t, 0.0, 24.0);
+        // Continuous variable blur: smoothly scales from sharp rim to frosted core
+        let blur_t = smoothstep(0.0, 2.0 * bezel, depth);
+        let cur_radius = clamp(params.blur_radius * blur_t, 0.0, 14.0);
         if cur_radius <= 0.4 {
             col = sharp_col;
         } else {
@@ -1459,35 +1444,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     // 5. DIRECTIONAL 3D LIGHT SOURCE & GEOMETRY
     // ════════════════════════════════════════════
-    // Virtual key light coming from top-left, elevated in front of screen
     let light_dir_3d = normalize(vec3<f32>(-0.45, -0.65, 0.75));
     let view_dir_3d = vec3<f32>(0.0, 0.0, 1.0);
-    let half_vector = normalize(light_dir_3d + view_dir_3d);
 
     let light_vec_2d = normalize(vec2<f32>(-0.45, -0.65));
     let light_facing = max(dot(N_2d, light_vec_2d), 0.0);
 
-    // Fresnel grazing factor: physical dielectric reflection at steep angles
-    let N_dot_V = max(dot(N, view_dir_3d), 0.0);
-    let fresnel_grazing = pow(1.0 - N_dot_V, 2.6);
-
-    // ════════════════════════════════════════════
-    // 6. DIELECTRIC FRESNEL REFLECTION & CRISP DIRECTIONAL SPECULAR
-    // ════════════════════════════════════════════
-    // Soft milky ambient reflection across the curved meniscus (signature Apple glass sheen)
-    let milky_sheen = vec3<f32>(0.96, 0.98, 1.0) * (fresnel_grazing * params.fresnel_strength * 0.32);
-    col += milky_sheen;
-
-    // Subtle caustic shoulder line at the transition where bevel meets flat interior (t ≈ 0.88)
-    let caustic_line = smoothstep(0.10, 0.0, abs(t - 0.88)) * 0.16 * params.specular_strength;
-    col += vec3<f32>(caustic_line);
-
     // Pure directional specular glint: strong at top-left, fading cleanly to zero at bottom rim (no bottom smudge)
     let corner_mult = 1.0 + 0.35 * corner_factor;
     let dir_spec = pow(light_facing, 1.40);
-    let edge_spec = smoothstep(1.5, 0.0, depth) * dir_spec * corner_mult;
-    let soft_falloff = smoothstep(3.5, 0.0, depth) * 0.12 * dir_spec;
-    let spec_rim = (edge_spec + soft_falloff) * params.specular_strength * 1.15;
+    let edge_spec = smoothstep(1.4, 0.0, depth) * dir_spec * corner_mult;
+    let soft_falloff = smoothstep(3.0, 0.0, depth) * 0.10 * dir_spec;
+    let spec_rim = (edge_spec + soft_falloff) * params.specular_strength;
 
     // On light backdrops: directional dark contour dip to prevent washed-out white-on-white edges
     let dark_edge = smoothstep(1.8, 0.0, depth) * (1.0 - light_facing * 0.60) * mix(0.0, 0.28, is_light);
@@ -1520,9 +1488,35 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let app = render_element_appearance(local_px, half_size, params.padding, params.tint.y, params.time, params.tint, is_light);
 
     // ════════════════════════════════════════════
-    // 10. MASTER COMPOSITE
+    // 10. MASTER COMPOSITE (THREE DISTINCT OPTIONS: OBSIDIAN, GLASSMORPHISM, LIQUID GLASS)
     // ════════════════════════════════════════════
-    var fin = col;
+    let style_mode = params._pad.x; // 0.0 = Obsidian (Clean), 1.0 = Glassmorphism (Frosted), 2.0 = Liquid Glass
+
+    var base_surface: vec3<f32>;
+
+    if style_mode < 0.5 {
+        // ── 0.0: OBSIDIAN / CLEAN BACKGROUND (Apple iOS Dynamic Island & Siri) ──
+        // Pitch-black obsidian body with high contrast, crisp 1.2px subtle glass hairline rim
+        let obsidian_base = vec3<f32>(0.04, 0.04, 0.06);
+        let rim_sheen = spec_rim * 0.90;
+        base_surface = obsidian_base + vec3<f32>(rim_sheen);
+    } else if style_mode < 1.5 {
+        // ── 1.0: FROSTED GLASSMORPHISM (Apple macOS Big Sur / Sonoma Vibrancy) ──
+        // 20-tap frosted blur with subtle translucent milky or dark vibrancy lift
+        let frosted_base = col; // Sampled Poisson frost blur
+        let vibrancy_lift = mix(vec3<f32>(0.14, 0.16, 0.22), vec3<f32>(0.96, 0.97, 1.0), is_light);
+        let vibrancy_alpha = mix(0.18, 0.25, is_light);
+        let rim_sheen = spec_rim * 1.05;
+        base_surface = mix(frosted_base, vibrancy_lift, vibrancy_alpha) + vec3<f32>(rim_sheen);
+    } else {
+        // ── 2.0: LIQUID GLASS (Clean Optical Lens Magnification / Water Drop) ──
+        // Pure optical ray refraction without heavy darkening, crisp top-left specular meniscus
+        let liquid_base = col; // Sharp/subtle lens refraction
+        let rim_sheen = spec_rim * 1.20;
+        base_surface = liquid_base + vec3<f32>(rim_sheen);
+    }
+
+    var fin = base_surface;
 
     let flare_mag = (side_bevel_flare + side_rim_flare) * mix(1.0, 0.25, is_light);
     let flare_rgb = vec3<f32>(flare_mag * 1.02, flare_mag * 0.99, flare_mag * 1.04);
