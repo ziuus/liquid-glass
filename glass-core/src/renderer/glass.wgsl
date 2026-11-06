@@ -1526,19 +1526,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     fin = mix(fin, app.glyph_color, app.glyph_mask);
 
-    if params.padding >= 26.9 && params.padding <= 27.1 {
-        // Physical liquid glass body depth for Dynamic Island:
-        // On light wallpapers: soft ceramic frosted glass substrate (mix with light slate)
-        // On dark wallpapers: deep crystalline obsidian glass substrate (mix with obsidian)
-        let island_substrate = mix(
-            vec3<f32>(0.07, 0.08, 0.11), // Deep obsidian
-            vec3<f32>(0.92, 0.94, 0.97), // Frosted light ceramic
-            is_light
-        );
-        let substrate_blend = mix(0.28, 0.18, is_light);
-        fin = mix(fin, island_substrate, substrate_blend);
-    }
-
     // Composite dynamic interactive UI vector overlay
     let overlay = textureSampleLevel(overlay_texture, background_sampler, uv, 0.0);
     fin = mix(fin, overlay.rgb, overlay.a);

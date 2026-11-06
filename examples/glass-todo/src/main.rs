@@ -1147,6 +1147,17 @@ impl AppData {
 
         // Top Right: Settings Icon Button
         let is_settings_active = self.is_cal_editing;
+        let settings_bg = if is_settings_active {
+            if self.is_wallpaper_light {
+                Tokens::INNER_TILE_BG_HOVER_LIGHT
+            } else {
+                Tokens::INNER_TILE_BG_HOVER_DARK
+            }
+        } else if self.is_wallpaper_light {
+            Tokens::INNER_TILE_BG_LIGHT
+        } else {
+            Tokens::INNER_TILE_BG_DARK
+        };
         UIFont::draw_rounded_rect_fill(
             buf,
             self.width,
@@ -1156,24 +1167,14 @@ impl AppData {
             13.0,
             13.0,
             8.0,
-            if is_settings_active {
-                Tokens::ACCENT_FILL
-            } else {
-                Tokens::INNER_TILE_BG_DARK
-            },
+            settings_bg,
         );
-        UIFont::draw_settings_icon(
-            buf,
-            self.width,
-            self.height,
-            330.0,
-            32.5,
-            if is_settings_active {
-                Tokens::ACCENT
-            } else {
-                Tokens::TEXT_SECONDARY
-            },
-        );
+        let settings_col = if self.is_wallpaper_light {
+            [12, 16, 24, 255]
+        } else {
+            Tokens::TEXT_PRIMARY
+        };
+        UIFont::draw_settings_icon(buf, self.width, self.height, 330.0, 32.5, settings_col);
 
         let tasks_count = self.todos.tasks.len();
         let tasks_label = format!("Tasks ({})", tasks_count);

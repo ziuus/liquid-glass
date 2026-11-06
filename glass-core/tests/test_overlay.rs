@@ -660,17 +660,6 @@ fn test_render_slide_carousel_and_lucide_overlays() {
     // A. Music Expanded
     {
         let mut buf = vec![0u8; (iw * ih * 4) as usize];
-        UIFont::draw_rounded_rect_fill(
-            &mut buf,
-            iw,
-            ih,
-            island_cx,
-            island_cy,
-            228.0,
-            58.0,
-            Tokens::RADIUS_OUTER,
-            Tokens::OBSIDIAN_BACKDROP,
-        );
         UIFont::draw_rounded_rect_stroke(
             &mut buf,
             iw,
@@ -704,7 +693,7 @@ fn test_render_slide_carousel_and_lucide_overlays() {
             Tokens::TEXT_TERTIARY,
             FontWeight::Bold,
         );
-        // Vinyl
+        // Vinyl (clean monochrome)
         UIFont::draw_rounded_rect_fill(
             &mut buf,
             iw,
@@ -716,7 +705,17 @@ fn test_render_slide_carousel_and_lucide_overlays() {
             23.0,
             [235, 240, 252, 255],
         );
-        UIFont::draw_rounded_rect_fill(&mut buf, iw, ih, 50.0, 68.0, 9.0, 9.0, 9.0, Tokens::ACCENT);
+        UIFont::draw_rounded_rect_fill(
+            &mut buf,
+            iw,
+            ih,
+            50.0,
+            68.0,
+            9.0,
+            9.0,
+            9.0,
+            [16, 20, 28, 255],
+        );
         font.draw_text(
             &mut buf,
             iw,
@@ -797,7 +796,7 @@ fn test_render_slide_carousel_and_lucide_overlays() {
             bar_w * 0.42 * 0.5,
             2.0,
             2.0,
-            Tokens::ACCENT,
+            Tokens::TEXT_PRIMARY,
         );
         UIFont::draw_rounded_rect_fill(
             &mut buf,
@@ -823,17 +822,6 @@ fn test_render_slide_carousel_and_lucide_overlays() {
     // B. System Overview
     {
         let mut buf = vec![0u8; (iw * ih * 4) as usize];
-        UIFont::draw_rounded_rect_fill(
-            &mut buf,
-            iw,
-            ih,
-            island_cx,
-            island_cy,
-            228.0,
-            58.0,
-            Tokens::RADIUS_OUTER,
-            Tokens::OBSIDIAN_BACKDROP,
-        );
         UIFont::draw_rounded_rect_stroke(
             &mut buf,
             iw,
@@ -859,14 +847,14 @@ fn test_render_slide_carousel_and_lucide_overlays() {
         );
 
         let items = [
-            ("CPU", "24%", Tokens::ACCENT),
-            ("RAM", "7.2G", Tokens::ACCENT),
-            ("BATTERY", "85%", Tokens::STATUS_GREEN),
-            ("UPTIME", "4h 12m", Tokens::ACCENT),
+            ("CPU", "24%"),
+            ("RAM", "7.2G"),
+            ("BATTERY", "85%"),
+            ("UPTIME", "4h 12m"),
         ];
         let item_w = (iw as f32 - 52.0) / 4.0;
         let start_x = 26.0 + item_w * 0.5;
-        for (idx, (lbl, val, acc)) in items.iter().enumerate() {
+        for (idx, (lbl, val)) in items.iter().enumerate() {
             let cx = start_x + (idx as f32) * item_w;
             let cy = 65.0f32;
             UIFont::draw_rounded_rect_fill(
@@ -891,10 +879,19 @@ fn test_render_slide_carousel_and_lucide_overlays() {
             );
 
             match idx {
-                0 => UIFont::draw_cpu_icon(&mut buf, iw, ih, cx, cy - 12.0, *acc),
-                1 => UIFont::draw_ram_icon(&mut buf, iw, ih, cx, cy - 12.0, *acc),
-                2 => UIFont::draw_battery_icon(&mut buf, iw, ih, cx, cy - 12.0, 85u32, true, *acc),
-                _ => UIFont::draw_clock_icon(&mut buf, iw, ih, cx, cy - 12.0, *acc),
+                0 => UIFont::draw_cpu_icon(&mut buf, iw, ih, cx, cy - 12.0, Tokens::TEXT_PRIMARY),
+                1 => UIFont::draw_ram_icon(&mut buf, iw, ih, cx, cy - 12.0, Tokens::TEXT_PRIMARY),
+                2 => UIFont::draw_battery_icon(
+                    &mut buf,
+                    iw,
+                    ih,
+                    cx,
+                    cy - 12.0,
+                    85u32,
+                    true,
+                    Tokens::TEXT_PRIMARY,
+                ),
+                _ => UIFont::draw_clock_icon(&mut buf, iw, ih, cx, cy - 12.0, Tokens::TEXT_PRIMARY),
             }
             font.draw_text_centered(
                 &mut buf,
@@ -933,17 +930,6 @@ fn test_render_slide_carousel_and_lucide_overlays() {
     // C. Quick Access
     {
         let mut buf = vec![0u8; (iw * ih * 4) as usize];
-        UIFont::draw_rounded_rect_fill(
-            &mut buf,
-            iw,
-            ih,
-            island_cx,
-            island_cy,
-            228.0,
-            58.0,
-            Tokens::RADIUS_OUTER,
-            Tokens::OBSIDIAN_BACKDROP,
-        );
         UIFont::draw_rounded_rect_stroke(
             &mut buf,
             iw,
@@ -1031,17 +1017,6 @@ fn test_render_slide_carousel_and_lucide_overlays() {
     // D. Power Menu (with Hold-to-confirm)
     {
         let mut buf = vec![0u8; (iw * ih * 4) as usize];
-        UIFont::draw_rounded_rect_fill(
-            &mut buf,
-            iw,
-            ih,
-            island_cx,
-            island_cy,
-            228.0,
-            58.0,
-            Tokens::RADIUS_OUTER,
-            Tokens::OBSIDIAN_BACKDROP,
-        );
         UIFont::draw_rounded_rect_stroke(
             &mut buf,
             iw,
@@ -1066,15 +1041,10 @@ fn test_render_slide_carousel_and_lucide_overlays() {
             FontWeight::Bold,
         );
 
-        let actions = [
-            ("Lock", Tokens::ACCENT),
-            ("Suspend", Tokens::ACCENT),
-            ("Restart", Tokens::STATUS_AMBER),
-            ("Power Off", Tokens::STATUS_RED),
-        ];
+        let actions = ["Lock", "Suspend", "Restart", "Power Off"];
         let item_w = (iw as f32 - 52.0) / 4.0;
         let start_x = 26.0 + item_w * 0.5;
-        for (idx, (name, col)) in actions.iter().enumerate() {
+        for (idx, name) in actions.iter().enumerate() {
             let cx = start_x + (idx as f32) * item_w;
             let cy = 65.0f32;
             UIFont::draw_rounded_rect_fill(
@@ -1099,10 +1069,12 @@ fn test_render_slide_carousel_and_lucide_overlays() {
             );
 
             match idx {
-                0 => UIFont::draw_lock_icon(&mut buf, iw, ih, cx, cy - 8.0, *col),
-                1 => UIFont::draw_moon_icon(&mut buf, iw, ih, cx, cy - 8.0, *col),
-                2 => UIFont::draw_restart_icon(&mut buf, iw, ih, cx, cy - 8.0, *col),
-                _ => UIFont::draw_power_icon(&mut buf, iw, ih, cx, cy - 8.0, *col),
+                0 => UIFont::draw_lock_icon(&mut buf, iw, ih, cx, cy - 8.0, Tokens::TEXT_PRIMARY),
+                1 => UIFont::draw_moon_icon(&mut buf, iw, ih, cx, cy - 8.0, Tokens::TEXT_PRIMARY),
+                2 => {
+                    UIFont::draw_restart_icon(&mut buf, iw, ih, cx, cy - 8.0, Tokens::TEXT_PRIMARY)
+                }
+                _ => UIFont::draw_power_icon(&mut buf, iw, ih, cx, cy - 8.0, Tokens::TEXT_PRIMARY),
             }
             font.draw_text_centered(
                 &mut buf,
@@ -1164,29 +1136,13 @@ fn test_render_light_and_dark_island_modes() {
             Tokens::TEXT_SHADOW
         };
 
-        // 1. COMPACT PILL (210 x 42)
+        // 1. COMPACT PILL (230 x 38)
         {
-            let (pw, ph) = (210u32, 42u32);
+            let (pw, ph) = (230u32, 38u32);
             let mut buf = vec![0u8; (pw * ph * 4) as usize];
             let pcx = (pw as f32) * 0.5;
             let pcy = (ph as f32) * 0.5;
 
-            // Glass Substrate Body
-            UIFont::draw_rounded_rect_fill(
-                &mut buf,
-                pw,
-                ph,
-                pcx,
-                pcy,
-                pcx - 1.0,
-                pcy - 1.0,
-                pcy,
-                if is_light {
-                    [238, 240, 244, 230]
-                } else {
-                    Tokens::OBSIDIAN_BACKDROP
-                },
-            );
             // Outer Rim
             UIFont::draw_rounded_rect_stroke(
                 &mut buf,
@@ -1205,24 +1161,24 @@ fn test_render_light_and_dark_island_modes() {
                 },
             );
 
-            // Left icon disc
-            let disc_cx = 24.0f32;
+            // Left music icon disc
+            let disc_cx = 22.0f32;
             UIFont::draw_rounded_rect_fill(
                 &mut buf,
                 pw,
                 ph,
                 disc_cx,
                 pcy,
-                12.0,
-                12.0,
-                12.0,
+                11.0,
+                11.0,
+                11.0,
                 if is_light {
                     Tokens::INNER_TILE_BG_LIGHT
                 } else {
                     Tokens::INNER_TILE_BG_DARK
                 },
             );
-            UIFont::draw_pause_icon(&mut buf, pw, ph, disc_cx, pcy, 6.0, col_dim);
+            UIFont::draw_music_icon(&mut buf, pw, ph, disc_cx, pcy, col_dim);
 
             // Title
             font.draw_text_centered(
@@ -1230,7 +1186,7 @@ fn test_render_light_and_dark_island_modes() {
                 pw,
                 ph,
                 "No Media Playing",
-                pcx + 4.0,
+                pcx,
                 pcy,
                 Tokens::TYPE_BODY_SM,
                 col_ink,
@@ -1238,18 +1194,29 @@ fn test_render_light_and_dark_island_modes() {
                 FontWeight::SemiBold,
             );
 
-            // Status
-            font.draw_text_centered(
+            // Right minimalist pause bars
+            let right_x = pw as f32 - 22.0;
+            UIFont::draw_rounded_rect_fill(
                 &mut buf,
                 pw,
                 ph,
-                "PAUSED",
-                pw as f32 - 22.0,
+                right_x - 3.0,
                 pcy,
-                Tokens::TYPE_CAPTION,
+                1.2,
+                4.5,
+                1.0,
                 col_dim,
-                col_shadow,
-                FontWeight::Medium,
+            );
+            UIFont::draw_rounded_rect_fill(
+                &mut buf,
+                pw,
+                ph,
+                right_x + 3.0,
+                pcy,
+                1.2,
+                4.5,
+                1.0,
+                col_dim,
             );
 
             let _ = image::save_buffer(
@@ -1264,21 +1231,6 @@ fn test_render_light_and_dark_island_modes() {
         // 2. POWER MENU (460 x 120)
         {
             let mut buf = vec![0u8; (iw * ih * 4) as usize];
-            UIFont::draw_rounded_rect_fill(
-                &mut buf,
-                iw,
-                ih,
-                island_cx,
-                island_cy,
-                228.0,
-                58.0,
-                Tokens::RADIUS_OUTER,
-                if is_light {
-                    [238, 240, 245, 235]
-                } else {
-                    Tokens::OBSIDIAN_BACKDROP
-                },
-            );
             UIFont::draw_rounded_rect_stroke(
                 &mut buf,
                 iw,
@@ -1344,7 +1296,7 @@ fn test_render_light_and_dark_island_modes() {
             ];
             let item_w = (iw as f32 - 52.0) / 4.0;
             let start_x = 26.0 + item_w * 0.5;
-            for (idx, (name, col)) in actions.iter().enumerate() {
+            for (idx, (name, _col)) in actions.iter().enumerate() {
                 let cx = start_x + (idx as f32) * item_w;
                 let cy = 65.0f32;
                 UIFont::draw_rounded_rect_fill(
@@ -1377,10 +1329,10 @@ fn test_render_light_and_dark_island_modes() {
                 );
 
                 match idx {
-                    0 => UIFont::draw_lock_icon(&mut buf, iw, ih, cx, cy - 8.0, *col),
-                    1 => UIFont::draw_moon_icon(&mut buf, iw, ih, cx, cy - 8.0, *col),
-                    2 => UIFont::draw_restart_icon(&mut buf, iw, ih, cx, cy - 8.0, *col),
-                    _ => UIFont::draw_power_icon(&mut buf, iw, ih, cx, cy - 8.0, *col),
+                    0 => UIFont::draw_lock_icon(&mut buf, iw, ih, cx, cy - 8.0, col_ink),
+                    1 => UIFont::draw_moon_icon(&mut buf, iw, ih, cx, cy - 8.0, col_ink),
+                    2 => UIFont::draw_restart_icon(&mut buf, iw, ih, cx, cy - 8.0, col_ink),
+                    _ => UIFont::draw_power_icon(&mut buf, iw, ih, cx, cy - 8.0, col_ink),
                 }
                 font.draw_text_centered(
                     &mut buf,
@@ -1407,21 +1359,6 @@ fn test_render_light_and_dark_island_modes() {
         // 3. QUICK ACCESS (460 x 120)
         {
             let mut buf = vec![0u8; (iw * ih * 4) as usize];
-            UIFont::draw_rounded_rect_fill(
-                &mut buf,
-                iw,
-                ih,
-                island_cx,
-                island_cy,
-                228.0,
-                58.0,
-                Tokens::RADIUS_OUTER,
-                if is_light {
-                    [238, 240, 245, 235]
-                } else {
-                    Tokens::OBSIDIAN_BACKDROP
-                },
-            );
             UIFont::draw_rounded_rect_stroke(
                 &mut buf,
                 iw,

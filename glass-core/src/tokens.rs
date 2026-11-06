@@ -21,7 +21,9 @@ impl Tokens {
     pub const RADIUS_INNER_TILE: f32 = 14.0;
     pub const RADIUS_PILL: f32 = 100.0;
 
+    pub const ISLAND_COMPACT_W: f32 = 230.0;
     pub const ISLAND_COMPACT_H: f32 = 38.0;
+    pub const ISLAND_EXPANDED_W: f32 = 460.0;
     pub const ISLAND_EXPANDED_H: f32 = 120.0;
 
     // ── Palette (Single Crisp Accent + Semantic Statuses) ──
