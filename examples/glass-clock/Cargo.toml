@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+wgpu = { workspace = true }
 glass-core = { path = "../../glass-core" }
 glass-platform = { path = "../../glass-platform" }
 glass-ui = { version = "0.1.0", path = "../../glass-ui" }

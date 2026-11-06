@@ -11,5 +11,5 @@ pub use geometry::GlassSurface;
 pub use material::{
     BlendMode, GlassMaterial, Material, MaterialParams, MaterialType, VibrancyMaterial,
 };
-pub use renderer::GlassRenderer;
+pub use renderer::{GlassRenderer, SharedGpu};
 pub use tokens::Tokens;

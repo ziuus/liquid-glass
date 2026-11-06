@@ -717,6 +717,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wayland-protocols-wlr",
+ "wgpu",
 ]
 
 [[package]]
@@ -1182,6 +1183,31 @@ name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
+
+[[package]]
+name = "liquid-shell"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "env_logger",
+ "glass-clock",
+ "glass-core",
+ "glass-platform",
+ "glass-ui",
+ "image",
+ "libc",
+ "log",
+ "pollster",
+ "raw-window-handle",
+ "serde",
+ "serde_json",
+ "smithay-client-toolkit",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
+ "wgpu",
+]
 
 [[package]]
 name = "lock_api"

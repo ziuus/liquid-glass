@@ -28,8 +28,8 @@ struct GlassUniforms {
 }
 
 pub struct GlassRenderer {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
     render_pipeline: wgpu::RenderPipeline,
@@ -83,7 +83,25 @@ impl GlassRenderer {
             )
             .await?;
 
-        let surface_caps = surface.get_capabilities(&adapter);
+        Self::new_with_gpu(
+            &adapter,
+            Arc::new(device),
+            Arc::new(queue),
+            surface,
+            width,
+            height,
+        )
+    }
+
+    pub fn new_with_gpu(
+        adapter: &wgpu::Adapter,
+        device: Arc<wgpu::Device>,
+        queue: Arc<wgpu::Queue>,
+        surface: wgpu::Surface<'static>,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let surface_caps = surface.get_capabilities(adapter);
         let surface_format = surface_caps
             .formats
             .iter()
@@ -356,6 +374,14 @@ impl GlassRenderer {
             query_destination_buffer,
             frame_count: 0,
         })
+    }
+
+    pub fn device(&self) -> &wgpu::Device {
+        &self.device
+    }
+
+    pub fn queue(&self) -> &wgpu::Queue {
+        &self.queue
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -918,5 +944,71 @@ impl GlassRenderer {
         });
 
         (bg_layout, bg_bind_group)
+    }
+}
+
+/// Shared GPU context for multi-surface desktop shell applications (e.g. liquid-shell).
+/// Manages a single Vulkan instance, adapter, device, and queue across multiple Wayland surfaces.
+#[derive(Clone)]
+pub struct SharedGpu {
+    pub instance: Arc<wgpu::Instance>,
+    pub adapter: Arc<wgpu::Adapter>,
+    pub device: Arc<wgpu::Device>,
+    pub queue: Arc<wgpu::Queue>,
+}
+
+impl SharedGpu {
+    pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::VULKAN,
+            ..Default::default()
+        });
+
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            })
+            .await
+            .ok_or("Failed to find suitable GPU adapter for SharedGpu")?;
+
+        let (device, queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: Some("Liquid Glass Shared Device"),
+                    required_features: wgpu::Features::empty(),
+                    required_limits: wgpu::Limits::default(),
+                },
+                None,
+            )
+            .await?;
+
+        Ok(Self {
+            instance: Arc::new(instance),
+            adapter: Arc::new(adapter),
+            device: Arc::new(device),
+            queue: Arc::new(queue),
+        })
+    }
+
+    pub fn create_renderer<W>(
+        &self,
+        window: Arc<W>,
+        width: u32,
+        height: u32,
+    ) -> Result<GlassRenderer, Box<dyn std::error::Error>>
+    where
+        W: HasWindowHandle + HasDisplayHandle + Send + Sync + 'static,
+    {
+        let surface = self.instance.create_surface(window)?;
+        GlassRenderer::new_with_gpu(
+            &self.adapter,
+            self.device.clone(),
+            self.queue.clone(),
+            surface,
+            width,
+            height,
+        )
     }
 }
