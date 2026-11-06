@@ -49,9 +49,6 @@ struct AppData {
     pointer: Option<wl_pointer::WlPointer>,
     cursor_pos: [f32; 2],
     is_hovered: bool,
-    is_dragging: bool,
-    drag_start_pos: [i32; 2],
-    drag_grab_offset: [i32; 2],
 
     pos_x: i32,
     pos_y: i32,
@@ -252,25 +249,6 @@ impl SeatHandler for AppData {
     }
 }
 
-fn get_hyprland_cursor_pos() -> Option<(i32, i32)> {
-    use std::io::{Read, Write};
-    use std::os::unix::net::UnixStream;
-    let his = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok()?;
-    let xdg = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
-        let uid = unsafe { libc::getuid() };
-        format!("/run/user/{}", uid)
-    });
-    let sock_path = format!("{}/hypr/{}/.socket.sock", xdg, his);
-    let mut stream = UnixStream::connect(sock_path).ok()?;
-    stream.write_all(b"cursorpos").ok()?;
-    let mut resp = String::new();
-    stream.read_to_string(&mut resp).ok()?;
-    let mut parts = resp.trim().split(',');
-    let x = parts.next()?.trim().parse::<i32>().ok()?;
-    let y = parts.next()?.trim().parse::<i32>().ok()?;
-    Some((x, y))
-}
-
 impl PointerHandler for AppData {
     fn pointer_frame(
         &mut self,
@@ -292,70 +270,14 @@ impl PointerHandler for AppData {
                 }
                 PointerEventKind::Leave { .. } => {
                     had_event = true;
-                    if !self.is_dragging {
-                        self.is_hovered = false;
-                        self.cursor_pos = [-10.0, -10.0];
-                    }
+                    self.is_hovered = false;
+                    self.cursor_pos = [-10.0, -10.0];
                 }
                 PointerEventKind::Motion { .. } => {
                     had_event = true;
                     let nx = (event.position.0 as f32) / (self.width as f32);
                     let ny = (event.position.1 as f32) / (self.height as f32);
                     self.cursor_pos = [nx, ny];
-
-                    if self.is_dragging {
-                        let new_pos = if let Some((gx, gy)) = get_hyprland_cursor_pos() {
-                            let tx =
-                                (gx - self.drag_grab_offset[0]).clamp(0, 1920 - self.width as i32);
-                            let ty =
-                                (gy - self.drag_grab_offset[1]).clamp(0, 1080 - self.height as i32);
-                            Some((tx, ty))
-                        } else {
-                            let dx = event.position.0 as i32 - self.drag_grab_offset[0];
-                            let dy = event.position.1 as i32 - self.drag_grab_offset[1];
-                            let tx = (self.pos_x + dx).clamp(0, 1920 - self.width as i32);
-                            let ty = (self.pos_y + dy).clamp(0, 1080 - self.height as i32);
-                            Some((tx, ty))
-                        };
-
-                        if let Some((nx, ny)) = new_pos {
-                            if nx != self.pos_x || ny != self.pos_y {
-                                self.pos_x = nx;
-                                self.pos_y = ny;
-                                if let Some(ls) = &self.layer_surface {
-                                    ls.set_margin(self.pos_y, 0, 0, self.pos_x);
-                                    ls.commit();
-                                }
-                                if let Some(w) = &self.window_wrapper {
-                                    w.surface.commit();
-                                }
-                                if let (Some(cache), Some(renderer)) =
-                                    (&self.wallpaper_cache, &mut self.renderer)
-                                {
-                                    let crop = get_wallpaper_crop(
-                                        cache,
-                                        self.pos_x as u32,
-                                        self.pos_y as u32,
-                                        self.width,
-                                        self.height,
-                                    );
-                                    self.is_wallpaper_light =
-                                        is_buffer_light_hysteresis(&crop, self.is_wallpaper_light);
-                                    renderer.update_background(self.width, self.height, &crop);
-                                }
-                            }
-                        }
-                    }
-                }
-                PointerEventKind::Press { .. } => {
-                    had_event = true;
-                    self.is_dragging = true;
-                    self.drag_start_pos = [self.pos_x, self.pos_y];
-                    self.drag_grab_offset = [event.position.0 as i32, event.position.1 as i32];
-                }
-                PointerEventKind::Release { .. } => {
-                    had_event = true;
-                    self.is_dragging = false;
                 }
                 _ => {}
             }
@@ -910,9 +832,6 @@ fn main() {
         pointer: None,
         cursor_pos: [-10.0, -10.0],
         is_hovered: false,
-        is_dragging: false,
-        drag_start_pos: [pos_x, pos_y],
-        drag_grab_offset: [0, 0],
 
         pos_x,
         pos_y,
@@ -987,7 +906,7 @@ fn main() {
 
         let now = Local::now();
         let cur_sec = now.second();
-        if app_data.is_dragging || app_data.is_hovered || cur_sec != last_sec_tick {
+        if app_data.is_hovered || cur_sec != last_sec_tick {
             last_sec_tick = cur_sec;
             app_data.draw();
             let _ = conn.flush();
@@ -997,7 +916,7 @@ fn main() {
         let sub_ms = now_after.timestamp_subsec_millis();
         let ms_to_next_sec = (1000u32.saturating_sub(sub_ms)).clamp(10, 1000);
 
-        let timeout_ms = if app_data.is_hovered || app_data.is_dragging {
+        let timeout_ms = if app_data.is_hovered {
             16
         } else {
             ms_to_next_sec as i32

@@ -48,9 +48,6 @@ struct AppData {
     pointer: Option<wl_pointer::WlPointer>,
     cursor_pos: [f32; 2],
     is_pressed: bool,
-    is_dragging: bool,
-    drag_start_pos: [i32; 2],
-    drag_grab_offset: [i32; 2],
 
     // Media Playback State
     is_playing: bool,
@@ -231,25 +228,6 @@ impl SeatHandler for AppData {
     fn remove_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
 }
 
-fn get_hyprland_cursor_pos() -> Option<(i32, i32)> {
-    use std::io::{Read, Write};
-    use std::os::unix::net::UnixStream;
-    let his = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok()?;
-    let xdg = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
-        let uid = unsafe { libc::getuid() };
-        format!("/run/user/{}", uid)
-    });
-    let sock_path = format!("{}/hypr/{}/.socket.sock", xdg, his);
-    let mut stream = UnixStream::connect(sock_path).ok()?;
-    stream.write_all(b"cursorpos").ok()?;
-    let mut resp = String::new();
-    stream.read_to_string(&mut resp).ok()?;
-    let mut parts = resp.trim().split(',');
-    let x = parts.next()?.trim().parse::<i32>().ok()?;
-    let y = parts.next()?.trim().parse::<i32>().ok()?;
-    Some((x, y))
-}
-
 impl PointerHandler for AppData {
     fn pointer_frame(
         &mut self,
@@ -268,55 +246,11 @@ impl PointerHandler for AppData {
                         let ny = (event.position.1 as f32 / self.height as f32).clamp(0.0, 1.0);
                         self.cursor_pos = [nx, ny];
                     }
-
-                    if self.is_dragging {
-                        let new_pos = if let Some((gx, gy)) = get_hyprland_cursor_pos() {
-                            let tx =
-                                (gx - self.drag_grab_offset[0]).clamp(0, 1920 - self.width as i32);
-                            let ty =
-                                (gy - self.drag_grab_offset[1]).clamp(0, 1080 - self.height as i32);
-                            Some((tx, ty))
-                        } else {
-                            let dx = event.position.0 as i32 - self.drag_grab_offset[0];
-                            let dy = event.position.1 as i32 - self.drag_grab_offset[1];
-                            let tx = (self.pos_x + dx).clamp(0, 1920 - self.width as i32);
-                            let ty = (self.pos_y + dy).clamp(0, 1080 - self.height as i32);
-                            Some((tx, ty))
-                        };
-
-                        if let Some((nx, ny)) = new_pos {
-                            if nx != self.pos_x || ny != self.pos_y {
-                                self.pos_x = nx;
-                                self.pos_y = ny;
-                                if let Some(ls) = &self.layer_surface {
-                                    ls.set_margin(self.pos_y, 0, 0, self.pos_x);
-                                    ls.commit();
-                                }
-                                if let Some(w) = &self.window_wrapper {
-                                    w.surface.commit();
-                                }
-                                if let (Some(cache), Some(renderer)) =
-                                    (self.wallpaper_mgr.cached_buffer(), &mut self.renderer)
-                                {
-                                    let crop = WallpaperManager::get_wallpaper_crop(
-                                        cache,
-                                        self.pos_x as u32,
-                                        self.pos_y as u32,
-                                        self.width,
-                                        self.height,
-                                    );
-                                    renderer.update_background(self.width, self.height, &crop);
-                                }
-                            }
-                        }
-                    }
                 }
                 PointerEventKind::Leave { .. } => {
                     had_event = true;
-                    if !self.is_dragging {
-                        self.cursor_pos = [-10.0, -10.0];
-                        self.is_pressed = false;
-                    }
+                    self.cursor_pos = [-10.0, -10.0];
+                    self.is_pressed = false;
                 }
                 PointerEventKind::Press { .. } => {
                     had_event = true;
@@ -374,17 +308,11 @@ impl PointerHandler for AppData {
                     } else if on_scrubber {
                         self.track_progress = ((lx - (-15.0)) / 150.0).clamp(0.0, 1.0);
                         self.elapsed_sec = self.track_progress * self.total_duration_sec;
-                    } else {
-                        // Anywhere else on the widget initiates smooth desktop dragging!
-                        self.is_dragging = true;
-                        self.drag_start_pos = [self.pos_x, self.pos_y];
-                        self.drag_grab_offset = [sx, sy];
                     }
                 }
                 PointerEventKind::Release { .. } => {
                     had_event = true;
                     self.is_pressed = false;
-                    self.is_dragging = false;
                 }
                 _ => {}
             }
@@ -461,7 +389,7 @@ impl AppData {
             // Active rendering while playing music, dragging, cursor moving, or spring settling
             let spring_moving = (self.hover_play_pos - target_play).abs() > 0.003
                 || self.hover_play_vel.abs() > 0.003;
-            let active = self.is_playing || self.is_dragging || in_box || spring_moving;
+            let active = self.is_playing || in_box || spring_moving;
 
             let b0 = [
                 spec[0] - spec[2] * 0.5,
@@ -562,9 +490,6 @@ fn main() {
         pointer: None,
         cursor_pos: [-10.0, -10.0],
         is_pressed: false,
-        is_dragging: false,
-        drag_start_pos: [pos_x, pos_y],
-        drag_grab_offset: [0, 0],
 
         is_playing: true,
         track_progress: 0.38,

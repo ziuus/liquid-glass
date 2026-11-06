@@ -89,8 +89,6 @@ struct AppData {
     keyboard: Option<wl_keyboard::WlKeyboard>,
     cursor_pos: [f32; 2],
     is_hovered: bool,
-    is_dragging: bool,
-    drag_grab_offset: [i32; 2],
 
     pos_x: i32,
     pos_y: i32,
@@ -488,25 +486,6 @@ impl KeyboardHandler for AppData {
     }
 }
 
-fn get_hyprland_cursor_pos() -> Option<(i32, i32)> {
-    use std::io::{Read, Write};
-    use std::os::unix::net::UnixStream;
-    let his = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok()?;
-    let xdg = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
-        let uid = unsafe { libc::getuid() };
-        format!("/run/user/{}", uid)
-    });
-    let sock_path = format!("{}/hypr/{}/.socket.sock", xdg, his);
-    let mut stream = UnixStream::connect(sock_path).ok()?;
-    stream.write_all(b"cursorpos").ok()?;
-    let mut resp = String::new();
-    stream.read_to_string(&mut resp).ok()?;
-    let mut parts = resp.trim().split(',');
-    let x = parts.next()?.trim().parse::<i32>().ok()?;
-    let y = parts.next()?.trim().parse::<i32>().ok()?;
-    Some((x, y))
-}
-
 impl PointerHandler for AppData {
     fn pointer_frame(
         &mut self,
@@ -524,10 +503,8 @@ impl PointerHandler for AppData {
                 }
                 PointerEventKind::Leave { .. } => {
                     had_event = true;
-                    if !self.is_dragging {
-                        self.is_hovered = false;
-                        self.cursor_pos = [-10.0, -10.0];
-                    }
+                    self.is_hovered = false;
+                    self.cursor_pos = [-10.0, -10.0];
                 }
                 PointerEventKind::Motion { .. } => {
                     had_event = true;
@@ -543,47 +520,6 @@ impl PointerHandler for AppData {
                         if dx < -6.0 || self.is_sliding {
                             self.is_sliding = true;
                             self.slide_offsets[row] = dx.clamp(-140.0, 0.0);
-                        }
-                    } else if self.is_dragging {
-                        let new_pos = if let Some((gx, gy)) = get_hyprland_cursor_pos() {
-                            let tx =
-                                (gx - self.drag_grab_offset[0]).clamp(0, 1920 - self.width as i32);
-                            let ty =
-                                (gy - self.drag_grab_offset[1]).clamp(0, 1080 - self.height as i32);
-                            Some((tx, ty))
-                        } else {
-                            let dx = event.position.0 as i32 - self.drag_grab_offset[0];
-                            let dy = event.position.1 as i32 - self.drag_grab_offset[1];
-                            let tx = (self.pos_x + dx).clamp(0, 1920 - self.width as i32);
-                            let ty = (self.pos_y + dy).clamp(0, 1080 - self.height as i32);
-                            Some((tx, ty))
-                        };
-
-                        if let Some((nx, ny)) = new_pos {
-                            if nx != self.pos_x || ny != self.pos_y {
-                                self.pos_x = nx;
-                                self.pos_y = ny;
-                                if let Some(ls) = &self.layer_surface {
-                                    ls.set_margin(self.pos_y, 0, 0, self.pos_x);
-                                    ls.commit();
-                                }
-                                if let Some(w) = &self.window_wrapper {
-                                    w.surface.commit();
-                                }
-                                if let (Some(cache), Some(renderer)) =
-                                    (&self.wallpaper_cache, &mut self.renderer)
-                                {
-                                    let crop = get_wallpaper_crop(
-                                        cache,
-                                        self.pos_x as u32,
-                                        self.pos_y as u32,
-                                        self.width,
-                                        self.height,
-                                    );
-                                    self.is_wallpaper_light = is_buffer_light(&crop);
-                                    renderer.update_background(self.width, self.height, &crop);
-                                }
-                            }
                         }
                     }
                 }
@@ -618,11 +554,7 @@ impl PointerHandler for AppData {
                         self.press_start_pos = [px, py];
                         self.is_sliding = false;
                     } else {
-                        let handled = self.handle_click(px, py, is_right);
-                        if !handled {
-                            self.is_dragging = true;
-                            self.drag_grab_offset = [px as i32, py as i32];
-                        }
+                        self.handle_click(px, py, is_right);
                     }
                 }
                 PointerEventKind::Release { .. } => {
@@ -653,7 +585,6 @@ impl PointerHandler for AppData {
                             }
                         }
                     }
-                    self.is_dragging = false;
                 }
                 _ => {}
             }
@@ -2349,8 +2280,6 @@ fn main() {
         keyboard: None,
         cursor_pos: [-10.0, -10.0],
         is_hovered: false,
-        is_dragging: false,
-        drag_grab_offset: [0, 0],
 
         pos_x,
         pos_y,
@@ -2462,7 +2391,6 @@ fn main() {
 
         let timeout_ms = if animating
             || app_data.is_hovered
-            || app_data.is_dragging
             || app_data.is_editing
             || app_data.is_cal_editing
             || app_data.is_sliding
