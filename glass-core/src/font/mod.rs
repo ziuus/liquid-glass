@@ -1249,14 +1249,14 @@ impl UIFont {
         charging: bool,
         color: [u8; 4],
     ) {
-        // Outer body (half_w = 7.0, half_h = 4.2, r = 1.6)
-        Self::draw_rounded_rect_stroke(buf, width, height, cx - 1.0, cy, 7.0, 4.2, 1.6, 1.2, color);
+        // Outer body (half_w = 7.0, half_h = 4.2, r = 1.6, stroke = 1.5)
+        Self::draw_rounded_rect_stroke(buf, width, height, cx - 1.0, cy, 7.0, 4.2, 1.6, 1.5, color);
         // Positive terminal cap (+ right nipple)
         Self::draw_rounded_rect_fill(buf, width, height, cx + 7.2, cy, 1.0, 2.0, 0.8, color);
 
         // Fill indicator
         let fill_pct = (pct as f32 / 100.0).clamp(0.08, 1.0);
-        let max_w = 11.5f32;
+        let max_w = 11.0f32;
         let cur_w = max_w * fill_pct;
         let fill_cx = (cx - 1.0) - (max_w - cur_w) * 0.5;
         Self::draw_rounded_rect_fill(
@@ -1266,21 +1266,21 @@ impl UIFont {
             fill_cx,
             cy,
             cur_w * 0.5,
-            2.8,
+            2.6,
             1.0,
             color,
         );
 
         // Bolt if charging
         if charging {
-            let bolt_col = [255, 220, 60, 255];
+            let bolt_col = color;
             Self::draw_segment(
                 buf,
                 width,
                 height,
                 (cx - 2.0, cy - 4.5),
                 (cx, cy),
-                1.4,
+                1.5,
                 bolt_col,
             );
             Self::draw_segment(
@@ -1289,7 +1289,7 @@ impl UIFont {
                 height,
                 (cx - 0.5, cy),
                 (cx + 1.5, cy + 4.5),
-                1.4,
+                1.5,
                 bolt_col,
             );
         }
@@ -1304,22 +1304,22 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        // Outer chip package (half = 5.5 x 5.5, r = 1.5)
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 5.5, 5.5, 1.5, 1.2, color);
-        // Core die
-        Self::draw_rounded_rect_fill(buf, width, height, cx, cy, 2.4, 2.4, 0.8, color);
+        // Outer chip package (half = 6.0 x 6.0, r = 1.6, stroke = 1.5)
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 6.0, 6.0, 1.6, 1.5, color);
+        // Core die outline (hollow 1.5px stroke, not a heavy solid block)
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 2.6, 2.6, 0.8, 1.3, color);
 
-        // Pins (2 on each of the 4 sides)
+        // Pins (2 on each of the 4 sides, stroke = 1.5)
         let pin_len = 2.0f32;
-        for &offset in &[-2.5f32, 2.5f32] {
+        for &offset in &[-2.8f32, 2.8f32] {
             // Top pins
             Self::draw_segment(
                 buf,
                 width,
                 height,
-                (cx + offset, cy - 5.5),
-                (cx + offset, cy - 5.5 - pin_len),
-                1.1,
+                (cx + offset, cy - 6.0),
+                (cx + offset, cy - 6.0 - pin_len),
+                1.5,
                 color,
             );
             // Bottom pins
@@ -1327,9 +1327,9 @@ impl UIFont {
                 buf,
                 width,
                 height,
-                (cx + offset, cy + 5.5),
-                (cx + offset, cy + 5.5 + pin_len),
-                1.1,
+                (cx + offset, cy + 6.0),
+                (cx + offset, cy + 6.0 + pin_len),
+                1.5,
                 color,
             );
             // Left pins
@@ -1337,9 +1337,9 @@ impl UIFont {
                 buf,
                 width,
                 height,
-                (cx - 5.5, cy + offset),
-                (cx - 5.5 - pin_len, cy + offset),
-                1.1,
+                (cx - 6.0, cy + offset),
+                (cx - 6.0 - pin_len, cy + offset),
+                1.5,
                 color,
             );
             // Right pins
@@ -1347,9 +1347,9 @@ impl UIFont {
                 buf,
                 width,
                 height,
-                (cx + 5.5, cy + offset),
-                (cx + 5.5 + pin_len, cy + offset),
-                1.1,
+                (cx + 6.0, cy + offset),
+                (cx + 6.0 + pin_len, cy + offset),
+                1.5,
                 color,
             );
         }
@@ -1364,31 +1364,31 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        // Outer stick module: half_w = 6.5, half_h = 4.0, r = 1.0, stroke = 1.2
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 6.5, 4.0, 1.0, 1.2, color);
-        // 3 mini memory chip blocks inside
-        for &ox in &[-3.5f32, 0.0f32, 3.5f32] {
+        // Outer stick module: half_w = 7.0, half_h = 4.5, r = 1.2, stroke = 1.5
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 7.0, 4.5, 1.2, 1.5, color);
+        // 3 memory chip blocks inside
+        for &ox in &[-3.8f32, 0.0f32, 3.8f32] {
             Self::draw_rounded_rect_fill(
                 buf,
                 width,
                 height,
                 cx + ox,
                 cy - 0.5,
-                1.1,
-                1.8,
-                0.5,
+                1.2,
+                2.0,
+                0.6,
                 color,
             );
         }
         // Bottom contact pins
-        for &ox in &[-4.0f32, -2.0f32, 2.0f32, 4.0f32] {
+        for &ox in &[-4.5f32, -2.0f32, 2.0f32, 4.5f32] {
             Self::draw_segment(
                 buf,
                 width,
                 height,
-                (cx + ox, cy + 4.0),
-                (cx + ox, cy + 5.5),
-                1.0,
+                (cx + ox, cy + 4.5),
+                (cx + ox, cy + 6.0),
+                1.4,
                 color,
             );
         }
@@ -1403,7 +1403,7 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        let r = 6.2f32;
+        let r = 6.5f32;
         let min_x = (cx - r - 2.0).max(0.0) as u32;
         let max_x = (cx + r + 2.0).min(width as f32 - 1.0) as u32;
         let min_y = (cy - r - 2.0).max(0.0) as u32;
@@ -1414,7 +1414,7 @@ impl UIFont {
                 let px = x as f32 + 0.5;
                 let py = y as f32 + 0.5;
                 let dist = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
-                let d_ring = (dist - r).abs() - 0.65;
+                let d_ring = (dist - r).abs() - 0.75;
                 let alpha = (1.0 - Self::smoothstep(-0.4, 0.4, d_ring)) * (color[3] as f32 / 255.0);
                 if alpha > 0.01 {
                     let idx = ((y * width + x) * 4) as usize;
@@ -1433,13 +1433,13 @@ impl UIFont {
 
         // Center dot
         Self::draw_rounded_rect_fill(buf, width, height, cx, cy, 0.9, 0.9, 0.9, color);
-        // Hour hand: center to 12 o'clock
-        Self::draw_segment(buf, width, height, (cx, cy), (cx, cy - 3.4), 1.3, color);
-        // Minute hand: center to 3 o'clock
-        Self::draw_segment(buf, width, height, (cx, cy), (cx + 3.2, cy), 1.3, color);
+        // Hour hand: center to 12 o'clock (stroke = 1.5)
+        Self::draw_segment(buf, width, height, (cx, cy), (cx, cy - 3.4), 1.5, color);
+        // Minute hand: center to 3 o'clock (stroke = 1.5)
+        Self::draw_segment(buf, width, height, (cx, cy), (cx + 3.4, cy), 1.5, color);
     }
 
-    /// Draw a precision Lucide-grade Settings / Cog gear icon
+    /// Draw a precision Lucide-grade Settings / More Ellipsis icon (3 balanced dots)
     pub fn draw_settings_icon(
         buf: &mut [u8],
         width: u32,
@@ -1448,42 +1448,35 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        // Center ring: r = 3.0, stroke = 1.3
-        let r = 3.0f32;
-        let min_x = (cx - 7.5).max(0.0) as u32;
-        let max_x = (cx + 7.5).min(width as f32 - 1.0) as u32;
-        let min_y = (cy - 7.5).max(0.0) as u32;
-        let max_y = (cy + 7.5).min(height as f32 - 1.0) as u32;
+        let dot_r = 1.7f32;
+        for &ox in &[-5.0f32, 0.0f32, 5.0f32] {
+            let dcx = cx + ox;
+            let min_x = (dcx - dot_r - 1.5).max(0.0) as u32;
+            let max_x = (dcx + dot_r + 1.5).min(width as f32 - 1.0) as u32;
+            let min_y = (cy - dot_r - 1.5).max(0.0) as u32;
+            let max_y = (cy + dot_r + 1.5).min(height as f32 - 1.0) as u32;
 
-        for y in min_y..=max_y {
-            for x in min_x..=max_x {
-                let px = x as f32 + 0.5;
-                let py = y as f32 + 0.5;
-                let dist = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
-                let d_ring = (dist - r).abs() - 0.65;
-                let alpha = (1.0 - Self::smoothstep(-0.4, 0.4, d_ring)) * (color[3] as f32 / 255.0);
-                if alpha > 0.01 {
-                    let idx = ((y * width + x) * 4) as usize;
-                    if idx + 3 < buf.len() {
-                        let inv_a = 1.0 - alpha;
-                        buf[idx] = (color[0] as f32 * alpha + buf[idx] as f32 * inv_a) as u8;
-                        buf[idx + 1] =
-                            (color[1] as f32 * alpha + buf[idx + 1] as f32 * inv_a) as u8;
-                        buf[idx + 2] =
-                            (color[2] as f32 * alpha + buf[idx + 2] as f32 * inv_a) as u8;
-                        buf[idx + 3] = (alpha * 255.0).max(buf[idx + 3] as f32) as u8;
+            for y in min_y..=max_y {
+                for x in min_x..=max_x {
+                    let px = x as f32 + 0.5;
+                    let py = y as f32 + 0.5;
+                    let dist = ((px - dcx).powi(2) + (py - cy).powi(2)).sqrt();
+                    let d = dist - dot_r;
+                    let alpha = (1.0 - Self::smoothstep(-0.4, 0.4, d)) * (color[3] as f32 / 255.0);
+                    if alpha > 0.01 {
+                        let idx = ((y * width + x) * 4) as usize;
+                        if idx + 3 < buf.len() {
+                            let inv_a = 1.0 - alpha;
+                            buf[idx] = (color[0] as f32 * alpha + buf[idx] as f32 * inv_a) as u8;
+                            buf[idx + 1] =
+                                (color[1] as f32 * alpha + buf[idx + 1] as f32 * inv_a) as u8;
+                            buf[idx + 2] =
+                                (color[2] as f32 * alpha + buf[idx + 2] as f32 * inv_a) as u8;
+                            buf[idx + 3] = (alpha * 255.0).max(buf[idx + 3] as f32) as u8;
+                        }
                     }
                 }
             }
-        }
-
-        // 6 radial teeth
-        for i in 0..6 {
-            let angle = (i as f32) * (std::f32::consts::PI / 3.0);
-            let (sin_a, cos_a) = angle.sin_cos();
-            let p1 = (cx + cos_a * 4.0, cy + sin_a * 4.0);
-            let p2 = (cx + cos_a * 6.8, cy + sin_a * 6.8);
-            Self::draw_segment(buf, width, height, p1, p2, 1.6, color);
         }
     }
 
@@ -1641,6 +1634,13 @@ impl UIFont {
         is_playing: bool,
         col: [u8; 4],
     ) {
+        if !is_playing {
+            // Muted idle state: clean, flat resting bar instead of bouncing/dotted visualizer
+            let idle_col = [col[0], col[1], col[2], (col[3] as f32 * 0.40) as u8];
+            Self::draw_rounded_rect_fill(buf, width, height, cx, cy, 13.0, 0.9, 0.9, idle_col);
+            return;
+        }
+
         let bar_count = 6;
         let bar_w = 2.4f32;
         let spacing = 6.0f32;
@@ -1649,16 +1649,12 @@ impl UIFont {
 
         for i in 0..bar_count {
             let bx = start_x + (i as f32) * spacing;
-            let half_h = if is_playing {
-                let fi = i as f32;
-                let wave1 = (t_sec * (8.0 + fi * 2.5)).sin();
-                let wave2 = (t_sec * (13.0 - fi * 1.8)).cos();
-                let wave3 = (t_sec * (5.5 + fi * 3.8)).sin();
-                let combined = (wave1 * 0.40 + wave2 * 0.35 + wave3 * 0.25).abs();
-                (combined * 10.0 + 3.0).clamp(2.5, 14.0)
-            } else {
-                2.2f32
-            };
+            let fi = i as f32;
+            let wave1 = (t_sec * (8.0 + fi * 2.5)).sin();
+            let wave2 = (t_sec * (13.0 - fi * 1.8)).cos();
+            let wave3 = (t_sec * (5.5 + fi * 3.8)).sin();
+            let combined = (wave1 * 0.40 + wave2 * 0.35 + wave3 * 0.25).abs();
+            let half_h = (combined * 10.0 + 3.0).clamp(2.5, 14.0);
 
             Self::draw_rounded_rect_fill(
                 buf,

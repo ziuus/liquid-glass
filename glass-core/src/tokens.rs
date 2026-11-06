@@ -39,8 +39,8 @@ impl Tokens {
 
     // Text hierarchy
     pub const TEXT_PRIMARY: [u8; 4] = [245, 247, 250, 255];
-    pub const TEXT_SECONDARY: [u8; 4] = [170, 178, 192, 230];
-    pub const TEXT_TERTIARY: [u8; 4] = [120, 130, 148, 180];
+    pub const TEXT_SECONDARY: [u8; 4] = [200, 208, 222, 255];
+    pub const TEXT_TERTIARY: [u8; 4] = [140, 150, 168, 210];
     pub const TEXT_SHADOW: [u8; 4] = [0, 0, 0, 90];
 
     // High-contrast Light Mode Text (WCAG AAA > 12:1 against light glass)
@@ -62,6 +62,7 @@ impl Tokens {
 
     // Inner element fills
     pub const INNER_TILE_BG_DARK: [u8; 4] = [255, 255, 255, 18]; // 7% white
+    pub const INNER_TILE_BG_ROW: [u8; 4] = [255, 255, 255, 22]; // 8.6% white
     pub const INNER_TILE_BG_HOVER_DARK: [u8; 4] = [255, 255, 255, 30]; // 12% white
     pub const INNER_TILE_BG_LIGHT: [u8; 4] = [0, 0, 0, 16]; // 6% black fill for crisp contrast
     pub const INNER_TILE_BG_HOVER_LIGHT: [u8; 4] = [0, 0, 0, 30]; // 12% black fill on hover

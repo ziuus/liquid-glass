@@ -1191,10 +1191,40 @@ impl AppData {
                 let prev_cx = play_cx - 44.0;
                 let next_cx = play_cx + 44.0;
 
+                let is_media_active = self.music.is_playing;
+                let ctrl_col = if is_media_active {
+                    col_ink
+                } else {
+                    // Dimmed to 40% when idle / no active playback
+                    [col_ink[0], col_ink[1], col_ink[2], 102]
+                };
+
                 // Previous
-                UIFont::draw_prev_icon(buf, self.width, self.height, prev_cx, ctrl_y, 8.5, col_ink);
+                UIFont::draw_prev_icon(
+                    buf,
+                    self.width,
+                    self.height,
+                    prev_cx,
+                    ctrl_y,
+                    8.5,
+                    ctrl_col,
+                );
 
                 // Play / Pause Button with circle fill (half_w = 18.0, half_h = 18.0)
+                let btn_circle_fill = if is_media_active {
+                    if is_light {
+                        [20, 24, 34, 255]
+                    } else {
+                        [245, 248, 255, 255]
+                    }
+                } else {
+                    // Muted 24% fill when idle
+                    if is_light {
+                        [20, 24, 34, 60]
+                    } else {
+                        [245, 248, 255, 60]
+                    }
+                };
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
@@ -1204,16 +1234,22 @@ impl AppData {
                     18.0,
                     18.0,
                     18.0,
-                    if is_light {
-                        [20, 24, 34, 255]
-                    } else {
-                        [245, 248, 255, 255]
-                    },
+                    btn_circle_fill,
                 );
-                let play_icon_col = if is_light {
-                    [255, 255, 255, 255]
+
+                let play_icon_col = if is_media_active {
+                    if is_light {
+                        [255, 255, 255, 255]
+                    } else {
+                        [10, 14, 20, 255]
+                    }
                 } else {
-                    [10, 14, 20, 255]
+                    // Muted play icon when idle
+                    if is_light {
+                        [20, 24, 34, 180]
+                    } else {
+                        [245, 248, 255, 180]
+                    }
                 };
                 if self.music.is_playing {
                     UIFont::draw_pause_icon(
@@ -1238,13 +1274,35 @@ impl AppData {
                 }
 
                 // Next
-                UIFont::draw_next_icon(buf, self.width, self.height, next_cx, ctrl_y, 8.5, col_ink);
+                UIFont::draw_next_icon(
+                    buf,
+                    self.width,
+                    self.height,
+                    next_cx,
+                    ctrl_y,
+                    8.5,
+                    ctrl_col,
+                );
 
                 // Progress Bar (at y = 104.0)
                 let bar_y = island_top + 104.0;
                 let bar_w = island_w - 64.0;
                 let bar_x = cx;
                 // High-contrast track back (half_w = bar_w * 0.5, half_h = 2.0)
+                let track_bg = if is_media_active {
+                    if is_light {
+                        [160, 170, 190, 200]
+                    } else {
+                        [140, 155, 185, 160]
+                    }
+                } else {
+                    // Flat muted idle track back
+                    if is_light {
+                        [160, 170, 190, 75]
+                    } else {
+                        [140, 155, 185, 55]
+                    }
+                };
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
@@ -1254,44 +1312,43 @@ impl AppData {
                     bar_w * 0.5,
                     2.0,
                     2.0,
-                    if is_light {
-                        [160, 170, 190, 200]
-                    } else {
-                        [140, 155, 185, 160]
-                    },
+                    track_bg,
                 );
-                // Active fill
-                let fill_w = bar_w * self.music.progress;
-                if fill_w > 2.0 {
-                    let fill_cx = cx - bar_w * 0.5 + fill_w * 0.5;
-                    UIFont::draw_rounded_rect_fill(
-                        buf,
-                        self.width,
-                        self.height,
-                        fill_cx,
-                        bar_y,
-                        fill_w * 0.5,
-                        2.0,
-                        2.0,
-                        col_ink,
-                    );
-                    // Scrubber knob
-                    let knob_x = cx - bar_w * 0.5 + fill_w;
-                    UIFont::draw_rounded_rect_fill(
-                        buf,
-                        self.width,
-                        self.height,
-                        knob_x,
-                        bar_y,
-                        4.0,
-                        4.0,
-                        4.0,
-                        if is_light {
-                            [20, 24, 32, 255]
-                        } else {
-                            [255, 255, 255, 255]
-                        },
-                    );
+
+                // Active fill and scrubber only shown when media is active
+                if is_media_active {
+                    let fill_w = bar_w * self.music.progress;
+                    if fill_w > 2.0 {
+                        let fill_cx = cx - bar_w * 0.5 + fill_w * 0.5;
+                        UIFont::draw_rounded_rect_fill(
+                            buf,
+                            self.width,
+                            self.height,
+                            fill_cx,
+                            bar_y,
+                            fill_w * 0.5,
+                            2.0,
+                            2.0,
+                            col_ink,
+                        );
+                        // Scrubber knob
+                        let knob_x = cx - bar_w * 0.5 + fill_w;
+                        UIFont::draw_rounded_rect_fill(
+                            buf,
+                            self.width,
+                            self.height,
+                            knob_x,
+                            bar_y,
+                            4.0,
+                            4.0,
+                            4.0,
+                            if is_light {
+                                [20, 24, 32, 255]
+                            } else {
+                                [255, 255, 255, 255]
+                            },
+                        );
+                    }
                 }
             }
             IslandMode::Notification => {
@@ -1671,16 +1728,24 @@ impl AppData {
                             cy - 12.0,
                             col_ink,
                         ),
-                        2 => UIFont::draw_battery_icon(
-                            buf,
-                            self.width,
-                            self.height,
-                            cx,
-                            cy - 12.0,
-                            self.sys_stats.bat_pct,
-                            self.sys_stats.bat_charging,
-                            col_ink,
-                        ),
+                        2 => {
+                            let bat_col =
+                                if self.sys_stats.bat_pct < 20 && !self.sys_stats.bat_charging {
+                                    Tokens::STATUS_AMBER
+                                } else {
+                                    col_ink
+                                };
+                            UIFont::draw_battery_icon(
+                                buf,
+                                self.width,
+                                self.height,
+                                cx,
+                                cy - 12.0,
+                                self.sys_stats.bat_pct,
+                                self.sys_stats.bat_charging,
+                                bat_col,
+                            );
+                        }
                         _ => UIFont::draw_clock_icon(
                             buf,
                             self.width,

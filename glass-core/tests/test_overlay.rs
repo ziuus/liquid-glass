@@ -1428,3 +1428,641 @@ fn test_render_light_and_dark_island_modes() {
         }
     }
 }
+
+#[test]
+fn test_render_claude_review_remediations() {
+    use glass_core::font::UIFont;
+    use glass_core::Tokens;
+
+    let font = UIFont::new();
+    let brain_dir = std::path::Path::new(
+        "/home/zius/.gemini/antigravity-cli/brain/64634fbc-40f0-4ff7-b05d-73575fd4890c",
+    );
+    let target_dir = if brain_dir.exists() {
+        brain_dir.to_path_buf()
+    } else {
+        std::env::temp_dir()
+    };
+
+    // ─────────────────────────────────────────────────────────────
+    // 1. TASKS PANEL REMEDIATED (360 x 455)
+    // ─────────────────────────────────────────────────────────────
+    {
+        let (tw, th) = (360u32, 455u32);
+        let mut buf = vec![0u8; (tw * th * 4) as usize];
+        let card_h = 440.0f32;
+
+        // Card Substrate
+        UIFont::draw_rounded_rect_fill(
+            &mut buf,
+            tw,
+            th,
+            180.0,
+            card_h * 0.5 + 4.0,
+            176.0,
+            card_h * 0.5 - 4.0,
+            Tokens::RADIUS_OUTER,
+            [16, 20, 28, 235],
+        );
+        UIFont::draw_rounded_rect_stroke(
+            &mut buf,
+            tw,
+            th,
+            180.0,
+            card_h * 0.5 + 4.0,
+            176.0,
+            card_h * 0.5 - 4.0,
+            Tokens::RADIUS_OUTER,
+            1.0,
+            Tokens::RIM_OUTER_DARK,
+        );
+
+        // Header Tab Track
+        UIFont::draw_rounded_rect_fill(
+            &mut buf,
+            tw,
+            th,
+            160.0,
+            32.5,
+            138.0,
+            16.0,
+            10.0,
+            Tokens::INNER_TILE_BG_DARK,
+        );
+
+        // Active "Tasks (5)" Tab Pill (near-white fill + dark ink)
+        UIFont::draw_rounded_rect_fill(
+            &mut buf,
+            tw,
+            th,
+            96.0,
+            32.5,
+            64.0,
+            13.5,
+            8.0,
+            [255, 255, 255, 220],
+        );
+        font.draw_text_centered(
+            &mut buf,
+            tw,
+            th,
+            "Tasks (5)",
+            96.0,
+            32.5,
+            14.5,
+            [8, 12, 20, 255],
+            [0, 0, 0, 0],
+            FontWeight::SemiBold,
+        );
+        font.draw_text_centered(
+            &mut buf,
+            tw,
+            th,
+            "Agenda",
+            224.0,
+            32.5,
+            14.5,
+            Tokens::TEXT_SECONDARY,
+            [0, 0, 0, 0],
+            FontWeight::SemiBold,
+        );
+
+        // Top Right: Refined 3-Dot Ellipsis Settings Icon (r = 1.7)
+        UIFont::draw_rounded_rect_fill(
+            &mut buf,
+            tw,
+            th,
+            330.0,
+            32.5,
+            13.0,
+            13.0,
+            8.0,
+            Tokens::INNER_TILE_BG_DARK,
+        );
+        UIFont::draw_settings_icon(&mut buf, tw, th, 330.0, 32.5, Tokens::TEXT_PRIMARY);
+
+        // Filter Bar Track
+        UIFont::draw_rounded_rect_fill(
+            &mut buf,
+            tw,
+            th,
+            156.0,
+            79.5,
+            108.0,
+            13.0,
+            8.0,
+            Tokens::INNER_TILE_BG_DARK,
+        );
+
+        // "All" Filter Chip: NEAR-WHITE FILL + DARK INK (> 7.5:1 contrast)
+        UIFont::draw_rounded_rect_fill(
+            &mut buf,
+            tw,
+            th,
+            84.0,
+            79.5,
+            32.0,
+            11.0,
+            7.0,
+            [255, 255, 255, 220],
+        );
+        font.draw_text_centered(
+            &mut buf,
+            tw,
+            th,
+            "All",
+            84.0,
+            79.5,
+            14.0,
+            [8, 12, 20, 255],
+            [0, 0, 0, 0],
+            FontWeight::Bold,
+        );
+        font.draw_text_centered(
+            &mut buf,
+            tw,
+            th,
+            "Active",
+            156.0,
+            79.5,
+            14.0,
+            Tokens::TEXT_SECONDARY,
+            [0, 0, 0, 0],
+            FontWeight::Bold,
+        );
+        font.draw_text_centered(
+            &mut buf,
+            tw,
+            th,
+            "Done",
+            228.0,
+            79.5,
+            14.0,
+            Tokens::TEXT_SECONDARY,
+            [0, 0, 0, 0],
+            FontWeight::Bold,
+        );
+
+        // Task Rows with 8.6% fill + 1px top highlight bevel
+        let tasks = [
+            ("Leetcode", false),
+            ("Learn", false),
+            ("Career", false),
+            ("hackerrank", false),
+            ("learn AI and ML, then LAB", false),
+        ];
+
+        for (idx, (title, done)) in tasks.iter().enumerate() {
+            let cy = 122.5 + (idx as f32) * 44.0;
+
+            // Row Container Fill (8.6% white)
+            UIFont::draw_rounded_rect_fill(
+                &mut buf,
+                tw,
+                th,
+                180.0,
+                cy,
+                156.0,
+                18.0,
+                Tokens::RADIUS_INNER_TILE,
+                Tokens::INNER_TILE_BG_ROW,
+            );
+            // 1px Top Highlight Bevel
+            UIFont::draw_segment(
+                &mut buf,
+                tw,
+                th,
+                (180.0 - 148.0, cy - 17.0),
+                (180.0 + 148.0, cy - 17.0),
+                1.0,
+                Tokens::INNER_TOP_HIGHLIGHT_DARK,
+            );
+
+            // Precision Checkbox (44.0, cy)
+            UIFont::draw_rounded_rect_stroke(
+                &mut buf,
+                tw,
+                th,
+                44.0,
+                cy,
+                9.0,
+                9.0,
+                5.0,
+                1.5,
+                Tokens::TEXT_SECONDARY,
+            );
+
+            // Title
+            font.draw_text_centered_y(
+                &mut buf,
+                tw,
+                th,
+                title,
+                64.0,
+                cy,
+                15.5,
+                if *done {
+                    Tokens::TEXT_SECONDARY
+                } else {
+                    Tokens::TEXT_PRIMARY
+                },
+                [0, 0, 0, 0],
+                FontWeight::Bold,
+            );
+
+            // Tag
+            font.draw_text_centered(
+                &mut buf,
+                tw,
+                th,
+                "DAILY",
+                304.0,
+                cy,
+                10.0,
+                Tokens::TEXT_SECONDARY,
+                [0, 0, 0, 0],
+                FontWeight::Bold,
+            );
+        }
+
+        // "Add task" Input Bar with 8.6% fill + 1px top highlight bevel
+        let add_cy = 356.0f32;
+        UIFont::draw_rounded_rect_fill(
+            &mut buf,
+            tw,
+            th,
+            180.0,
+            add_cy,
+            156.0,
+            16.0,
+            Tokens::RADIUS_INNER_TILE,
+            Tokens::INNER_TILE_BG_ROW,
+        );
+        UIFont::draw_segment(
+            &mut buf,
+            tw,
+            th,
+            (180.0 - 148.0, add_cy - 15.0),
+            (180.0 + 148.0, add_cy - 15.0),
+            1.0,
+            Tokens::INNER_TOP_HIGHLIGHT_DARK,
+        );
+        font.draw_text_centered_y(
+            &mut buf,
+            tw,
+            th,
+            "Add task",
+            42.0,
+            add_cy,
+            14.5,
+            Tokens::TEXT_SECONDARY,
+            [0, 0, 0, 0],
+            FontWeight::Medium,
+        );
+        UIFont::draw_rounded_rect_fill(
+            &mut buf,
+            tw,
+            th,
+            315.0,
+            add_cy,
+            11.0,
+            11.0,
+            11.0,
+            Tokens::INNER_TILE_BG_DARK,
+        );
+        font.draw_text_centered(
+            &mut buf,
+            tw,
+            th,
+            "+",
+            315.0,
+            add_cy,
+            14.0,
+            Tokens::TEXT_PRIMARY,
+            [0, 0, 0, 0],
+            FontWeight::Bold,
+        );
+
+        let _ = image::save_buffer(
+            format!("{}/tasks_panel_remediated.png", target_dir.display()),
+            &buf,
+            tw,
+            th,
+            image::ExtendedColorType::Rgba8,
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 2. IDLE MUSIC ISLAND REMEDIATED (480 x 160)
+    // ─────────────────────────────────────────────────────────────
+    {
+        let (iw, ih) = (480u32, 160u32);
+        let mut buf = vec![0u8; (iw * ih * 4) as usize];
+        let island_cx = 240.0f32;
+        let island_top = 12.0f32;
+        let island_w = 460.0f32;
+        let island_h = 120.0f32;
+
+        // Substrate
+        UIFont::draw_rounded_rect_fill(
+            &mut buf,
+            iw,
+            ih,
+            island_cx,
+            island_top + island_h * 0.5,
+            island_w * 0.5,
+            island_h * 0.5,
+            Tokens::RADIUS_OUTER,
+            Tokens::OBSIDIAN_BACKDROP,
+        );
+        UIFont::draw_rounded_rect_stroke(
+            &mut buf,
+            iw,
+            ih,
+            island_cx,
+            island_top + island_h * 0.5,
+            island_w * 0.5,
+            island_h * 0.5,
+            Tokens::RADIUS_OUTER,
+            1.0,
+            Tokens::RIM_OUTER_DARK,
+        );
+
+        // Header
+        font.draw_text(
+            &mut buf,
+            iw,
+            ih,
+            "NOW PLAYING",
+            island_cx - island_w * 0.5 + 32.0,
+            island_top + 24.0,
+            Tokens::TYPE_CAPTION,
+            Tokens::TEXT_TERTIARY,
+            FontWeight::Bold,
+        );
+
+        // Page Dots
+        let dot_start_x = island_cx + island_w * 0.5 - 65.0;
+        let dot_y = island_top + 22.0;
+        for i in 0..4 {
+            let dx = dot_start_x + (i as f32) * 11.0;
+            let dot_col = if i == 0 {
+                [255, 255, 255, 240]
+            } else {
+                [255, 255, 255, 60]
+            };
+            UIFont::draw_rounded_rect_fill(&mut buf, iw, ih, dx, dot_y, 2.8, 2.8, 2.8, dot_col);
+        }
+
+        // Spinning vinyl disc resting (idle)
+        let disc_cx = island_cx - island_w * 0.5 + 46.0;
+        let disc_cy = island_top + 68.0;
+        UIFont::draw_spinning_vinyl(&mut buf, iw, ih, disc_cx, disc_cy, 23.0, 0.0, false);
+
+        // Idle Resting Bar (flat line replacing the 6 dots before prev)
+        let vis_cx = island_cx + 42.0;
+        let vis_cy = island_top + 68.0;
+        UIFont::draw_audio_visualizer(
+            &mut buf,
+            iw,
+            ih,
+            vis_cx,
+            vis_cy,
+            0.0,
+            false,
+            Tokens::TEXT_PRIMARY,
+        );
+
+        // Idle Track Details: "No Media Playing" / "System Idle"
+        let title_x = island_cx - island_w * 0.5 + 88.0;
+        font.draw_text(
+            &mut buf,
+            iw,
+            ih,
+            "No Media Playing",
+            title_x,
+            island_top + 58.0,
+            Tokens::TYPE_BODY,
+            Tokens::TEXT_PRIMARY,
+            FontWeight::Bold,
+        );
+        font.draw_text(
+            &mut buf,
+            iw,
+            ih,
+            "System Idle",
+            title_x,
+            island_top + 78.0,
+            Tokens::TYPE_BODY_SM,
+            Tokens::TEXT_SECONDARY,
+            FontWeight::Medium,
+        );
+
+        // Transport Controls DIMMED TO 40% (idle state)
+        let ctrl_y = island_top + 68.0;
+        let play_cx = island_cx + island_w * 0.5 - 64.0;
+        let prev_cx = play_cx - 44.0;
+        let next_cx = play_cx + 44.0;
+        let idle_ctrl_col = [
+            Tokens::TEXT_PRIMARY[0],
+            Tokens::TEXT_PRIMARY[1],
+            Tokens::TEXT_PRIMARY[2],
+            102,
+        ];
+
+        // Prev (dimmed)
+        UIFont::draw_prev_icon(&mut buf, iw, ih, prev_cx, ctrl_y, 8.5, idle_ctrl_col);
+
+        // Play Button (dimmed 24% fill, 70% icon)
+        UIFont::draw_rounded_rect_fill(
+            &mut buf,
+            iw,
+            ih,
+            play_cx,
+            ctrl_y,
+            18.0,
+            18.0,
+            18.0,
+            [245, 248, 255, 60],
+        );
+        UIFont::draw_play_icon(
+            &mut buf,
+            iw,
+            ih,
+            play_cx,
+            ctrl_y,
+            8.0,
+            [245, 248, 255, 180],
+        );
+
+        // Next (dimmed)
+        UIFont::draw_next_icon(&mut buf, iw, ih, next_cx, ctrl_y, 8.5, idle_ctrl_col);
+
+        // Flat Muted Progress Bar Track (20% opacity, no active scrubber thumb)
+        let bar_y = island_top + 104.0;
+        let bar_w = island_w - 64.0;
+        UIFont::draw_rounded_rect_fill(
+            &mut buf,
+            iw,
+            ih,
+            island_cx,
+            bar_y,
+            bar_w * 0.5,
+            2.0,
+            2.0,
+            [140, 155, 185, 55],
+        );
+
+        let _ = image::save_buffer(
+            format!("{}/music_island_idle_remediated.png", target_dir.display()),
+            &buf,
+            iw,
+            ih,
+            image::ExtendedColorType::Rgba8,
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 3. SYSTEM OVERVIEW REMEDIATED (480 x 160)
+    // ─────────────────────────────────────────────────────────────
+    {
+        let (iw, ih) = (480u32, 160u32);
+        let mut buf = vec![0u8; (iw * ih * 4) as usize];
+        let island_cx = 240.0f32;
+        let island_top = 12.0f32;
+        let island_w = 460.0f32;
+        let island_h = 120.0f32;
+
+        // Substrate
+        UIFont::draw_rounded_rect_fill(
+            &mut buf,
+            iw,
+            ih,
+            island_cx,
+            island_top + island_h * 0.5,
+            island_w * 0.5,
+            island_h * 0.5,
+            Tokens::RADIUS_OUTER,
+            Tokens::OBSIDIAN_BACKDROP,
+        );
+        UIFont::draw_rounded_rect_stroke(
+            &mut buf,
+            iw,
+            ih,
+            island_cx,
+            island_top + island_h * 0.5,
+            island_w * 0.5,
+            island_h * 0.5,
+            Tokens::RADIUS_OUTER,
+            1.0,
+            Tokens::RIM_OUTER_DARK,
+        );
+
+        font.draw_text(
+            &mut buf,
+            iw,
+            ih,
+            "SYSTEM OVERVIEW",
+            island_cx - island_w * 0.5 + 32.0,
+            island_top + 24.0,
+            Tokens::TYPE_CAPTION,
+            Tokens::TEXT_TERTIARY,
+            FontWeight::Bold,
+        );
+
+        let stat_items = [
+            ("CPU", "24%"),
+            ("RAM", "7.2G"),
+            ("BATTERY", "85%"),
+            ("UPTIME", "4h 12m"),
+        ];
+        let item_w = (island_w - 52.0) / 4.0;
+        let start_x = island_cx - island_w * 0.5 + 26.0 + item_w * 0.5;
+        let cy = island_top + 65.0;
+
+        for (idx, (lbl, val)) in stat_items.iter().enumerate() {
+            let cx = start_x + (idx as f32) * item_w;
+
+            // Container pill
+            UIFont::draw_rounded_rect_fill(
+                &mut buf,
+                iw,
+                ih,
+                cx,
+                cy,
+                (item_w - 10.0) * 0.5,
+                28.0,
+                Tokens::RADIUS_INNER_TILE,
+                Tokens::INNER_TILE_BG_DARK,
+            );
+
+            // Top highlight bevel only
+            UIFont::draw_segment(
+                &mut buf,
+                iw,
+                ih,
+                (cx - (item_w - 10.0) * 0.5 + 6.0, cy - 27.0),
+                (cx + (item_w - 10.0) * 0.5 - 6.0, cy - 27.0),
+                1.0,
+                Tokens::INNER_TOP_HIGHLIGHT_DARK,
+            );
+
+            // Standardized 1.5px stroke Lucide vector icons (neutral white by default)
+            match idx {
+                0 => UIFont::draw_cpu_icon(&mut buf, iw, ih, cx, cy - 12.0, Tokens::TEXT_PRIMARY),
+                1 => UIFont::draw_ram_icon(&mut buf, iw, ih, cx, cy - 12.0, Tokens::TEXT_PRIMARY),
+                2 => UIFont::draw_battery_icon(
+                    &mut buf,
+                    iw,
+                    ih,
+                    cx,
+                    cy - 12.0,
+                    85,
+                    false,
+                    Tokens::TEXT_PRIMARY,
+                ),
+                _ => {
+                    UIFont::draw_clock_icon(&mut buf, iw, ih, cx, cy - 12.0, Tokens::TEXT_PRIMARY)
+                }
+            }
+
+            font.draw_text_centered(
+                &mut buf,
+                iw,
+                ih,
+                val,
+                cx,
+                cy + 6.0,
+                Tokens::TYPE_BODY,
+                Tokens::TEXT_PRIMARY,
+                [0, 0, 0, 0],
+                FontWeight::SemiBold,
+            );
+
+            // Secondary label with brightened TEXT_SECONDARY (> 7.5:1 contrast)
+            font.draw_text_centered(
+                &mut buf,
+                iw,
+                ih,
+                lbl,
+                cx,
+                cy + 20.0,
+                Tokens::TYPE_CAPTION - 0.5,
+                Tokens::TEXT_SECONDARY,
+                [0, 0, 0, 0],
+                FontWeight::Medium,
+            );
+        }
+
+        let _ = image::save_buffer(
+            format!(
+                "{}/system_overview_remediated.png",
+                target_dir.display()
+            ),
+            &buf,
+            iw,
+            ih,
+            image::ExtendedColorType::Rgba8,
+        );
+    }
+}

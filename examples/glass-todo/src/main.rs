@@ -1174,11 +1174,11 @@ impl AppData {
                 },
             );
 
-            // Sliding active filter pill
+            // Sliding active filter pill (high-contrast near-white fill with dark ink)
             let filter_pill_fill = if self.is_wallpaper_light {
-                [255, 255, 255, 230]
+                [255, 255, 255, 235]
             } else {
-                [255, 255, 255, 45]
+                [255, 255, 255, 220]
             };
             UIFont::draw_rounded_rect_fill(
                 buf,
@@ -1431,6 +1431,11 @@ impl AppData {
                         slide_rim,
                     );
                 } else {
+                    let row_fill = if row_is_light {
+                        Tokens::INNER_TILE_BG_LIGHT
+                    } else {
+                        Tokens::INNER_TILE_BG_ROW
+                    };
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
@@ -1440,11 +1445,22 @@ impl AppData {
                         156.0,
                         18.0,
                         Tokens::RADIUS_INNER_TILE,
-                        if row_is_light {
-                            Tokens::INNER_TILE_BG_LIGHT
-                        } else {
-                            Tokens::INNER_TILE_BG_DARK
-                        },
+                        row_fill,
+                    );
+                    // 1px top highlight bevel for physical glass shelf depth
+                    let row_hl = if row_is_light {
+                        Tokens::INNER_TOP_HIGHLIGHT_LIGHT
+                    } else {
+                        Tokens::INNER_TOP_HIGHLIGHT_DARK
+                    };
+                    UIFont::draw_segment(
+                        buf,
+                        self.width,
+                        self.height,
+                        (180.0 + slide_x + tasks_offset_x - 148.0, cy - 17.0),
+                        (180.0 + slide_x + tasks_offset_x + 148.0, cy - 17.0),
+                        1.0,
+                        row_hl,
                     );
                 }
 
@@ -1569,6 +1585,11 @@ impl AppData {
                 )
             };
 
+            let add_fill = if add_is_light {
+                Tokens::INNER_TILE_BG_LIGHT
+            } else {
+                Tokens::INNER_TILE_BG_ROW
+            };
             UIFont::draw_rounded_rect_fill(
                 buf,
                 self.width,
@@ -1578,11 +1599,22 @@ impl AppData {
                 156.0,
                 16.0,
                 Tokens::RADIUS_INNER_TILE,
-                if add_is_light {
-                    Tokens::INNER_TILE_BG_LIGHT
-                } else {
-                    Tokens::INNER_TILE_BG_DARK
-                },
+                add_fill,
+            );
+            // 1px top highlight bevel on input container
+            let add_hl = if add_is_light {
+                Tokens::INNER_TOP_HIGHLIGHT_LIGHT
+            } else {
+                Tokens::INNER_TOP_HIGHLIGHT_DARK
+            };
+            UIFont::draw_segment(
+                buf,
+                self.width,
+                self.height,
+                (180.0 + tasks_offset_x - 148.0, add_bar_cy - 15.0),
+                (180.0 + tasks_offset_x + 148.0, add_bar_cy - 15.0),
+                1.0,
+                add_hl,
             );
 
             if self.is_editing {

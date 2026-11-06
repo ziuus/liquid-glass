@@ -1417,9 +1417,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if params.blur_radius <= 0.5 {
         col = sharp_col;
     } else {
-        // Continuous variable blur: smoothly scales from rim to interior over 2.5x bezel
+        // Continuous variable blur: smoothly scales from rim to interior over 3.0x bezel
         // completely eliminating the sharp spotlight boundary ring
-        let blur_t = smoothstep(0.0, 2.5 * bezel, depth);
+        let blur_t = smoothstep(0.0, 3.0 * bezel, depth);
         let cur_radius = clamp(params.blur_radius * blur_t, 0.0, 6.0);
         if cur_radius <= 0.3 {
             col = sharp_col;
@@ -1464,10 +1464,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     // 6. DIELECTRIC FRESNEL REFLECTION & CRISP DIRECTIONAL SPECULAR
     // ════════════════════════════════════════════
-    // Thin 1-1.5px specular line: strong at top-left, ~30% at bottom-right, zero wide milky glow
+    // Pure directional specular glint: strong at top-left, fading cleanly to zero at bottom rim (no bottom smudge)
     let corner_mult = 1.0 + 0.35 * corner_factor;
-    let edge_spec = smoothstep(1.5, 0.0, depth) * (light_facing * 0.70 + 0.30) * corner_mult;
-    let soft_falloff = smoothstep(3.5, 0.0, depth) * 0.12 * light_facing;
+    let dir_spec = pow(light_facing, 1.35);
+    let edge_spec = smoothstep(1.4, 0.0, depth) * dir_spec * corner_mult;
+    let soft_falloff = smoothstep(3.0, 0.0, depth) * 0.10 * dir_spec;
     let spec_rim = (edge_spec + soft_falloff) * params.specular_strength;
 
     // On light backdrops: directional dark contour dip to prevent washed-out white-on-white edges
