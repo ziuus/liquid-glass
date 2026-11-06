@@ -57,7 +57,8 @@ struct AppData {
     first_configure: bool,
     exit: bool,
 
-    wallpaper_cache: Option<Arc<Vec<u8>>>,
+    wallpaper_crop: Option<Vec<u8>>,
+    overlay_buffer: Vec<u8>,
     current_wallpaper_path: Option<String>,
     last_wallpaper_check: Instant,
     last_second: u32,
@@ -70,6 +71,10 @@ struct AppData {
     time_is_light: bool,
     bat_is_light: bool,
 }
+
+const CARD_W: f32 = 320.0;
+const CARD_H: f32 = 218.0;
+const CARD_PAD: f32 = 28.0;
 
 struct WaylandWindow {
     surface: wl_surface::WlSurface,
@@ -176,30 +181,16 @@ impl LayerShellHandler for AppData {
 
         if let Some(renderer) = &mut self.renderer {
             renderer.resize(self.width, self.height);
-            if let Some(cache) = &self.wallpaper_cache {
-                let crop = get_wallpaper_crop(
-                    cache,
-                    self.pos_x as u32,
-                    self.pos_y as u32,
-                    self.width,
-                    self.height,
-                );
-                renderer.update_background(self.width, self.height, &crop);
+            if let Some(crop) = &self.wallpaper_crop {
+                renderer.update_background(self.width, self.height, crop);
             }
         } else if let Some(wrapper) = &self.window_wrapper {
             let mut r =
                 pollster::block_on(GlassRenderer::new(wrapper.clone(), self.width, self.height))
                     .expect("Failed to initialize WGPU GlassRenderer for glass-clock");
 
-            if let Some(cache) = &self.wallpaper_cache {
-                let crop = get_wallpaper_crop(
-                    cache,
-                    self.pos_x as u32,
-                    self.pos_y as u32,
-                    self.width,
-                    self.height,
-                );
-                r.update_background(self.width, self.height, &crop);
+            if let Some(crop) = &self.wallpaper_crop {
+                r.update_background(self.width, self.height, crop);
             }
 
             self.renderer = Some(r);
@@ -290,7 +281,7 @@ impl PointerHandler for AppData {
 
 impl AppData {
     fn check_wallpaper(&mut self) {
-        if self.last_wallpaper_check.elapsed().as_millis() < 500 {
+        if self.last_wallpaper_check.elapsed().as_secs() < 4 {
             return;
         }
         self.last_wallpaper_check = Instant::now();
@@ -300,19 +291,19 @@ impl AppData {
             log::info!("Wallpaper changed to {:?}", queried);
             if let Some(buf) = load_wallpaper_image(queried.as_deref()) {
                 self.current_wallpaper_path = queried;
-                self.wallpaper_cache = Some(buf.clone());
+                let crop = get_wallpaper_crop(
+                    &buf,
+                    self.pos_x as u32,
+                    self.pos_y as u32,
+                    self.width,
+                    self.height,
+                );
+                self.is_wallpaper_light =
+                    is_buffer_light_hysteresis(&crop, self.is_wallpaper_light);
                 if let Some(renderer) = &mut self.renderer {
-                    let crop = get_wallpaper_crop(
-                        &buf,
-                        self.pos_x as u32,
-                        self.pos_y as u32,
-                        self.width,
-                        self.height,
-                    );
-                    self.is_wallpaper_light =
-                        is_buffer_light_hysteresis(&crop, self.is_wallpaper_light);
                     renderer.update_background(self.width, self.height, &crop);
                 }
+                self.wallpaper_crop = Some(crop);
                 self.draw();
             }
         }
@@ -332,27 +323,33 @@ impl AppData {
 
     fn render_ui_overlay(&mut self, buf: &mut [u8]) {
         // Multi-region adaptive luminance sampling: Date, Time, and Battery adapt independently!
-        if let Some(cache) = &self.wallpaper_cache {
-            self.date_is_light = sample_region_is_light(
-                cache,
-                self.pos_x + 30,
-                self.pos_y + 15,
+        if let Some(crop) = &self.wallpaper_crop {
+            self.date_is_light = sample_subcrop_is_light(
+                crop,
+                self.width,
+                self.height,
+                (CARD_PAD + 30.0) as u32,
+                (CARD_PAD + 15.0) as u32,
                 260,
                 50,
                 self.date_is_light,
             );
-            self.time_is_light = sample_region_is_light(
-                cache,
-                self.pos_x + 30,
-                self.pos_y + 70,
+            self.time_is_light = sample_subcrop_is_light(
+                crop,
+                self.width,
+                self.height,
+                (CARD_PAD + 30.0) as u32,
+                (CARD_PAD + 70.0) as u32,
                 260,
                 85,
                 self.time_is_light,
             );
-            self.bat_is_light = sample_region_is_light(
-                cache,
-                self.pos_x + 40,
-                self.pos_y + 155,
+            self.bat_is_light = sample_subcrop_is_light(
+                crop,
+                self.width,
+                self.height,
+                (CARD_PAD + 40.0) as u32,
+                (CARD_PAD + 155.0) as u32,
                 240,
                 48,
                 self.bat_is_light,
@@ -421,8 +418,9 @@ impl AppData {
         let bat_str = format!("{:.0}%", self.battery_level);
 
         let half_w = self.width as f32 * 0.5;
+        let card_top = CARD_PAD;
 
-        // 1. Top Centered Date (cy = 44.0) with crisp minimal calendar icon
+        // 1. Top Centered Date (cy = card_top + 44.0) with crisp minimal calendar icon
         let date_w = self
             .font
             .measure_text(&full_date_str, 16.5, FontWeight::Bold);
@@ -433,7 +431,7 @@ impl AppData {
             self.width,
             self.height,
             date_start_x + 6.0,
-            44.0,
+            card_top + 44.0,
             date_sec,
         );
         self.font.draw_text_centered_y(
@@ -442,17 +440,17 @@ impl AppData {
             self.height,
             &full_date_str,
             date_start_x + 18.0,
-            44.0,
+            card_top + 44.0,
             16.5,
             date_col,
             col_shadow,
             FontWeight::Bold,
         );
 
-        // 2. Hero Digital Clock (cy = 110.0): large, bold, sculptural typography (68px)
-        let time_baseline = self
-            .font
-            .vertical_center_baseline(110.0, 68.0, FontWeight::Bold);
+        // 2. Hero Digital Clock (cy = card_top + 110.0): large, bold, sculptural typography (68px)
+        let time_baseline =
+            self.font
+                .vertical_center_baseline(card_top + 110.0, 68.0, FontWeight::Bold);
         let time_w = self.font.measure_text(&time_str, 68.0, FontWeight::Bold);
         let ampm_w = self.font.measure_text(ampm, 18.0, FontWeight::Bold);
         let total_w = time_w + 10.0 + ampm_w;
@@ -484,7 +482,7 @@ impl AppData {
             FontWeight::Bold,
         );
 
-        // 3. Bottom Centered Battery Capsule & Percentage (cy = 176.0)
+        // 3. Bottom Centered Battery Capsule & Percentage (cy = card_top + 176.0)
         let bat_text_w = self.font.measure_text(&bat_str, 15.0, FontWeight::Bold);
         let bat_total_w = bat_text_w + 12.0 + 26.0;
         let bat_start_x = half_w - bat_total_w * 0.5;
@@ -494,7 +492,7 @@ impl AppData {
             self.height,
             &bat_str,
             bat_start_x,
-            176.0,
+            card_top + 176.0,
             15.0,
             bat_col,
             col_shadow,
@@ -505,7 +503,7 @@ impl AppData {
             self.width,
             self.height,
             bat_start_x + bat_text_w + 18.0,
-            176.0,
+            card_top + 176.0,
             self.battery_level,
             bat_col,
         );
@@ -515,11 +513,16 @@ impl AppData {
         self.check_wallpaper();
         self.update_battery();
 
-        let mut overlay_buf = vec![0u8; (self.width * self.height * 4) as usize];
-        self.render_ui_overlay(&mut overlay_buf);
+        let req_len = (self.width * self.height * 4) as usize;
+        if self.overlay_buffer.len() != req_len {
+            self.overlay_buffer.resize(req_len, 0);
+        }
+        self.overlay_buffer.fill(0);
+        let mut overlay_vec = std::mem::take(&mut self.overlay_buffer);
+        self.render_ui_overlay(&mut overlay_vec);
 
-        if let Some(renderer) = &mut self.renderer {
-            renderer.update_overlay(self.width, self.height, &overlay_buf);
+        let res = if let Some(renderer) = &mut self.renderer {
+            renderer.update_overlay(self.width, self.height, &overlay_vec);
 
             let now = Local::now();
             let hr = now.hour() as f32;
@@ -538,11 +541,16 @@ impl AppData {
 
             let is_light_f32 = if self.is_wallpaper_light { 1.0 } else { 0.0 };
 
+            let x_norm = CARD_PAD / (self.width as f32);
+            let y_norm = CARD_PAD / (self.height as f32);
+            let w_norm = CARD_W / (self.width as f32);
+            let h_norm = CARD_H / (self.height as f32);
+
             // Authentic 3D Liquid Glass with precision curved optical meniscus
             let clock_card = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::RoundedRectangle { radius: 28.0 })
-                .bounds(0.0, 0.0, 1.0, 1.0)
+                .bounds(x_norm, y_norm, w_norm, h_norm)
                 .curvature(0.0)
                 .bevel(20.0)
                 .refraction(0.85)
@@ -564,7 +572,9 @@ impl AppData {
             true
         } else {
             false
-        }
+        };
+        self.overlay_buffer = overlay_vec;
+        res
     }
 }
 
@@ -755,16 +765,29 @@ fn is_buffer_light(buf: &[u8]) -> bool {
     is_buffer_light_hysteresis(buf, false)
 }
 
-fn sample_region_is_light(
-    cache: &[u8],
-    gx: i32,
-    gy: i32,
-    gw: u32,
-    gh: u32,
+#[allow(clippy::too_many_arguments)]
+fn sample_subcrop_is_light(
+    crop: &[u8],
+    crop_w: u32,
+    crop_h: u32,
+    lx: u32,
+    ly: u32,
+    lw: u32,
+    lh: u32,
     current_state: bool,
 ) -> bool {
-    let crop = get_wallpaper_crop(cache, gx.max(0) as u32, gy.max(0) as u32, gw, gh);
-    is_buffer_light_hysteresis(&crop, current_state)
+    let mut sub = Vec::with_capacity((lw * lh * 4) as usize);
+    for row in 0..lh {
+        let sy = (ly + row).min(crop_h.saturating_sub(1));
+        let sx = lx.min(crop_w.saturating_sub(1));
+        let actual_w = lw.min(crop_w.saturating_sub(sx));
+        let src_idx = ((sy * crop_w + sx) * 4) as usize;
+        let end_idx = src_idx + (actual_w * 4) as usize;
+        if end_idx <= crop.len() {
+            sub.extend_from_slice(&crop[src_idx..end_idx]);
+        }
+    }
+    is_buffer_light_hysteresis(&sub, current_state)
 }
 
 fn init_wallpaper_1080p() -> (Option<Arc<Vec<u8>>>, Option<String>) {
@@ -801,19 +824,23 @@ fn main() {
     let shm = Shm::bind(&globals, &qh).expect("wl_shm missing");
     let seat_state = SeatState::new(&globals, &qh);
 
-    // Exact placement matching quickshell-clock-widget: 320x218, x: 28, y: 56
-    let width = 320u32;
-    let height = 218u32;
-    let pos_x = 28i32;
-    let pos_y = 56i32;
+    // Exact placement matching quickshell-clock-widget: 320x218 card, x: 28, y: 56
+    // Padded surface: 376x274 with 28px transparent margin so the 1px rim, anti-aliased bevel,
+    // and contact drop shadow are completely inside the surface and never clipped!
+    let width = (CARD_W + 2.0 * CARD_PAD) as u32; // 376
+    let height = (CARD_H + 2.0 * CARD_PAD) as u32; // 274
+    let pos_x = (28.0 - CARD_PAD).max(0.0) as i32; // 0
+    let pos_y = (56.0 - CARD_PAD).max(0.0) as i32; // 28
 
-    let (wallpaper_cache, current_wallpaper_path) = init_wallpaper_1080p();
-    let is_light = if let Some(buf) = &wallpaper_cache {
+    let (wallpaper_full, current_wallpaper_path) = init_wallpaper_1080p();
+    let (is_light, wallpaper_crop) = if let Some(buf) = &wallpaper_full {
         let crop = get_wallpaper_crop(buf, pos_x as u32, pos_y as u32, width, height);
-        is_buffer_light(&crop)
+        let light = is_buffer_light(&crop);
+        (light, Some(crop))
     } else {
-        false
+        (false, None)
     };
+    drop(wallpaper_full); // Immediately free 8.3 MB full-screen buffer!
 
     let font = QuicksandFont::new();
 
@@ -840,7 +867,8 @@ fn main() {
         first_configure: true,
         exit: false,
 
-        wallpaper_cache,
+        wallpaper_crop,
+        overlay_buffer: Vec::new(),
         current_wallpaper_path,
         last_wallpaper_check: Instant::now(),
         last_second: 0,
@@ -892,11 +920,11 @@ fn main() {
         }
     }
 
-    // High efficiency event loop:
-    // Wakes on mouse events with zero latency (<0.1ms).
-    // When idle, sleeps in kernel poll until the exact millisecond of the next second boundary.
-    // 0.0% idle CPU, guaranteed instant ticking.
-    let mut last_sec_tick = Local::now().second();
+    // High efficiency minute-synchronized event loop:
+    // Wakes on mouse motion with zero latency (<0.1ms).
+    // When idle and unhovered, sleeps in kernel poll until the exact millisecond of next minute boundary.
+    // 0.0% idle CPU, zero unneeded ticking.
+    let mut last_min_tick = Local::now().minute();
 
     while !app_data.exit {
         let _ = event_queue.dispatch_pending(&mut app_data);
@@ -905,21 +933,22 @@ fn main() {
         app_data.check_wallpaper();
 
         let now = Local::now();
-        let cur_sec = now.second();
-        if app_data.is_hovered || cur_sec != last_sec_tick {
-            last_sec_tick = cur_sec;
+        let cur_min = now.minute();
+        if app_data.is_hovered || cur_min != last_min_tick {
+            last_min_tick = cur_min;
             app_data.draw();
             let _ = conn.flush();
         }
 
         let now_after = Local::now();
+        let sec = now_after.second();
         let sub_ms = now_after.timestamp_subsec_millis();
-        let ms_to_next_sec = (1000u32.saturating_sub(sub_ms)).clamp(10, 1000);
+        let ms_to_next_minute = ((60 - sec) * 1000 - sub_ms).clamp(50, 60_000);
 
         let timeout_ms = if app_data.is_hovered {
             16
         } else {
-            ms_to_next_sec as i32
+            ms_to_next_minute as i32
         };
 
         let guard = match conn.prepare_read() {

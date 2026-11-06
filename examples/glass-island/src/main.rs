@@ -1546,13 +1546,13 @@ impl AppData {
                         tile_bg,
                     );
 
-                    // Top highlight bevel only
+                    // Top highlight bevel only (inset 10px from tile radius)
                     UIFont::draw_segment(
                         buf,
                         self.width,
                         self.height,
-                        (cx - (item_w - 10.0) * 0.5 + 6.0, cy - 27.0),
-                        (cx + (item_w - 10.0) * 0.5 - 6.0, cy - 27.0),
+                        (cx - (item_w - 10.0) * 0.5 + 10.0, cy - 27.0),
+                        (cx + (item_w - 10.0) * 0.5 - 10.0, cy - 27.0),
                         1.0,
                         if is_light {
                             Tokens::INNER_TOP_HIGHLIGHT_LIGHT
@@ -1695,13 +1695,13 @@ impl AppData {
                         tile_bg,
                     );
 
-                    // Top highlight bevel only
+                    // Top highlight bevel only (inset 10px from tile radius)
                     UIFont::draw_segment(
                         buf,
                         self.width,
                         self.height,
-                        (cx - (item_w - 10.0) * 0.5 + 6.0, cy - 27.0),
-                        (cx + (item_w - 10.0) * 0.5 - 6.0, cy - 27.0),
+                        (cx - (item_w - 10.0) * 0.5 + 10.0, cy - 27.0),
+                        (cx + (item_w - 10.0) * 0.5 - 10.0, cy - 27.0),
                         1.0,
                         if is_light {
                             Tokens::INNER_TOP_HIGHLIGHT_LIGHT
@@ -1863,13 +1863,13 @@ impl AppData {
                         tile_bg,
                     );
 
-                    // Top highlight bevel only
+                    // Top highlight bevel only (inset 10px from tile radius)
                     UIFont::draw_segment(
                         buf,
                         self.width,
                         self.height,
-                        (cx - (item_w - 10.0) * 0.5 + 6.0, cy - 27.0),
-                        (cx + (item_w - 10.0) * 0.5 - 6.0, cy - 27.0),
+                        (cx - (item_w - 10.0) * 0.5 + 10.0, cy - 27.0),
+                        (cx + (item_w - 10.0) * 0.5 - 10.0, cy - 27.0),
                         1.0,
                         if is_light {
                             Tokens::INNER_TOP_HIGHLIGHT_LIGHT

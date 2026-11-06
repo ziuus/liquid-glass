@@ -67,7 +67,7 @@ impl Tokens {
     pub const INNER_TILE_BG_LIGHT: [u8; 4] = [0, 0, 0, 16]; // 6% black fill for crisp contrast
     pub const INNER_TILE_BG_HOVER_LIGHT: [u8; 4] = [0, 0, 0, 30]; // 12% black fill on hover
 
-    /// Top highlight on inner tiles (subtle bevel instead of 4-sided wireframe)
-    pub const INNER_TOP_HIGHLIGHT_DARK: [u8; 4] = [255, 255, 255, 35];
+    /// Top highlight on inner tiles (subtle bevel instead of 4-sided wireframe, soft 15-18% white composite)
+    pub const INNER_TOP_HIGHLIGHT_DARK: [u8; 4] = [255, 255, 255, 18];
     pub const INNER_TOP_HIGHLIGHT_LIGHT: [u8; 4] = [255, 255, 255, 180];
 }

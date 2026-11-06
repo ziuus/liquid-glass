@@ -1627,13 +1627,13 @@ fn test_render_claude_review_remediations() {
                 Tokens::RADIUS_INNER_TILE,
                 Tokens::INNER_TILE_BG_ROW,
             );
-            // 1px Top Highlight Bevel
+            // 1px Top Highlight Bevel (subtle 15-18% white highlight, inset from corners)
             UIFont::draw_segment(
                 &mut buf,
                 tw,
                 th,
-                (180.0 - 148.0, cy - 17.0),
-                (180.0 + 148.0, cy - 17.0),
+                (180.0 - 136.0, cy - 17.0),
+                (180.0 + 136.0, cy - 17.0),
                 1.0,
                 Tokens::INNER_TOP_HIGHLIGHT_DARK,
             );
@@ -1702,8 +1702,8 @@ fn test_render_claude_review_remediations() {
             &mut buf,
             tw,
             th,
-            (180.0 - 148.0, add_cy - 15.0),
-            (180.0 + 148.0, add_cy - 15.0),
+            (180.0 - 136.0, add_cy - 15.0),
+            (180.0 + 136.0, add_cy - 15.0),
             1.0,
             Tokens::INNER_TOP_HIGHLIGHT_DARK,
         );
@@ -1885,15 +1885,7 @@ fn test_render_claude_review_remediations() {
             18.0,
             [245, 248, 255, 60],
         );
-        UIFont::draw_play_icon(
-            &mut buf,
-            iw,
-            ih,
-            play_cx,
-            ctrl_y,
-            8.0,
-            [245, 248, 255, 180],
-        );
+        UIFont::draw_play_icon(&mut buf, iw, ih, play_cx, ctrl_y, 8.0, [245, 248, 255, 180]);
 
         // Next (dimmed)
         UIFont::draw_next_icon(&mut buf, iw, ih, next_cx, ctrl_y, 8.5, idle_ctrl_col);
@@ -2021,9 +2013,7 @@ fn test_render_claude_review_remediations() {
                     false,
                     Tokens::TEXT_PRIMARY,
                 ),
-                _ => {
-                    UIFont::draw_clock_icon(&mut buf, iw, ih, cx, cy - 12.0, Tokens::TEXT_PRIMARY)
-                }
+                _ => UIFont::draw_clock_icon(&mut buf, iw, ih, cx, cy - 12.0, Tokens::TEXT_PRIMARY),
             }
 
             font.draw_text_centered(
@@ -2055,13 +2045,299 @@ fn test_render_claude_review_remediations() {
         }
 
         let _ = image::save_buffer(
-            format!(
-                "{}/system_overview_remediated.png",
-                target_dir.display()
-            ),
+            format!("{}/system_overview_remediated.png", target_dir.display()),
             &buf,
             iw,
             ih,
+            image::ExtendedColorType::Rgba8,
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 4. CLOCK PANEL REMEDIATED (376 x 274: 28px Transparent Padding on all 4 sides)
+    // ─────────────────────────────────────────────────────────────
+    {
+        let (cw, ch) = (376u32, 274u32);
+        let mut buf = vec![0u8; (cw * ch * 4) as usize];
+        let card_pad = 28.0f32;
+        let card_w = 320.0f32;
+        let card_h = 218.0f32;
+        let card_cx = cw as f32 * 0.5;
+        let card_cy = ch as f32 * 0.5;
+        let card_top = card_pad;
+
+        // Subtle dark translucent substrate representing frosted glass body
+        UIFont::draw_rounded_rect_fill(
+            &mut buf,
+            cw,
+            ch,
+            card_cx,
+            card_cy,
+            card_w * 0.5,
+            card_h * 0.5,
+            28.0,
+            [16, 20, 28, 230],
+        );
+
+        // Complete 1px outer specular rim (fully padded, zero edge clipping on right or bottom!)
+        UIFont::draw_rounded_rect_stroke(
+            &mut buf,
+            cw,
+            ch,
+            card_cx,
+            card_cy,
+            card_w * 0.5,
+            card_h * 0.5,
+            28.0,
+            1.0,
+            Tokens::RIM_OUTER_DARK,
+        );
+
+        // Top specular bevel highlight (directional)
+        UIFont::draw_segment(
+            &mut buf,
+            cw,
+            ch,
+            (card_cx - 130.0, card_top + 1.2),
+            (card_cx + 130.0, card_top + 1.2),
+            1.0,
+            [255, 255, 255, 65],
+        );
+
+        // Content
+        let date_str = "FRI, NOV 06";
+        let date_w = font.measure_text(date_str, 16.5, FontWeight::Bold);
+        let date_start_x = card_cx - (18.0 + date_w) * 0.5;
+        UIFont::draw_calendar_icon(
+            &mut buf,
+            cw,
+            ch,
+            date_start_x + 6.0,
+            card_top + 44.0,
+            Tokens::TEXT_PRIMARY,
+        );
+        font.draw_text_centered_y(
+            &mut buf,
+            cw,
+            ch,
+            date_str,
+            date_start_x + 18.0,
+            card_top + 44.0,
+            16.5,
+            Tokens::TEXT_PRIMARY,
+            [0, 0, 0, 0],
+            FontWeight::Bold,
+        );
+
+        // Digital Clock (cy = card_top + 110.0)
+        let time_str = "04:28";
+        let ampm = "PM";
+        let time_baseline = font.vertical_center_baseline(card_top + 110.0, 68.0, FontWeight::Bold);
+        let time_w = font.measure_text(time_str, 68.0, FontWeight::Bold);
+        let ampm_w = font.measure_text(ampm, 18.0, FontWeight::Bold);
+        let time_x = card_cx - (time_w + 10.0 + ampm_w) * 0.5;
+        let end_x = font.draw_text_with_shadow(
+            &mut buf,
+            cw,
+            ch,
+            time_str,
+            time_x,
+            time_baseline,
+            68.0,
+            Tokens::TEXT_PRIMARY,
+            [0, 0, 0, 0],
+            FontWeight::Bold,
+        );
+        font.draw_text_with_shadow(
+            &mut buf,
+            cw,
+            ch,
+            ampm,
+            end_x + 10.0,
+            time_baseline - 8.0,
+            18.0,
+            Tokens::TEXT_SECONDARY,
+            [0, 0, 0, 0],
+            FontWeight::Bold,
+        );
+
+        // Battery Capsule (cy = card_top + 176.0)
+        let bat_str = "85%";
+        let bat_text_w = font.measure_text(bat_str, 15.0, FontWeight::Bold);
+        let bat_start_x = card_cx - (bat_text_w + 38.0) * 0.5;
+        font.draw_text_centered_y(
+            &mut buf,
+            cw,
+            ch,
+            bat_str,
+            bat_start_x,
+            card_top + 176.0,
+            15.0,
+            Tokens::TEXT_PRIMARY,
+            [0, 0, 0, 0],
+            FontWeight::Bold,
+        );
+        UIFont::draw_battery_capsule(
+            &mut buf,
+            cw,
+            ch,
+            bat_start_x + bat_text_w + 18.0,
+            card_top + 176.0,
+            85.0,
+            Tokens::TEXT_PRIMARY,
+        );
+
+        let _ = image::save_buffer(
+            format!("{}/clock_panel_remediated.png", target_dir.display()),
+            &buf,
+            cw,
+            ch,
+            image::ExtendedColorType::Rgba8,
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 5. POWER MENU REMEDIATED (480 x 160: Inset Highlights & Clean Bottom Rim)
+    // ─────────────────────────────────────────────────────────────
+    {
+        let (pw, ph) = (480u32, 160u32);
+        let mut buf = vec![0u8; (pw * ph * 4) as usize];
+        let island_w = 460.0f32;
+        let island_h = 120.0f32;
+        let island_cx = pw as f32 * 0.5;
+        let island_top = 12.0f32;
+        let island_cy = island_top + island_h * 0.5;
+
+        // Substrate
+        UIFont::draw_rounded_rect_fill(
+            &mut buf,
+            pw,
+            ph,
+            island_cx,
+            island_cy,
+            island_w * 0.5,
+            island_h * 0.5,
+            Tokens::RADIUS_OUTER,
+            [16, 20, 28, 230],
+        );
+
+        // Specular outer rim highlight (clean 1px hairline all around, zero bottom smudge!)
+        UIFont::draw_rounded_rect_stroke(
+            &mut buf,
+            pw,
+            ph,
+            island_cx,
+            island_cy,
+            island_w * 0.5,
+            island_h * 0.5,
+            Tokens::RADIUS_OUTER,
+            1.0,
+            Tokens::RIM_OUTER_DARK,
+        );
+
+        // Top specular bevel highlight (directional)
+        UIFont::draw_segment(
+            &mut buf,
+            pw,
+            ph,
+            (island_cx - 180.0, island_top + 1.2),
+            (island_cx + 180.0, island_top + 1.2),
+            1.0,
+            [255, 255, 255, 65],
+        );
+
+        // Header
+        font.draw_text(
+            &mut buf,
+            pw,
+            ph,
+            "SESSION & POWER",
+            island_cx - island_w * 0.5 + 32.0,
+            island_top + 24.0,
+            Tokens::TYPE_CAPTION,
+            Tokens::TEXT_TERTIARY,
+            FontWeight::Bold,
+        );
+
+        // Pager dots at top right
+        let dot_start_x = island_cx + island_w * 0.5 - 65.0;
+        let dot_y = island_top + 22.0;
+        for i in 0..4 {
+            let dx = dot_start_x + (i as f32) * 11.0;
+            let dot_col = if i == 3 {
+                [255, 255, 255, 240]
+            } else {
+                [255, 255, 255, 60]
+            };
+            UIFont::draw_rounded_rect_fill(&mut buf, pw, ph, dx, dot_y, 2.8, 2.8, 2.8, dot_col);
+        }
+
+        // 4 Action buttons: Lock, Suspend, Restart, Power Off
+        let actions = [
+            ("Lock", Tokens::ACCENT),
+            ("Suspend", Tokens::ACCENT),
+            ("Restart", Tokens::STATUS_AMBER),
+            ("Power Off", Tokens::STATUS_RED),
+        ];
+        let item_w = (island_w - 52.0) / 4.0;
+        let start_x = island_cx - island_w * 0.5 + 26.0 + item_w * 0.5;
+        let cy = island_top + 65.0;
+
+        for (idx, (name, _)) in actions.iter().enumerate() {
+            let cx = start_x + (idx as f32) * item_w;
+
+            // Container fill
+            UIFont::draw_rounded_rect_fill(
+                &mut buf,
+                pw,
+                ph,
+                cx,
+                cy,
+                (item_w - 10.0) * 0.5,
+                28.0,
+                Tokens::RADIUS_INNER_TILE,
+                Tokens::INNER_TILE_BG_DARK,
+            );
+
+            // Inset top highlight bevel (soft 18% white, inset from corners)
+            UIFont::draw_segment(
+                &mut buf,
+                pw,
+                ph,
+                (cx - (item_w - 10.0) * 0.5 + 10.0, cy - 27.0),
+                (cx + (item_w - 10.0) * 0.5 - 10.0, cy - 27.0),
+                1.0,
+                Tokens::INNER_TOP_HIGHLIGHT_DARK,
+            );
+
+            match idx {
+                0 => UIFont::draw_lock_icon(&mut buf, pw, ph, cx, cy - 10.0, Tokens::TEXT_PRIMARY),
+                1 => UIFont::draw_moon_icon(&mut buf, pw, ph, cx, cy - 10.0, Tokens::TEXT_PRIMARY),
+                2 => {
+                    UIFont::draw_restart_icon(&mut buf, pw, ph, cx, cy - 10.0, Tokens::TEXT_PRIMARY)
+                }
+                _ => UIFont::draw_power_icon(&mut buf, pw, ph, cx, cy - 10.0, Tokens::TEXT_PRIMARY),
+            }
+
+            font.draw_text_centered(
+                &mut buf,
+                pw,
+                ph,
+                name,
+                cx,
+                cy + 12.0,
+                Tokens::TYPE_CAPTION,
+                Tokens::TEXT_PRIMARY,
+                [0, 0, 0, 0],
+                FontWeight::SemiBold,
+            );
+        }
+
+        let _ = image::save_buffer(
+            format!("{}/power_menu_remediated.png", target_dir.display()),
+            &buf,
+            pw,
+            ph,
             image::ExtendedColorType::Rgba8,
         );
     }
