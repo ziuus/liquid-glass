@@ -1126,3 +1126,398 @@ fn test_render_slide_carousel_and_lucide_overlays() {
         );
     }
 }
+
+#[test]
+fn test_render_light_and_dark_island_modes() {
+    use glass_core::font::UIFont;
+    use glass_core::Tokens;
+
+    let font = UIFont::new();
+    let brain_dir = std::path::Path::new(
+        "/home/zius/.gemini/antigravity-cli/brain/64634fbc-40f0-4ff7-b05d-73575fd4890c",
+    );
+    let target_dir = if brain_dir.exists() {
+        brain_dir.to_path_buf()
+    } else {
+        std::env::temp_dir()
+    };
+
+    let (iw, ih) = (460u32, 120u32);
+    let island_cx = 230.0f32;
+    let island_cy = 60.0f32;
+
+    for is_light in [false, true] {
+        let mode_str = if is_light { "light" } else { "dark" };
+        let col_ink = if is_light {
+            Tokens::TEXT_PRIMARY_LIGHT
+        } else {
+            Tokens::TEXT_PRIMARY
+        };
+        let col_dim = if is_light {
+            Tokens::TEXT_SECONDARY_LIGHT
+        } else {
+            Tokens::TEXT_SECONDARY
+        };
+        let col_shadow = if is_light {
+            Tokens::TEXT_SHADOW_LIGHT
+        } else {
+            Tokens::TEXT_SHADOW
+        };
+
+        // 1. COMPACT PILL (210 x 42)
+        {
+            let (pw, ph) = (210u32, 42u32);
+            let mut buf = vec![0u8; (pw * ph * 4) as usize];
+            let pcx = (pw as f32) * 0.5;
+            let pcy = (ph as f32) * 0.5;
+
+            // Glass Substrate Body
+            UIFont::draw_rounded_rect_fill(
+                &mut buf,
+                pw,
+                ph,
+                pcx,
+                pcy,
+                pcx - 1.0,
+                pcy - 1.0,
+                pcy,
+                if is_light {
+                    [238, 240, 244, 230]
+                } else {
+                    Tokens::OBSIDIAN_BACKDROP
+                },
+            );
+            // Outer Rim
+            UIFont::draw_rounded_rect_stroke(
+                &mut buf,
+                pw,
+                ph,
+                pcx,
+                pcy,
+                pcx - 1.0,
+                pcy - 1.0,
+                pcy,
+                1.0,
+                if is_light {
+                    Tokens::RIM_OUTER_LIGHT
+                } else {
+                    Tokens::RIM_OUTER_DARK
+                },
+            );
+
+            // Left icon disc
+            let disc_cx = 24.0f32;
+            UIFont::draw_rounded_rect_fill(
+                &mut buf,
+                pw,
+                ph,
+                disc_cx,
+                pcy,
+                12.0,
+                12.0,
+                12.0,
+                if is_light {
+                    Tokens::INNER_TILE_BG_LIGHT
+                } else {
+                    Tokens::INNER_TILE_BG_DARK
+                },
+            );
+            UIFont::draw_pause_icon(&mut buf, pw, ph, disc_cx, pcy, 6.0, col_dim);
+
+            // Title
+            font.draw_text_centered(
+                &mut buf,
+                pw,
+                ph,
+                "No Media Playing",
+                pcx + 4.0,
+                pcy,
+                Tokens::TYPE_BODY_SM,
+                col_ink,
+                col_shadow,
+                FontWeight::SemiBold,
+            );
+
+            // Status
+            font.draw_text_centered(
+                &mut buf,
+                pw,
+                ph,
+                "PAUSED",
+                pw as f32 - 22.0,
+                pcy,
+                Tokens::TYPE_CAPTION,
+                col_dim,
+                col_shadow,
+                FontWeight::Medium,
+            );
+
+            let _ = image::save_buffer(
+                format!("{}/island_{}_compact.png", target_dir.display(), mode_str),
+                &buf,
+                pw,
+                ph,
+                image::ExtendedColorType::Rgba8,
+            );
+        }
+
+        // 2. POWER MENU (460 x 120)
+        {
+            let mut buf = vec![0u8; (iw * ih * 4) as usize];
+            UIFont::draw_rounded_rect_fill(
+                &mut buf,
+                iw,
+                ih,
+                island_cx,
+                island_cy,
+                228.0,
+                58.0,
+                Tokens::RADIUS_OUTER,
+                if is_light {
+                    [238, 240, 245, 235]
+                } else {
+                    Tokens::OBSIDIAN_BACKDROP
+                },
+            );
+            UIFont::draw_rounded_rect_stroke(
+                &mut buf,
+                iw,
+                ih,
+                island_cx,
+                island_cy,
+                228.0,
+                58.0,
+                Tokens::RADIUS_OUTER,
+                1.0,
+                if is_light {
+                    Tokens::RIM_OUTER_LIGHT
+                } else {
+                    Tokens::RIM_OUTER_DARK
+                },
+            );
+
+            // Header
+            font.draw_text(
+                &mut buf,
+                iw,
+                ih,
+                "SESSION & POWER",
+                32.0,
+                24.0,
+                Tokens::TYPE_CAPTION,
+                col_dim,
+                FontWeight::Bold,
+            );
+
+            // Pager dots at top right
+            for i in 0..4 {
+                let dx = iw as f32 - 65.0 + (i as f32) * 11.0;
+                let (half_r, col) = if i == 3 {
+                    (
+                        3.2f32,
+                        if is_light {
+                            Tokens::TEXT_PRIMARY_LIGHT
+                        } else {
+                            Tokens::TEXT_PRIMARY
+                        },
+                    )
+                } else {
+                    (
+                        2.0f32,
+                        if is_light {
+                            [140, 150, 165, 180]
+                        } else {
+                            [255, 255, 255, 90]
+                        },
+                    )
+                };
+                UIFont::draw_rounded_rect_fill(
+                    &mut buf, iw, ih, dx, 22.0, half_r, half_r, half_r, col,
+                );
+            }
+
+            let actions = [
+                ("Lock", Tokens::ACCENT),
+                ("Suspend", Tokens::ACCENT),
+                ("Restart", Tokens::STATUS_AMBER),
+                ("Power Off", Tokens::STATUS_RED),
+            ];
+            let item_w = (iw as f32 - 52.0) / 4.0;
+            let start_x = 26.0 + item_w * 0.5;
+            for (idx, (name, col)) in actions.iter().enumerate() {
+                let cx = start_x + (idx as f32) * item_w;
+                let cy = 65.0f32;
+                UIFont::draw_rounded_rect_fill(
+                    &mut buf,
+                    iw,
+                    ih,
+                    cx,
+                    cy,
+                    (item_w - 10.0) * 0.5,
+                    28.0,
+                    Tokens::RADIUS_INNER_TILE,
+                    if is_light {
+                        Tokens::INNER_TILE_BG_LIGHT
+                    } else {
+                        Tokens::INNER_TILE_BG_DARK
+                    },
+                );
+                UIFont::draw_segment(
+                    &mut buf,
+                    iw,
+                    ih,
+                    (cx - (item_w - 10.0) * 0.5 + 6.0, cy - 27.0),
+                    (cx + (item_w - 10.0) * 0.5 - 6.0, cy - 27.0),
+                    1.0,
+                    if is_light {
+                        Tokens::INNER_TOP_HIGHLIGHT_LIGHT
+                    } else {
+                        Tokens::INNER_TOP_HIGHLIGHT_DARK
+                    },
+                );
+
+                match idx {
+                    0 => UIFont::draw_lock_icon(&mut buf, iw, ih, cx, cy - 8.0, *col),
+                    1 => UIFont::draw_moon_icon(&mut buf, iw, ih, cx, cy - 8.0, *col),
+                    2 => UIFont::draw_restart_icon(&mut buf, iw, ih, cx, cy - 8.0, *col),
+                    _ => UIFont::draw_power_icon(&mut buf, iw, ih, cx, cy - 8.0, *col),
+                }
+                font.draw_text_centered(
+                    &mut buf,
+                    iw,
+                    ih,
+                    name,
+                    cx,
+                    cy + 12.0,
+                    Tokens::TYPE_CAPTION,
+                    col_ink,
+                    col_shadow,
+                    FontWeight::SemiBold,
+                );
+            }
+            let _ = image::save_buffer(
+                format!("{}/island_{}_power.png", target_dir.display(), mode_str),
+                &buf,
+                iw,
+                ih,
+                image::ExtendedColorType::Rgba8,
+            );
+        }
+
+        // 3. QUICK ACCESS (460 x 120)
+        {
+            let mut buf = vec![0u8; (iw * ih * 4) as usize];
+            UIFont::draw_rounded_rect_fill(
+                &mut buf,
+                iw,
+                ih,
+                island_cx,
+                island_cy,
+                228.0,
+                58.0,
+                Tokens::RADIUS_OUTER,
+                if is_light {
+                    [238, 240, 245, 235]
+                } else {
+                    Tokens::OBSIDIAN_BACKDROP
+                },
+            );
+            UIFont::draw_rounded_rect_stroke(
+                &mut buf,
+                iw,
+                ih,
+                island_cx,
+                island_cy,
+                228.0,
+                58.0,
+                Tokens::RADIUS_OUTER,
+                1.0,
+                if is_light {
+                    Tokens::RIM_OUTER_LIGHT
+                } else {
+                    Tokens::RIM_OUTER_DARK
+                },
+            );
+
+            font.draw_text(
+                &mut buf,
+                iw,
+                ih,
+                "QUICK ACCESS",
+                32.0,
+                24.0,
+                11.0,
+                col_dim,
+                FontWeight::Bold,
+            );
+
+            let apps = ["Terminal", "Browser", "Editor", "Files", "Music"];
+            let item_w = (iw as f32 - 50.0) / (apps.len() as f32);
+            let start_x = 25.0 + item_w * 0.5;
+            for (idx, name) in apps.iter().enumerate() {
+                let cx = start_x + (idx as f32) * item_w;
+                let cy = 65.0f32;
+                UIFont::draw_rounded_rect_fill(
+                    &mut buf,
+                    iw,
+                    ih,
+                    cx,
+                    cy,
+                    (item_w - 10.0) * 0.5,
+                    28.0,
+                    Tokens::RADIUS_INNER_TILE,
+                    if is_light {
+                        Tokens::INNER_TILE_BG_LIGHT
+                    } else {
+                        Tokens::INNER_TILE_BG_DARK
+                    },
+                );
+                UIFont::draw_segment(
+                    &mut buf,
+                    iw,
+                    ih,
+                    (cx - (item_w - 10.0) * 0.5 + 6.0, cy - 27.0),
+                    (cx + (item_w - 10.0) * 0.5 - 6.0, cy - 27.0),
+                    1.0,
+                    if is_light {
+                        Tokens::INNER_TOP_HIGHLIGHT_LIGHT
+                    } else {
+                        Tokens::INNER_TOP_HIGHLIGHT_DARK
+                    },
+                );
+
+                match idx {
+                    0 => UIFont::draw_terminal_icon(&mut buf, iw, ih, cx, cy - 7.0, col_ink),
+                    1 => UIFont::draw_browser_icon(&mut buf, iw, ih, cx, cy - 7.0, col_ink),
+                    2 => UIFont::draw_editor_icon(&mut buf, iw, ih, cx, cy - 7.0, col_ink),
+                    3 => UIFont::draw_folder_icon(&mut buf, iw, ih, cx, cy - 7.0, col_ink),
+                    _ => UIFont::draw_music_icon(&mut buf, iw, ih, cx, cy - 7.0, col_ink),
+                }
+
+                font.draw_text_centered(
+                    &mut buf,
+                    iw,
+                    ih,
+                    name,
+                    cx,
+                    cy + 13.0,
+                    Tokens::TYPE_CAPTION,
+                    col_ink,
+                    col_shadow,
+                    FontWeight::Medium,
+                );
+            }
+            let _ = image::save_buffer(
+                format!(
+                    "{}/island_{}_quickaccess.png",
+                    target_dir.display(),
+                    mode_str
+                ),
+                &buf,
+                iw,
+                ih,
+                image::ExtendedColorType::Rgba8,
+            );
+        }
+    }
+}

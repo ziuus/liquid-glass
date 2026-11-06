@@ -66,16 +66,9 @@ impl WallpaperManager {
         }
     }
 
-    /// Queries the active wallpaper path from ~/.cache/awww, awww query, or fallback cache.
+    /// Queries the active wallpaper path from awww CLI, ~/.cache/awww, or fallback cache.
     pub fn get_active_wallpaper_path() -> Option<String> {
-        // 1. Direct read from awww cache directory (0.0ms disk read)
-        if let Some(path) = dirs_cache_awww() {
-            if std::path::Path::new(&path).exists() {
-                return Some(path);
-            }
-        }
-
-        // 2. Query awww CLI
+        // 1. Live query to awww daemon (primary source of truth, 0.002s)
         if let Ok(out) = std::process::Command::new("awww").arg("query").output() {
             let s = String::from_utf8_lossy(&out.stdout);
             for line in s.lines() {
@@ -87,6 +80,13 @@ impl WallpaperManager {
                         }
                     }
                 }
+            }
+        }
+
+        // 2. Direct read from awww cache directory
+        if let Some(path) = dirs_cache_awww() {
+            if std::path::Path::new(&path).exists() {
+                return Some(path);
             }
         }
 
@@ -193,6 +193,57 @@ impl WallpaperManager {
 
     pub fn version(&self) -> u32 {
         self.version
+    }
+
+    /// Evaluates if an RGBA buffer is perceptually light using WCAG 2.1 relative luminance
+    /// with hysteresis to eliminate flickering on luminance threshold boundaries.
+    pub fn is_buffer_light_hysteresis(buf: &[u8], current_state: bool) -> bool {
+        let mut total_lum = 0.0f64;
+        let mut count = 0usize;
+        let step = 16 * 4;
+        for i in (0..buf.len()).step_by(step) {
+            if i + 2 < buf.len() {
+                let r = buf[i] as f64 / 255.0;
+                let g = buf[i + 1] as f64 / 255.0;
+                let b = buf[i + 2] as f64 / 255.0;
+                let to_lin = |c: f64| {
+                    if c <= 0.04045 {
+                        c / 12.92
+                    } else {
+                        ((c + 0.055) / 1.055).powf(2.4)
+                    }
+                };
+                let lin_lum = 0.2126 * to_lin(r) + 0.7152 * to_lin(g) + 0.0722 * to_lin(b);
+                total_lum += lin_lum;
+                count += 1;
+            }
+        }
+        if count > 0 {
+            let mean = total_lum / count as f64;
+            if current_state {
+                mean > 0.15
+            } else {
+                mean > 0.21
+            }
+        } else {
+            current_state
+        }
+    }
+
+    pub fn is_buffer_light(buf: &[u8]) -> bool {
+        Self::is_buffer_light_hysteresis(buf, false)
+    }
+
+    pub fn sample_region_is_light(
+        cache: &[u8],
+        gx: i32,
+        gy: i32,
+        gw: u32,
+        gh: u32,
+        current_state: bool,
+    ) -> bool {
+        let crop = Self::get_wallpaper_crop(cache, gx.max(0) as u32, gy.max(0) as u32, gw, gh);
+        Self::is_buffer_light_hysteresis(&crop, current_state)
     }
 
     fn update_cache(&mut self) {

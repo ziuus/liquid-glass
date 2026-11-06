@@ -41,6 +41,12 @@ impl Tokens {
     pub const TEXT_TERTIARY: [u8; 4] = [120, 130, 148, 180];
     pub const TEXT_SHADOW: [u8; 4] = [0, 0, 0, 90];
 
+    // High-contrast Light Mode Text (WCAG AAA > 12:1 against light glass)
+    pub const TEXT_PRIMARY_LIGHT: [u8; 4] = [12, 16, 24, 255];
+    pub const TEXT_SECONDARY_LIGHT: [u8; 4] = [52, 64, 84, 255];
+    pub const TEXT_TERTIARY_LIGHT: [u8; 4] = [100, 116, 139, 230];
+    pub const TEXT_SHADOW_LIGHT: [u8; 4] = [255, 255, 255, 140];
+
     // Obsidian Glass (Apple Dynamic Island dark smoky glass backdrop)
     pub const OBSIDIAN_BACKDROP: [u8; 4] = [16, 18, 24, 230]; // 90% opacity
     pub const CLEAR_BACKDROP_DARK: [u8; 4] = [18, 22, 28, 90]; // 35% opacity
@@ -49,13 +55,16 @@ impl Tokens {
     // Rims & Outlines
     /// Outer shell specular rim (subtle 1px highlight, ONLY on outer shell)
     pub const RIM_OUTER_DARK: [u8; 4] = [255, 255, 255, 45];
-    pub const RIM_OUTER_LIGHT: [u8; 4] = [255, 255, 255, 160];
+    /// Outer shell boundary in light mode (subtle dark hairline for crisp demarcation)
+    pub const RIM_OUTER_LIGHT: [u8; 4] = [0, 0, 0, 42];
 
-    // Inner element fills (6% - 10% white, NO inner box outlines)
+    // Inner element fills
     pub const INNER_TILE_BG_DARK: [u8; 4] = [255, 255, 255, 18]; // 7% white
     pub const INNER_TILE_BG_HOVER_DARK: [u8; 4] = [255, 255, 255, 30]; // 12% white
-    pub const INNER_TILE_BG_LIGHT: [u8; 4] = [255, 255, 255, 120];
+    pub const INNER_TILE_BG_LIGHT: [u8; 4] = [0, 0, 0, 16]; // 6% black fill for crisp contrast
+    pub const INNER_TILE_BG_HOVER_LIGHT: [u8; 4] = [0, 0, 0, 30]; // 12% black fill on hover
 
     /// Top highlight on inner tiles (subtle bevel instead of 4-sided wireframe)
     pub const INNER_TOP_HIGHLIGHT_DARK: [u8; 4] = [255, 255, 255, 35];
+    pub const INNER_TOP_HIGHLIGHT_LIGHT: [u8; 4] = [255, 255, 255, 180];
 }

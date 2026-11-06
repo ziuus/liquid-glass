@@ -812,31 +812,33 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
+        // Chevron '>'
         Self::draw_segment(
             buf,
             width,
             height,
-            (cx - 5.5, cy - 4.5),
-            (cx - 1.2, cy),
-            1.6,
+            (cx - 6.0, cy - 4.5),
+            (cx - 1.5, cy),
+            1.5,
             color,
         );
         Self::draw_segment(
             buf,
             width,
             height,
-            (cx - 1.2, cy),
-            (cx - 5.5, cy + 4.5),
-            1.6,
+            (cx - 1.5, cy),
+            (cx - 6.0, cy + 4.5),
+            1.5,
             color,
         );
+        // Underline cursor '_'
         Self::draw_segment(
             buf,
             width,
             height,
-            (cx + 1.2, cy + 4.5),
-            (cx + 6.0, cy + 4.5),
-            1.6,
+            (cx + 1.0, cy + 4.5),
+            (cx + 6.5, cy + 4.5),
+            1.5,
             color,
         );
     }
@@ -857,23 +859,13 @@ impl UIFont {
             buf,
             width,
             height,
-            (cx - 7.0, cy),
-            (cx + 7.0, cy),
+            (cx - 6.8, cy),
+            (cx + 6.8, cy),
             1.2,
             color,
         );
         // Vertical meridian curved ellipse
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 3.4, 7.0, 3.4, 1.2, color);
-        // Vertical axis
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx, cy - 7.0),
-            (cx, cy + 7.0),
-            1.0,
-            color,
-        );
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 3.4, 6.8, 3.4, 1.2, color);
     }
 
     /// Draw a precision close/dismiss icon (X)
@@ -907,7 +899,7 @@ impl UIFont {
         );
     }
 
-    /// Draw a precision editor code brackets icon (<>)
+    /// Draw a precision editor code brackets icon (< / >)
     pub fn draw_editor_icon(
         buf: &mut [u8],
         width: u32,
@@ -916,45 +908,57 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
+        // Left bracket '<'
         Self::draw_segment(
             buf,
             width,
             height,
-            (cx - 2.0, cy - 5.0),
-            (cx - 6.0, cy),
-            1.5,
+            (cx - 3.0, cy - 5.0),
+            (cx - 7.0, cy),
+            1.4,
             color,
         );
         Self::draw_segment(
             buf,
             width,
             height,
-            (cx - 6.0, cy),
-            (cx - 2.0, cy + 5.0),
-            1.5,
+            (cx - 7.0, cy),
+            (cx - 3.0, cy + 5.0),
+            1.4,
+            color,
+        );
+        // Right bracket '>'
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx + 3.0, cy - 5.0),
+            (cx + 7.0, cy),
+            1.4,
             color,
         );
         Self::draw_segment(
             buf,
             width,
             height,
-            (cx + 2.0, cy - 5.0),
-            (cx + 6.0, cy),
-            1.5,
+            (cx + 7.0, cy),
+            (cx + 3.0, cy + 5.0),
+            1.4,
             color,
         );
+        // Center slash '/'
         Self::draw_segment(
             buf,
             width,
             height,
-            (cx + 6.0, cy),
-            (cx + 2.0, cy + 5.0),
-            1.5,
+            (cx + 1.2, cy - 6.0),
+            (cx - 1.2, cy + 6.0),
+            1.3,
             color,
         );
     }
 
-    /// Draw a precision folder icon
+    /// Draw a precision Lucide-grade folder icon (clean tab + body outline)
     pub fn draw_folder_icon(
         buf: &mut [u8],
         width: u32,
@@ -963,11 +967,39 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        Self::draw_rounded_rect_fill(buf, width, height, cx - 3.5, cy - 4.5, 3.8, 1.8, 1.0, color);
-        Self::draw_rounded_rect_fill(buf, width, height, cx, cy + 1.2, 7.5, 5.0, 1.5, color);
+        // Tab: top left
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 7.0, cy - 4.5),
+            (cx - 3.0, cy - 4.5),
+            1.4,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 3.0, cy - 4.5),
+            (cx - 1.5, cy - 2.5),
+            1.4,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 1.5, cy - 2.5),
+            (cx + 7.0, cy - 2.5),
+            1.4,
+            color,
+        );
+        // Folder body outline
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy + 1.5, 7.0, 4.5, 1.5, 1.3, color);
     }
 
-    /// Draw a precision music eighth notes icon
+    /// Draw a precision Lucide-grade music note icon
     pub fn draw_music_icon(
         buf: &mut [u8],
         width: u32,
@@ -976,32 +1008,37 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        Self::draw_rounded_rect_fill(buf, width, height, cx - 3.5, cy + 3.5, 2.5, 2.0, 2.0, color);
-        Self::draw_rounded_rect_fill(buf, width, height, cx + 3.5, cy + 1.5, 2.5, 2.0, 2.0, color);
+        // Left note head
+        Self::draw_rounded_rect_fill(buf, width, height, cx - 4.0, cy + 3.0, 2.4, 1.8, 1.8, color);
+        // Right note head
+        Self::draw_rounded_rect_fill(buf, width, height, cx + 4.0, cy + 1.0, 2.4, 1.8, 1.8, color);
+        // Left stem
         Self::draw_segment(
             buf,
             width,
             height,
-            (cx - 1.5, cy + 3.5),
-            (cx - 1.5, cy - 4.5),
+            (cx - 2.0, cy + 3.0),
+            (cx - 2.0, cy - 5.5),
             1.4,
             color,
         );
+        // Right stem
         Self::draw_segment(
             buf,
             width,
             height,
-            (cx + 5.5, cy + 1.5),
-            (cx + 5.5, cy - 6.5),
+            (cx + 6.0, cy + 1.0),
+            (cx + 6.0, cy - 7.5),
             1.4,
             color,
         );
+        // Connecting top cross-beam
         Self::draw_segment(
             buf,
             width,
             height,
-            (cx - 1.5, cy - 4.5),
-            (cx + 5.5, cy - 6.5),
+            (cx - 2.0, cy - 5.5),
+            (cx + 6.0, cy - 7.5),
             2.0,
             color,
         );
@@ -1411,8 +1448,8 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        let r_outer = 4.8f32;
-        let r_inner = 2.2f32;
+        // Center ring: r = 3.0, stroke = 1.3
+        let r = 3.0f32;
         let min_x = (cx - 7.5).max(0.0) as u32;
         let max_x = (cx + 7.5).min(width as f32 - 1.0) as u32;
         let min_y = (cy - 7.5).max(0.0) as u32;
@@ -1422,27 +1459,9 @@ impl UIFont {
             for x in min_x..=max_x {
                 let px = x as f32 + 0.5;
                 let py = y as f32 + 0.5;
-                let dx = px - cx;
-                let dy = py - cy;
-                let dist = (dx * dx + dy * dy).sqrt();
-                let angle = dy.atan2(dx);
-
-                // 6 cogs around circumference
-                let step = std::f32::consts::PI / 3.0;
-                let normalized_ang = (angle + std::f32::consts::PI + step * 0.5) % step;
-                let diff_to_cog = (normalized_ang - (step * 0.5)).abs();
-                let cog_extra = if diff_to_cog < 0.22 {
-                    1.8f32 * (1.0 - diff_to_cog / 0.22)
-                } else {
-                    0.0f32
-                };
-
-                let target_r = r_outer + cog_extra;
-                let d_body = dist - target_r;
-                let d_hole = r_inner - dist;
-                let d = d_body.max(d_hole);
-
-                let alpha = (1.0 - Self::smoothstep(-0.4, 0.4, d)) * (color[3] as f32 / 255.0);
+                let dist = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
+                let d_ring = (dist - r).abs() - 0.65;
+                let alpha = (1.0 - Self::smoothstep(-0.4, 0.4, d_ring)) * (color[3] as f32 / 255.0);
                 if alpha > 0.01 {
                     let idx = ((y * width + x) * 4) as usize;
                     if idx + 3 < buf.len() {
@@ -1456,6 +1475,15 @@ impl UIFont {
                     }
                 }
             }
+        }
+
+        // 6 radial teeth
+        for i in 0..6 {
+            let angle = (i as f32) * (std::f32::consts::PI / 3.0);
+            let (sin_a, cos_a) = angle.sin_cos();
+            let p1 = (cx + cos_a * 4.0, cy + sin_a * 4.0);
+            let p2 = (cx + cos_a * 6.8, cy + sin_a * 6.8);
+            Self::draw_segment(buf, width, height, p1, p2, 1.6, color);
         }
     }
 

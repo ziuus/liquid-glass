@@ -592,11 +592,36 @@ impl AppData {
                         }
                     }
                 }
+
+                if self.music.is_playing {
+                    if let Ok(pos_out) = Command::new("playerctl").args(["position"]).output() {
+                        if pos_out.status.success() {
+                            if let Ok(pos_sec) = String::from_utf8_lossy(&pos_out.stdout)
+                                .trim()
+                                .parse::<f32>()
+                            {
+                                self.music.elapsed_sec = pos_sec;
+                                if self.music.duration_sec > 0.0 {
+                                    self.music.progress =
+                                        (pos_sec / self.music.duration_sec).clamp(0.0, 1.0);
+                                }
+                            }
+                        }
+                    }
+                }
             } else {
                 self.music.is_playing = false;
+                if self.music.title.is_empty() || self.music.title == "Starboy" {
+                    self.music.title = "No Media Playing".to_string();
+                    self.music.artist = "System Idle".to_string();
+                }
             }
         } else {
             self.music.is_playing = false;
+            if self.music.title.is_empty() || self.music.title == "Starboy" {
+                self.music.title = "No Media Playing".to_string();
+                self.music.artist = "System Idle".to_string();
+            }
         }
     }
 
@@ -718,7 +743,13 @@ impl AppData {
                     self.width,
                     self.height,
                 );
+                self.is_wallpaper_light =
+                    glass_platform::WallpaperManager::is_buffer_light_hysteresis(
+                        &crop,
+                        self.is_wallpaper_light,
+                    );
                 renderer.update_background(self.width, self.height, &crop);
+                self.needs_redraw = true;
             }
         }
     }
@@ -743,7 +774,7 @@ impl AppData {
                 (
                     3.2f32,
                     if is_light {
-                        [40, 50, 70, 255]
+                        [12, 16, 24, 255]
                     } else {
                         [255, 255, 255, 255]
                     },
@@ -752,7 +783,7 @@ impl AppData {
                 (
                     2.0f32,
                     if is_light {
-                        [160, 170, 185, 180]
+                        [140, 150, 165, 180]
                     } else {
                         [255, 255, 255, 90]
                     },
@@ -787,7 +818,11 @@ impl AppData {
         } else {
             Tokens::TEXT_SECONDARY
         };
-        let col_shadow = [0, 0, 0, 0];
+        let col_shadow = if is_light {
+            [255, 255, 255, 120]
+        } else {
+            [0, 0, 0, 180]
+        };
 
         let island_cx = (self.width as f32) * 0.5;
         let island_top = self.current_y;
@@ -851,6 +886,8 @@ impl AppData {
                     12.0,
                     if self.music.is_playing {
                         Tokens::ACCENT_FILL
+                    } else if is_light {
+                        Tokens::INNER_TILE_BG_LIGHT
                     } else {
                         Tokens::INNER_TILE_BG_DARK
                     },
@@ -872,7 +909,7 @@ impl AppData {
                         disc_cx,
                         island_cy,
                         6.0,
-                        Tokens::TEXT_SECONDARY,
+                        col_dim,
                     );
                 }
 
@@ -890,7 +927,7 @@ impl AppData {
                     island_cx + 4.0,
                     island_cy,
                     Tokens::TYPE_BODY_SM,
-                    Tokens::TEXT_PRIMARY,
+                    col_ink,
                     col_shadow,
                     FontWeight::SemiBold,
                 );
@@ -923,7 +960,7 @@ impl AppData {
                         right_x + 6.0,
                         island_cy,
                         Tokens::TYPE_CAPTION,
-                        Tokens::TEXT_TERTIARY,
+                        col_dim,
                         col_shadow,
                         FontWeight::Medium,
                     );
@@ -1201,6 +1238,12 @@ impl AppData {
                         [255, 255, 255, 255],
                     );
 
+                    let notif_badge_col = if is_light {
+                        [20, 80, 190, 255]
+                    } else {
+                        [200, 224, 255, 255]
+                    };
+
                     // App Name Header
                     let content_x = cx - island_w * 0.5 + 76.0;
                     self.font.draw_text(
@@ -1211,7 +1254,7 @@ impl AppData {
                         content_x,
                         island_top + 28.0,
                         11.0,
-                        [200, 224, 255, 255], // Crisp #c8e0ff (>6:1 contrast)
+                        notif_badge_col,
                         FontWeight::Bold,
                     );
 
@@ -1262,7 +1305,11 @@ impl AppData {
                         18.0,
                         8.5,
                         6.0,
-                        [255, 255, 255, 28],
+                        if is_light {
+                            [0, 0, 0, 20]
+                        } else {
+                            [255, 255, 255, 28]
+                        },
                     );
                     self.font.draw_text_centered(
                         buf,
@@ -1272,7 +1319,7 @@ impl AppData {
                         right_x - 38.0,
                         island_top + 26.0,
                         10.5,
-                        [200, 224, 255, 255],
+                        notif_badge_col,
                         col_shadow,
                         FontWeight::Medium,
                     );
@@ -1287,7 +1334,11 @@ impl AppData {
                         13.0,
                         13.0,
                         13.0,
-                        [255, 255, 255, 24],
+                        if is_light {
+                            [0, 0, 0, 16]
+                        } else {
+                            [255, 255, 255, 24]
+                        },
                     );
                     UIFont::draw_close_icon(
                         buf,
@@ -1315,7 +1366,6 @@ impl AppData {
                 );
 
                 let apps = ["Terminal", "Browser", "Editor", "Files", "Music"];
-                let key_hints = ["1", "2", "3", "4", "5"];
 
                 let item_w = (island_w - 50.0) / (apps.len() as f32);
                 let start_x = cx - island_w * 0.5 + 25.0 + item_w * 0.5;
@@ -1333,12 +1383,12 @@ impl AppData {
 
                     let tile_bg = if is_tile_hover {
                         if is_light {
-                            Tokens::INNER_TILE_BG_LIGHT
+                            Tokens::INNER_TILE_BG_HOVER_LIGHT
                         } else {
                             Tokens::INNER_TILE_BG_HOVER_DARK
                         }
                     } else if is_light {
-                        [255, 255, 255, 60]
+                        Tokens::INNER_TILE_BG_LIGHT
                     } else {
                         Tokens::INNER_TILE_BG_DARK
                     };
@@ -1364,41 +1414,14 @@ impl AppData {
                         (cx - (item_w - 10.0) * 0.5 + 6.0, cy - 27.0),
                         (cx + (item_w - 10.0) * 0.5 - 6.0, cy - 27.0),
                         1.0,
-                        Tokens::INNER_TOP_HIGHLIGHT_DARK,
-                    );
-
-                    // Key hint badge at top-right of tile (1..5)
-                    let hint_cx = cx + (item_w - 10.0) * 0.5 - 10.0;
-                    let hint_cy = cy - 16.0;
-                    UIFont::draw_rounded_rect_fill(
-                        buf,
-                        self.width,
-                        self.height,
-                        hint_cx,
-                        hint_cy,
-                        6.5,
-                        6.5,
-                        3.5,
                         if is_light {
-                            [200, 208, 222, 200]
+                            Tokens::INNER_TOP_HIGHLIGHT_LIGHT
                         } else {
-                            [45, 54, 72, 220]
+                            Tokens::INNER_TOP_HIGHLIGHT_DARK
                         },
                     );
-                    self.font.draw_text_centered(
-                        buf,
-                        self.width,
-                        self.height,
-                        key_hints[idx],
-                        hint_cx,
-                        hint_cy,
-                        Tokens::TYPE_CAPTION - 2.0,
-                        Tokens::TEXT_SECONDARY,
-                        col_shadow,
-                        FontWeight::Bold,
-                    );
 
-                    let icon_cy = cy - 8.0;
+                    let icon_cy = cy - 7.0;
                     match idx {
                         0 => UIFont::draw_terminal_icon(
                             buf,
@@ -1450,7 +1473,7 @@ impl AppData {
                         cx,
                         cy + 13.0,
                         Tokens::TYPE_CAPTION,
-                        Tokens::TEXT_PRIMARY,
+                        col_ink,
                         col_shadow,
                         FontWeight::Medium,
                     );
@@ -1466,7 +1489,7 @@ impl AppData {
                     cx - island_w * 0.5 + 32.0,
                     island_top + 24.0,
                     Tokens::TYPE_CAPTION,
-                    Tokens::TEXT_TERTIARY,
+                    col_dim,
                     FontWeight::Bold,
                 );
 
@@ -1540,7 +1563,11 @@ impl AppData {
                         (cx - (item_w - 10.0) * 0.5 + 6.0, cy - 27.0),
                         (cx + (item_w - 10.0) * 0.5 - 6.0, cy - 27.0),
                         1.0,
-                        Tokens::INNER_TOP_HIGHLIGHT_DARK,
+                        if is_light {
+                            Tokens::INNER_TOP_HIGHLIGHT_LIGHT
+                        } else {
+                            Tokens::INNER_TOP_HIGHLIGHT_DARK
+                        },
                     );
 
                     // Lucide Vector Icon (top)
@@ -1581,7 +1608,7 @@ impl AppData {
                         ),
                     }
 
-                    // Value (pure white tabular text for optical clarity)
+                    // Value (tabular text for optical clarity)
                     self.font.draw_text_centered(
                         buf,
                         self.width,
@@ -1590,7 +1617,7 @@ impl AppData {
                         cx,
                         cy + 6.0,
                         Tokens::TYPE_BODY,
-                        Tokens::TEXT_PRIMARY,
+                        col_ink,
                         col_shadow,
                         FontWeight::SemiBold,
                     );
@@ -1604,7 +1631,7 @@ impl AppData {
                         cx,
                         cy + 20.0,
                         Tokens::TYPE_CAPTION - 0.5,
-                        Tokens::TEXT_TERTIARY,
+                        col_dim,
                         col_shadow,
                         FontWeight::Medium,
                     );
@@ -1620,7 +1647,7 @@ impl AppData {
                     cx - island_w * 0.5 + 32.0,
                     island_top + 24.0,
                     Tokens::TYPE_CAPTION,
-                    Tokens::TEXT_TERTIARY,
+                    col_dim,
                     FontWeight::Bold,
                 );
 
@@ -1665,12 +1692,12 @@ impl AppData {
                         }
                     } else if is_tile_hover {
                         if is_light {
-                            Tokens::INNER_TILE_BG_LIGHT
+                            Tokens::INNER_TILE_BG_HOVER_LIGHT
                         } else {
                             Tokens::INNER_TILE_BG_HOVER_DARK
                         }
                     } else if is_light {
-                        [255, 255, 255, 60]
+                        Tokens::INNER_TILE_BG_LIGHT
                     } else {
                         Tokens::INNER_TILE_BG_DARK
                     };
@@ -1696,7 +1723,11 @@ impl AppData {
                         (cx - (item_w - 10.0) * 0.5 + 6.0, cy - 27.0),
                         (cx + (item_w - 10.0) * 0.5 - 6.0, cy - 27.0),
                         1.0,
-                        Tokens::INNER_TOP_HIGHLIGHT_DARK,
+                        if is_light {
+                            Tokens::INNER_TOP_HIGHLIGHT_LIGHT
+                        } else {
+                            Tokens::INNER_TOP_HIGHLIGHT_DARK
+                        },
                     );
 
                     // Red hold-to-confirm progress bar fill
@@ -1766,7 +1797,7 @@ impl AppData {
                         cx,
                         cy + 12.0,
                         Tokens::TYPE_CAPTION,
-                        Tokens::TEXT_PRIMARY,
+                        col_ink,
                         col_shadow,
                         FontWeight::SemiBold,
                     );
@@ -2076,6 +2107,11 @@ impl LayerShellHandler for AppData {
                         self.width,
                         self.height,
                     );
+                    self.is_wallpaper_light =
+                        glass_platform::WallpaperManager::is_buffer_light_hysteresis(
+                            &crop,
+                            self.is_wallpaper_light,
+                        );
                     renderer.update_background(self.width, self.height, &crop);
                 }
 
@@ -2381,6 +2417,20 @@ fn main() {
     let pos_x: i32 = (screen_w - width as i32) / 2;
     let pos_y: i32 = 0;
 
+    let wallpaper_mgr = glass_platform::WallpaperManager::new();
+    let is_wallpaper_light = if let Some(cache) = wallpaper_mgr.cached_buffer() {
+        let crop = glass_platform::WallpaperManager::get_wallpaper_crop(
+            cache,
+            pos_x.max(0) as u32,
+            pos_y.max(0) as u32,
+            width,
+            height,
+        );
+        glass_platform::WallpaperManager::is_buffer_light(&crop)
+    } else {
+        false
+    };
+
     let mut app_data = AppData {
         registry_state,
         output_state: OutputState::new(&globals, &qh),
@@ -2422,12 +2472,12 @@ fn main() {
         transition_from_mode: None,
 
         music: MusicState {
-            title: "Starboy".to_string(),
-            artist: "The Weeknd".to_string(),
-            is_playing: true,
-            progress: 0.42,
-            duration_sec: 230.0,
-            elapsed_sec: 96.6,
+            title: "No Media Playing".to_string(),
+            artist: "System Idle".to_string(),
+            is_playing: false,
+            progress: 0.0,
+            duration_sec: 1.0,
+            elapsed_sec: 0.0,
         },
         last_music_poll: Instant::now() - Duration::from_secs(5),
 
@@ -2454,8 +2504,8 @@ fn main() {
         animating: true,
         needs_redraw: true,
         primary_output: None,
-        is_wallpaper_light: false,
-        wallpaper_mgr: glass_platform::WallpaperManager::new(),
+        is_wallpaper_light,
+        wallpaper_mgr,
         start_time: Instant::now(),
     };
 
