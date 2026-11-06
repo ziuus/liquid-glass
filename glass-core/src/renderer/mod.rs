@@ -834,6 +834,10 @@ impl GlassRenderer {
 
     /// Update dynamic interactive UI overlay (Quicksand typography, live text inputs, widgets)
     pub fn update_overlay(&mut self, width: u32, height: u32, rgba_data: &[u8]) {
+        let expected_len = (width * height * 4) as usize;
+        if rgba_data.len() != expected_len {
+            return;
+        }
         if width > 0 && height > 0 {
             if self.overlay_texture.width() != width || self.overlay_texture.height() != height {
                 let size = wgpu::Extent3d {

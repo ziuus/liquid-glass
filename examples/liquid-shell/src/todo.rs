@@ -127,6 +127,7 @@ pub struct TodoWidget {
     pub font: QuicksandFont,
     pub tab_spring: Spring,
     pub filter_spring: Spring,
+    pub style_mode: f32,
 }
 
 impl TodoWidget {
@@ -239,6 +240,7 @@ impl TodoWidget {
             font,
             tab_spring: Spring::with_params(0.0, spring_params),
             filter_spring: Spring::with_params(0.0, spring_params),
+            style_mode: 1.0,
         }
     }
 
@@ -1304,18 +1306,18 @@ impl TodoWidget {
                         Tokens::RADIUS_INNER_TILE,
                         row_fill,
                     );
-                    // 1px top highlight bevel for physical glass shelf depth (soft 15-18% white, inset from corners)
+                    // Soft 16% white top highlight bevel for physical glass shelf depth (inset from corners)
                     let row_hl = if row_is_light {
-                        Tokens::INNER_TOP_HIGHLIGHT_LIGHT
+                        [0, 0, 0, 24]
                     } else {
-                        Tokens::INNER_TOP_HIGHLIGHT_DARK
+                        [255, 255, 255, 42]
                     };
                     UIFont::draw_segment(
                         buf,
                         self.width,
                         self.height,
-                        (180.0 + slide_x + tasks_offset_x - 136.0, cy - 17.0),
-                        (180.0 + slide_x + tasks_offset_x + 136.0, cy - 17.0),
+                        (180.0 + slide_x + tasks_offset_x - 120.0, cy - 17.0),
+                        (180.0 + slide_x + tasks_offset_x + 120.0, cy - 17.0),
                         1.0,
                         row_hl,
                     );
@@ -1460,18 +1462,18 @@ impl TodoWidget {
                 Tokens::RADIUS_INNER_TILE,
                 add_fill,
             );
-            // 1px top highlight bevel on input container (inset from corners)
+            // Soft 16% white top highlight bevel on input container (inset from corners)
             let add_hl = if add_is_light {
-                Tokens::INNER_TOP_HIGHLIGHT_LIGHT
+                [0, 0, 0, 24]
             } else {
-                Tokens::INNER_TOP_HIGHLIGHT_DARK
+                [255, 255, 255, 42]
             };
             UIFont::draw_segment(
                 buf,
                 self.width,
                 self.height,
-                (180.0 + tasks_offset_x - 136.0, add_bar_cy - 15.0),
-                (180.0 + tasks_offset_x + 136.0, add_bar_cy - 15.0),
+                (180.0 + tasks_offset_x - 120.0, add_bar_cy - 15.0),
+                (180.0 + tasks_offset_x + 120.0, add_bar_cy - 15.0),
                 1.0,
                 add_hl,
             );
@@ -1879,7 +1881,7 @@ impl TodoWidget {
                 .roughness(-1.0)
                 .specular(1.10)
                 .fresnel(0.60)
-                .style_mode(1.0)
+                .style_mode(self.style_mode)
                 .element_type(26.0)
                 .deformation(tab_val) // Continuous Tab spring
                 .pointer_pos(px, py);

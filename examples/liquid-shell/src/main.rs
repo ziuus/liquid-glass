@@ -320,8 +320,21 @@ fn main() {
         pollster::block_on(SharedGpu::new()).expect("Failed to initialize shared GPU context");
     let mut wallpaper_mgr = WallpaperManager::new();
 
+    let mut pipe_fds = [0i32; 2];
+    unsafe {
+        libc::pipe(pipe_fds.as_mut_ptr());
+        libc::fcntl(pipe_fds[0], libc::F_SETFL, libc::O_NONBLOCK);
+    }
+    let (wakeup_read_fd, wakeup_write_fd) = (pipe_fds[0], pipe_fds[1]);
+
     let mut clock = ClockWidget::new(&qh, &compositor_state, &layer_shell, display_ptr);
-    let mut island = IslandWidget::new(&qh, &compositor_state, &layer_shell, display_ptr);
+    let mut island = IslandWidget::new(
+        &qh,
+        &compositor_state,
+        &layer_shell,
+        display_ptr,
+        Some(wakeup_write_fd),
+    );
     let mut todo = TodoWidget::new(&qh, &compositor_state, &layer_shell, display_ptr);
 
     if let Some(cache) = wallpaper_mgr.cached_buffer() {
@@ -398,7 +411,19 @@ fn main() {
         let dt = (now - last_frame).as_secs_f32().clamp(0.001, 0.05);
         last_frame = now;
 
-        app.island.check_ipc();
+        if let Some(new_style) = app.island.check_ipc() {
+            app.clock.style_mode = new_style;
+            app.clock.draw();
+            app.todo.style_mode = new_style;
+            app.todo.draw();
+            app.island.draw();
+        } else if app.clock.style_mode != app.island.style_mode {
+            let s = app.island.style_mode;
+            app.clock.style_mode = s;
+            app.clock.draw();
+            app.todo.style_mode = s;
+            app.todo.draw();
+        }
         app.island.check_music();
         app.island.check_window_overlap();
         app.todo.check_todos();
@@ -485,15 +510,30 @@ fn main() {
             }
         };
 
-        let fd = conn.as_fd().as_raw_fd();
-        let mut pfd = libc::pollfd {
-            fd,
-            events: libc::POLLIN,
-            revents: 0,
-        };
-        let poll_res = unsafe { libc::poll(&mut pfd, 1, timeout_ms) };
-        if poll_res > 0 && (pfd.revents & libc::POLLIN) != 0 {
-            let _ = guard.read();
+        let conn_fd = conn.as_fd().as_raw_fd();
+        let mut pfds = [
+            libc::pollfd {
+                fd: conn_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            },
+            libc::pollfd {
+                fd: wakeup_read_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            },
+        ];
+        let poll_res = unsafe { libc::poll(pfds.as_mut_ptr(), 2, timeout_ms) };
+        if poll_res > 0 {
+            if (pfds[0].revents & libc::POLLIN) != 0 {
+                let _ = guard.read();
+            } else {
+                drop(guard);
+            }
+            if (pfds[1].revents & libc::POLLIN) != 0 {
+                let mut buf = [0u8; 64];
+                unsafe { libc::read(wakeup_read_fd, buf.as_mut_ptr() as *mut _, 64) };
+            }
         } else {
             drop(guard);
         }

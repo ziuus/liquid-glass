@@ -22,7 +22,7 @@ use wayland_client::protocol::wl_surface;
 use wayland_client::{Dispatch, Proxy, QueueHandle};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::ZwlrLayerSurfaceV1;
 
-pub const CARD_PAD: f32 = 28.0;
+pub const CARD_PAD: f32 = 36.0;
 pub const CARD_W: f32 = 320.0;
 pub const CARD_H: f32 = 218.0;
 
@@ -75,6 +75,7 @@ pub struct ClockWidget {
     pub battery_level: f32,
     pub last_battery_check: Instant,
     pub last_minute: u32,
+    pub style_mode: f32,
 }
 
 impl ClockWidget {
@@ -89,8 +90,8 @@ impl ClockWidget {
             + Dispatch<ZwlrLayerSurfaceV1, LayerSurfaceData>
             + 'static,
     {
-        let width = (CARD_W + CARD_PAD * 2.0) as u32; // 376
-        let height = (CARD_H + CARD_PAD * 2.0) as u32; // 274
+        let width = (CARD_W + CARD_PAD * 2.0) as u32; // 392
+        let height = (CARD_H + CARD_PAD * 2.0) as u32; // 290
         let pos_x = 0i32;
         let pos_y = 28i32;
 
@@ -140,6 +141,7 @@ impl ClockWidget {
             battery_level: 100.0,
             last_battery_check: Instant::now() - std::time::Duration::from_secs(60),
             last_minute: 99,
+            style_mode: 1.0,
         }
     }
 
@@ -342,6 +344,26 @@ impl ClockWidget {
         let half_w = self.width as f32 * 0.5;
         let card_top = CARD_PAD;
 
+        // Outer rim specular highlight (clean 1px diamond cut, perfectly insetting padding)
+        let card_cx = half_w;
+        let card_cy = card_top + CARD_H * 0.5;
+        UIFont::draw_rounded_rect_stroke(
+            buf,
+            self.width,
+            self.height,
+            card_cx,
+            card_cy,
+            CARD_W * 0.5,
+            CARD_H * 0.5,
+            28.0,
+            1.0,
+            if self.is_wallpaper_light {
+                glass_core::Tokens::RIM_OUTER_LIGHT
+            } else {
+                glass_core::Tokens::RIM_OUTER_DARK
+            },
+        );
+
         // Top Centered Date
         let date_w = self
             .font
@@ -469,6 +491,7 @@ impl ClockWidget {
                 .blur(8.0)
                 .specular(1.10)
                 .fresnel(0.60)
+                .style_mode(self.style_mode)
                 .tint(0.0, 0.0, 0.0, is_light_f32)
                 .roughness(self.battery_level)
                 .specular(0.85)

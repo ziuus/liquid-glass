@@ -286,6 +286,7 @@ impl IslandWidget {
         compositor: &CompositorState,
         layer_shell: &LayerShell,
         display_ptr: *mut std::ffi::c_void,
+        wakeup_fd: Option<i32>,
     ) -> Self
     where
         D: Dispatch<wl_surface::WlSurface, SurfaceData>
@@ -318,7 +319,7 @@ impl IslandWidget {
         });
 
         let (ipc_tx, ipc_rx) = channel();
-        start_fifo_listener(ipc_tx);
+        start_fifo_listener(ipc_tx, wakeup_fd);
         start_dbus_monitor();
 
         let font = UIFont::new();
@@ -333,24 +334,24 @@ impl IslandWidget {
             is_pressed: false,
             is_hovered: false,
 
-            current_w: Tokens::ISLAND_COMPACT_W,
-            target_w: Tokens::ISLAND_COMPACT_W,
+            current_w: 160.0,
+            target_w: 160.0,
             vel_w: 0.0,
 
-            current_h: Tokens::ISLAND_COMPACT_H,
-            target_h: Tokens::ISLAND_COMPACT_H,
+            current_h: 10.0,
+            target_h: 10.0,
             vel_h: 0.0,
 
-            current_alpha: 1.0,
-            target_alpha: 1.0,
+            current_alpha: 0.0,
+            target_alpha: 0.0,
             vel_alpha: 0.0,
 
-            current_y: 12.0,
-            target_y: 12.0,
+            current_y: -30.0,
+            target_y: -30.0,
             vel_y: 0.0,
 
-            mode: IslandMode::CompactPill,
-            prev_mode: IslandMode::CompactPill,
+            mode: IslandMode::Hidden,
+            prev_mode: IslandMode::Hidden,
 
             slide_offset: 0.0,
             slide_vel: 0.0,
@@ -521,7 +522,7 @@ impl IslandWidget {
                 }
                 true
             }
-            PointerEventKind::Release { .. } => {
+            PointerEventKind::Release { button, .. } => {
                 let lx = event.position.0 as f32;
                 let ly = event.position.1 as f32;
                 let dist =
@@ -532,7 +533,13 @@ impl IslandWidget {
                     && self.press_time.elapsed() < Duration::from_millis(600)
                     && self.last_mode_cycle.elapsed() >= Duration::from_millis(400)
                 {
-                    self.handle_click(self.press_pos[0], self.press_pos[1]);
+                    if button == 273 || button == 274 {
+                        // Secondary click or middle click cycles desktop style mode
+                        self.style_mode = (self.style_mode + 1.0) % 3.0;
+                        self.needs_redraw = true;
+                    } else {
+                        self.handle_click(self.press_pos[0], self.press_pos[1]);
+                    }
                 }
                 self.is_pressed = false;
                 self.is_swiping = false;
@@ -669,7 +676,8 @@ impl IslandWidget {
         }
     }
 
-    pub fn check_ipc(&mut self) {
+    pub fn check_ipc(&mut self) -> Option<f32> {
+        let mut style_changed = None;
         while let Ok(evt) = self.ipc_rx.try_recv() {
             match evt {
                 IslandIpcEvent::Toggle => self.toggle(),
@@ -679,10 +687,12 @@ impl IslandWidget {
                 IslandIpcEvent::SetStyle(s) => {
                     self.style_mode = s;
                     self.needs_redraw = true;
+                    style_changed = Some(s);
                 }
                 IslandIpcEvent::CycleStyle => {
                     self.style_mode = (self.style_mode + 1.0) % 3.0;
                     self.needs_redraw = true;
+                    style_changed = Some(self.style_mode);
                 }
                 IslandIpcEvent::Notification(notif) => {
                     self.active_notif = Some(notif);
@@ -690,6 +700,7 @@ impl IslandWidget {
                 }
             }
         }
+        style_changed
     }
 
     pub fn update_physics(&mut self, dt: f32) -> bool {
@@ -776,7 +787,11 @@ impl IslandWidget {
             if let Some(notif) = &self.active_notif {
                 if notif.timestamp.elapsed().as_secs_f32() > self.notif_timeout_secs {
                     self.active_notif = None;
-                    self.set_mode(IslandMode::CompactPill);
+                    if self.music.is_playing {
+                        self.set_mode(IslandMode::CompactPill);
+                    } else {
+                        self.set_mode(IslandMode::Hidden);
+                    }
                 }
             }
         }
@@ -813,13 +828,13 @@ impl IslandWidget {
         }
 
         // Clean desktop presence: when idle in CompactPill with no media playing and no notification,
-        // smoothly hide after 6 seconds of inactivity
+        // smoothly hide after 4 seconds of inactivity so the desktop stays pristine
         if !self.is_hovered
             && !self.is_pressed
             && self.mode == IslandMode::CompactPill
             && !self.music.is_playing
             && self.active_notif.is_none()
-            && self.last_interaction.elapsed() >= Duration::from_millis(6000)
+            && self.last_interaction.elapsed() >= Duration::from_millis(4000)
         {
             self.set_mode(IslandMode::Hidden);
         }
@@ -845,6 +860,7 @@ impl IslandWidget {
 
         !settling
             || (self.music.is_playing && self.mode != IslandMode::Hidden)
+            || self.mode == IslandMode::Notification
             || self.is_hovered
             || hold_active
     }
@@ -1106,15 +1122,17 @@ impl IslandWidget {
     }
 
     fn render_ui_overlay(&mut self) {
-        if self.current_alpha <= 0.05 {
+        let req_len = (self.width * self.height * 4) as usize;
+        if self.overlay_buffer.len() != req_len {
+            self.overlay_buffer.resize(req_len, 0);
+        }
+        self.overlay_buffer.fill(0);
+
+        if self.current_alpha <= 0.01 {
             return;
         }
 
         let mut overlay_vec = std::mem::take(&mut self.overlay_buffer);
-        if overlay_vec.len() != (self.width * self.height * 4) as usize {
-            overlay_vec.resize((self.width * self.height * 4) as usize, 0);
-        }
-        overlay_vec.fill(0);
         let buf = &mut overlay_vec[..];
 
         let is_light = self.is_wallpaper_light;
@@ -1912,6 +1930,42 @@ impl IslandWidget {
                     FontWeight::Bold,
                 );
 
+                // Interactive Style / Theme Switcher Badge
+                let theme_cx = cx + island_w * 0.5 - 130.0;
+                let theme_cy = island_top + 22.0;
+                let style_lbl = match self.style_mode as u32 {
+                    0 => "Obsidian",
+                    1 => "Frosted",
+                    _ => "Liquid",
+                };
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    theme_cx,
+                    theme_cy,
+                    42.0,
+                    9.5,
+                    5.0,
+                    if is_light {
+                        [225, 230, 240, 180]
+                    } else {
+                        [40, 48, 64, 180]
+                    },
+                );
+                self.font.draw_text_centered(
+                    buf,
+                    self.width,
+                    self.height,
+                    &format!("{} ⟳", style_lbl),
+                    theme_cx,
+                    theme_cy,
+                    10.5,
+                    col_ink,
+                    col_shadow,
+                    FontWeight::Medium,
+                );
+
                 // 4 Metric cards: CPU, RAM, Battery, Uptime
                 let stat_items = [
                     (
@@ -2401,7 +2455,11 @@ impl IslandWidget {
             }
             IslandMode::Notification => {
                 self.active_notif = None;
-                self.set_mode(IslandMode::CompactPill);
+                if self.music.is_playing {
+                    self.set_mode(IslandMode::CompactPill);
+                } else {
+                    self.set_mode(IslandMode::Hidden);
+                }
             }
             IslandMode::QuickAccess => {
                 let apps = [
@@ -2424,7 +2482,14 @@ impl IslandWidget {
                     }
                 }
             }
-            IslandMode::SystemOverview => {}
+            IslandMode::SystemOverview => {
+                let theme_cx = island_cx + island_w * 0.5 - 130.0;
+                let theme_cy = island_top + 22.0;
+                if (lx - theme_cx).abs() <= 45.0 && (ly - theme_cy).abs() <= 12.0 {
+                    self.style_mode = (self.style_mode + 1.0) % 3.0;
+                    self.needs_redraw = true;
+                }
+            }
             IslandMode::PowerMenu => {
                 let item_w = (island_w - 52.0) / 4.0;
                 let start_x = island_cx - island_w * 0.5 + 26.0 + item_w * 0.5;
@@ -2477,13 +2542,23 @@ fn is_buffer_light(buf: &[u8]) -> bool {
         false
     }
 }
-fn start_fifo_listener(tx: Sender<IslandIpcEvent>) {
+fn start_fifo_listener(tx: Sender<IslandIpcEvent>, wakeup_fd: Option<i32>) {
     std::thread::spawn(move || {
         let _ = std::fs::remove_file(FIFO_PATH);
         unsafe {
             let c_path = std::ffi::CString::new(FIFO_PATH).unwrap();
             libc::mkfifo(c_path.as_ptr(), 0o666);
         }
+
+        let send_evt = |evt: IslandIpcEvent| {
+            let _ = tx.send(evt);
+            if let Some(fd) = wakeup_fd {
+                unsafe {
+                    let b = [1u8];
+                    libc::write(fd, b.as_ptr() as *const _, 1);
+                }
+            }
+        };
 
         loop {
             // Open with read-write so the descriptor remains open across client invocations
@@ -2495,41 +2570,41 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>) {
                 for line in reader.lines().map_while(Result::ok) {
                     let trimmed = line.trim();
                     if trimmed == "toggle" {
-                        let _ = tx.send(IslandIpcEvent::Toggle);
+                        send_evt(IslandIpcEvent::Toggle);
                     } else if trimmed == "hide" {
-                        let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::Hidden));
+                        send_evt(IslandIpcEvent::ShowMode(IslandMode::Hidden));
                     } else if trimmed == "show" || trimmed == "compact" {
-                        let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::CompactPill));
+                        send_evt(IslandIpcEvent::ShowMode(IslandMode::CompactPill));
                     } else if trimmed == "music" {
-                        let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::MusicExpanded));
+                        send_evt(IslandIpcEvent::ShowMode(IslandMode::MusicExpanded));
                     } else if trimmed == "sys" || trimmed == "system" {
-                        let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::SystemOverview));
+                        send_evt(IslandIpcEvent::ShowMode(IslandMode::SystemOverview));
                     } else if trimmed == "power" {
-                        let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::PowerMenu));
+                        send_evt(IslandIpcEvent::ShowMode(IslandMode::PowerMenu));
                     } else if trimmed == "apps" || trimmed == "quick" {
-                        let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::QuickAccess));
+                        send_evt(IslandIpcEvent::ShowMode(IslandMode::QuickAccess));
                     } else if trimmed == "next" {
-                        let _ = tx.send(IslandIpcEvent::NextMenu);
+                        send_evt(IslandIpcEvent::NextMenu);
                     } else if trimmed == "prev" {
-                        let _ = tx.send(IslandIpcEvent::PrevMenu);
+                        send_evt(IslandIpcEvent::PrevMenu);
                     } else if trimmed == "style obsidian"
                         || trimmed == "obsidian"
                         || trimmed == "style 0"
                     {
-                        let _ = tx.send(IslandIpcEvent::SetStyle(0.0));
+                        send_evt(IslandIpcEvent::SetStyle(0.0));
                     } else if trimmed == "style frost"
                         || trimmed == "style glassmorphism"
                         || trimmed == "frost"
                         || trimmed == "style 1"
                     {
-                        let _ = tx.send(IslandIpcEvent::SetStyle(1.0));
+                        send_evt(IslandIpcEvent::SetStyle(1.0));
                     } else if trimmed == "style liquid"
                         || trimmed == "liquid"
                         || trimmed == "style 2"
                     {
-                        let _ = tx.send(IslandIpcEvent::SetStyle(2.0));
+                        send_evt(IslandIpcEvent::SetStyle(2.0));
                     } else if trimmed == "style" || trimmed == "style cycle" {
-                        let _ = tx.send(IslandIpcEvent::CycleStyle);
+                        send_evt(IslandIpcEvent::CycleStyle);
                     } else if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
                         if val.get("type").and_then(|t| t.as_str()) == Some("notification") {
                             let app = val
@@ -2547,7 +2622,7 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>) {
                                 .and_then(|b| b.as_str())
                                 .unwrap_or("")
                                 .to_string();
-                            let _ = tx.send(IslandIpcEvent::Notification(NotificationData {
+                            send_evt(IslandIpcEvent::Notification(NotificationData {
                                 app,
                                 summary,
                                 body,
@@ -2564,6 +2639,9 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>) {
 
 fn start_dbus_monitor() {
     std::thread::spawn(|| {
+        let _ = Command::new("pkill")
+            .args(["-f", "python3.*liquid_island"])
+            .status();
         let script = r#"
 import dbus
 from dbus.mainloop.glib import DBusGMainLoop
@@ -2571,6 +2649,8 @@ from gi.repository import GLib
 import json
 import os
 import time
+import queue
+import threading
 
 FIFO_PATH = "/tmp/liquid_island.fifo"
 
@@ -2578,6 +2658,19 @@ for _ in range(50):
     if os.path.exists(FIFO_PATH):
         break
     time.sleep(0.1)
+
+q = queue.Queue()
+def writer():
+    while True:
+        line = q.get()
+        try:
+            with open(FIFO_PATH, "a") as f:
+                f.write(line + "\n")
+                f.flush()
+        except Exception:
+            pass
+
+threading.Thread(target=writer, daemon=True).start()
 
 DBusGMainLoop(set_as_default=True)
 try:
@@ -2589,17 +2682,14 @@ try:
     def msg_handler(bus, msg):
         if msg.get_member() == 'Notify':
             args = msg.get_args_list()
-            app_name = str(args[0]) if len(args) > 0 else 'System'
+            raw_app = str(args[0]) if len(args) > 0 else 'System'
             summary = str(args[3]) if len(args) > 3 else ''
             body = str(args[4]) if len(args) > 4 else ''
+            app_name = raw_app
+            if raw_app.lower() == 'notify-send':
+                app_name = 'Notification'
             payload = json.dumps({"type": "notification", "app": app_name, "summary": summary, "body": body})
-            try:
-                if os.path.exists(FIFO_PATH):
-                    fd = os.open(FIFO_PATH, os.O_WRONLY | os.O_NONBLOCK)
-                    os.write(fd, (payload + "\n").encode())
-                    os.close(fd)
-            except Exception:
-                pass
+            q.put(payload)
 
     bus.add_message_filter(msg_handler)
     GLib.MainLoop().run()
