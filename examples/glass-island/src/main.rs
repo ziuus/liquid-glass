@@ -565,7 +565,12 @@ impl AppData {
     }
 
     fn check_music(&mut self) {
-        if self.last_music_poll.elapsed() < Duration::from_millis(1500) {
+        let poll_interval = if self.music.is_playing {
+            Duration::from_millis(2000)
+        } else {
+            Duration::from_millis(6000)
+        };
+        if self.last_music_poll.elapsed() < poll_interval {
             return;
         }
         self.last_music_poll = Instant::now();
@@ -657,7 +662,12 @@ impl AppData {
     }
 
     fn check_window_overlap(&mut self) {
-        if self.last_window_check.elapsed() < Duration::from_millis(300) {
+        let check_interval = if self.is_hovered {
+            Duration::from_millis(500)
+        } else {
+            Duration::from_millis(2500)
+        };
+        if self.last_window_check.elapsed() < check_interval {
             return;
         }
         self.last_window_check = Instant::now();
@@ -782,6 +792,7 @@ impl AppData {
                 renderer.update_background(self.width, self.height, &crop);
                 self.needs_redraw = true;
             }
+            self.wallpaper_mgr.release_full_buffer();
         }
     }
 
@@ -1960,7 +1971,9 @@ impl AppData {
         self.check_music();
         self.check_wallpaper();
         self.check_window_overlap();
-        self.sys_stats.poll();
+        if self.mode == IslandMode::SystemOverview {
+            self.sys_stats.poll();
+        }
 
         self.render_ui_overlay();
 
@@ -2787,7 +2800,7 @@ fn main() {
         let timeout_ms = if active || app_data.is_hovered {
             16
         } else {
-            250
+            1000
         };
 
         let guard = match conn.prepare_read() {

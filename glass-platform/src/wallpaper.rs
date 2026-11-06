@@ -163,11 +163,11 @@ impl WallpaperManager {
         crop
     }
 
-    /// Checks if wallpaper has changed via inotify or throttled polling (every 300ms).
+    /// Checks if wallpaper has changed via inotify or throttled polling (every 5000ms fallback).
     /// Returns true if the cache was updated.
     pub fn check_update(&mut self) -> bool {
         let inotify_fired = self.poll_inotify_triggered();
-        let timer_due = self.last_check.elapsed().as_millis() >= 300;
+        let timer_due = self.last_check.elapsed().as_millis() >= 5000;
 
         if !inotify_fired && !timer_due {
             return false;
@@ -189,6 +189,11 @@ impl WallpaperManager {
 
     pub fn cached_buffer(&self) -> Option<&Arc<Vec<u8>>> {
         self.cached_1080p.as_ref()
+    }
+
+    /// Drops the heavy uncompressed 1080p buffer from RAM once the surface crop is extracted and uploaded to GPU.
+    pub fn release_full_buffer(&mut self) {
+        self.cached_1080p = None;
     }
 
     pub fn version(&self) -> u32 {

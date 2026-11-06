@@ -97,7 +97,8 @@ struct AppData {
     first_configure: bool,
     exit: bool,
 
-    wallpaper_cache: Option<Arc<Vec<u8>>>,
+    wallpaper_crop: Option<Vec<u8>>,
+    overlay_buffer: Vec<u8>,
     current_wallpaper_path: Option<String>,
     last_wallpaper_check: Instant,
     is_wallpaper_light: bool,
@@ -239,30 +240,16 @@ impl LayerShellHandler for AppData {
 
         if let Some(renderer) = &mut self.renderer {
             renderer.resize(self.width, self.height);
-            if let Some(cache) = &self.wallpaper_cache {
-                let crop = get_wallpaper_crop(
-                    cache,
-                    self.pos_x as u32,
-                    self.pos_y as u32,
-                    self.width,
-                    self.height,
-                );
-                renderer.update_background(self.width, self.height, &crop);
+            if let Some(crop) = &self.wallpaper_crop {
+                renderer.update_background(self.width, self.height, crop);
             }
         } else if let Some(wrapper) = &self.window_wrapper {
             let mut r =
                 pollster::block_on(GlassRenderer::new(wrapper.clone(), self.width, self.height))
                     .expect("Failed to initialize WGPU GlassRenderer for glass-todo");
 
-            if let Some(cache) = &self.wallpaper_cache {
-                let crop = get_wallpaper_crop(
-                    cache,
-                    self.pos_x as u32,
-                    self.pos_y as u32,
-                    self.width,
-                    self.height,
-                );
-                r.update_background(self.width, self.height, &crop);
+            if let Some(crop) = &self.wallpaper_crop {
+                r.update_background(self.width, self.height, crop);
             }
 
             self.renderer = Some(r);
@@ -866,7 +853,8 @@ impl AppData {
     }
 
     fn check_todos(&mut self) {
-        if self.last_todo_check.elapsed().as_millis() < 500 {
+        let interval_ms = if self.is_editing { 200 } else { 3000 };
+        if self.last_todo_check.elapsed().as_millis() < interval_ms {
             return;
         }
         self.last_todo_check = Instant::now();
@@ -888,7 +876,8 @@ impl AppData {
     }
 
     fn check_calendar(&mut self) {
-        if self.last_calendar_check.elapsed().as_millis() < 500 {
+        let interval_ms = if self.is_cal_editing { 200 } else { 3000 };
+        if self.last_calendar_check.elapsed().as_millis() < interval_ms {
             return;
         }
         self.last_calendar_check = Instant::now();
@@ -923,7 +912,7 @@ impl AppData {
     }
 
     fn check_wallpaper(&mut self) {
-        if self.last_wallpaper_check.elapsed().as_millis() < 500 {
+        if self.last_wallpaper_check.elapsed().as_secs() < 4 {
             return;
         }
         self.last_wallpaper_check = Instant::now();
@@ -933,18 +922,18 @@ impl AppData {
             log::info!("Wallpaper changed to {:?}", queried);
             if let Some(buf) = load_wallpaper_image(queried.as_deref()) {
                 self.current_wallpaper_path = queried;
-                self.wallpaper_cache = Some(buf.clone());
+                let crop = get_wallpaper_crop(
+                    &buf,
+                    self.pos_x as u32,
+                    self.pos_y as u32,
+                    self.width,
+                    self.height,
+                );
+                self.is_wallpaper_light = is_buffer_light(&crop);
                 if let Some(renderer) = &mut self.renderer {
-                    let crop = get_wallpaper_crop(
-                        &buf,
-                        self.pos_x as u32,
-                        self.pos_y as u32,
-                        self.width,
-                        self.height,
-                    );
-                    self.is_wallpaper_light = is_buffer_light(&crop);
                     renderer.update_background(self.width, self.height, &crop);
                 }
+                self.wallpaper_crop = Some(crop);
                 self.draw();
             }
         }
@@ -1194,22 +1183,22 @@ impl AppData {
 
             // Filter Bar Labels: "All" (cx = 84.0), "Active" (cx = 156.0), "Done" (cx = 228.0), cy = 79.5
             let f0_is_light = self
-                .wallpaper_cache
+                .wallpaper_crop
                 .as_ref()
-                .map_or(self.is_wallpaper_light, |cache| {
-                    sample_region_is_light(cache, self.pos_x + 60, self.pos_y + 68, 50, 22)
+                .map_or(self.is_wallpaper_light, |crop| {
+                    sample_subcrop_is_light(crop, self.width, self.height, 60, 68, 50, 22)
                 });
             let f1_is_light = self
-                .wallpaper_cache
+                .wallpaper_crop
                 .as_ref()
-                .map_or(self.is_wallpaper_light, |cache| {
-                    sample_region_is_light(cache, self.pos_x + 130, self.pos_y + 68, 55, 22)
+                .map_or(self.is_wallpaper_light, |crop| {
+                    sample_subcrop_is_light(crop, self.width, self.height, 130, 68, 55, 22)
                 });
             let f2_is_light = self
-                .wallpaper_cache
+                .wallpaper_crop
                 .as_ref()
-                .map_or(self.is_wallpaper_light, |cache| {
-                    sample_region_is_light(cache, self.pos_x + 205, self.pos_y + 68, 50, 22)
+                .map_or(self.is_wallpaper_light, |crop| {
+                    sample_subcrop_is_light(crop, self.width, self.height, 205, 68, 50, 22)
                 });
 
             let f0_unselected = if f0_is_light {
@@ -1310,11 +1299,13 @@ impl AppData {
                 // Regional luminance adaptation: sample the actual text's bounding box width
                 let text_w = (self.font.measure_text(&task.text, 15.5, FontWeight::Bold) as u32)
                     .clamp(40, 240);
-                let (mean_lum, spread, _) = if let Some(cache) = &self.wallpaper_cache {
-                    sample_region_stats(
-                        cache,
-                        self.pos_x + 68,
-                        (self.pos_y as f32 + cy - 13.0).max(0.0) as i32,
+                let (mean_lum, spread, _) = if let Some(crop) = &self.wallpaper_crop {
+                    sample_subcrop_stats(
+                        crop,
+                        self.width,
+                        self.height,
+                        68,
+                        (cy - 13.0).max(0.0) as u32,
                         text_w,
                         26,
                     )
@@ -1564,13 +1555,15 @@ impl AppData {
 
             // 4. Bottom Add Task Bar (hug-content dynamic cy)
             let add_is_light =
-                self.wallpaper_cache
+                self.wallpaper_crop
                     .as_ref()
-                    .map_or(self.is_wallpaper_light, |cache| {
-                        sample_region_is_light(
-                            cache,
-                            self.pos_x + 42,
-                            self.pos_y + add_bar_cy as i32 - 12,
+                    .map_or(self.is_wallpaper_light, |crop| {
+                        sample_subcrop_is_light(
+                            crop,
+                            self.width,
+                            self.height,
+                            42,
+                            (add_bar_cy - 12.0).max(0.0) as u32,
                             200,
                             26,
                         )
@@ -1980,11 +1973,17 @@ impl AppData {
 
         let card_h = self.get_card_height();
 
-        // Generate dynamic Quicksand font overlay
-        let mut overlay_buf = vec![0u8; (self.width * self.height * 4) as usize];
+        // Generate dynamic Quicksand font overlay (reusing overlay_buffer without frame reallocations)
+        let required_len = (self.width * self.height * 4) as usize;
+        if self.overlay_buffer.len() != required_len {
+            self.overlay_buffer.resize(required_len, 0);
+        } else {
+            self.overlay_buffer.fill(0);
+        }
+        let mut overlay_buf = std::mem::take(&mut self.overlay_buffer);
         self.render_ui_overlay(&mut overlay_buf);
 
-        if let Some(renderer) = &mut self.renderer {
+        let rendered = if let Some(renderer) = &mut self.renderer {
             renderer.update_overlay(self.width, self.height, &overlay_buf);
 
             let _accent = get_theme_accent();
@@ -2023,7 +2022,9 @@ impl AppData {
             true
         } else {
             false
-        }
+        };
+        self.overlay_buffer = overlay_buf;
+        rendered
     }
 }
 
@@ -2082,9 +2083,40 @@ fn buffer_lum_stats(buf: &[u8]) -> (f32, f32, bool) {
     }
 }
 
-fn sample_region_stats(cache: &[u8], gx: i32, gy: i32, gw: u32, gh: u32) -> (f32, f32, bool) {
-    let crop = get_wallpaper_crop(cache, gx.max(0) as u32, gy.max(0) as u32, gw, gh);
-    buffer_lum_stats(&crop)
+#[allow(clippy::too_many_arguments)]
+fn sample_subcrop_stats(
+    crop: &[u8],
+    crop_w: u32,
+    crop_h: u32,
+    lx: u32,
+    ly: u32,
+    lw: u32,
+    lh: u32,
+) -> (f32, f32, bool) {
+    let mut sub = Vec::with_capacity((lw * lh * 4) as usize);
+    for row in 0..lh {
+        let sy = (ly + row).min(crop_h.saturating_sub(1));
+        let sx = lx.min(crop_w.saturating_sub(1));
+        let actual_w = lw.min(crop_w.saturating_sub(sx));
+        let src_idx = ((sy * crop_w + sx) * 4) as usize;
+        let end_idx = src_idx + (actual_w * 4) as usize;
+        if end_idx <= crop.len() {
+            sub.extend_from_slice(&crop[src_idx..end_idx]);
+        }
+    }
+    buffer_lum_stats(&sub)
+}
+
+fn sample_subcrop_is_light(
+    crop: &[u8],
+    crop_w: u32,
+    crop_h: u32,
+    lx: u32,
+    ly: u32,
+    lw: u32,
+    lh: u32,
+) -> bool {
+    sample_subcrop_stats(crop, crop_w, crop_h, lx, ly, lw, lh).2
 }
 
 fn is_buffer_light(buf: &[u8]) -> bool {
@@ -2235,11 +2267,6 @@ fn get_wallpaper_crop(cache: &[u8], x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {
     crop
 }
 
-fn sample_region_is_light(cache: &[u8], gx: i32, gy: i32, gw: u32, gh: u32) -> bool {
-    let crop = get_wallpaper_crop(cache, gx.max(0) as u32, gy.max(0) as u32, gw, gh);
-    is_buffer_light(&crop)
-}
-
 fn main() {
     env_logger::init();
 
@@ -2261,13 +2288,15 @@ fn main() {
     let pos_x = 1532i32;
     let pos_y = 56i32;
 
-    let (wallpaper_cache, current_wallpaper_path) = init_wallpaper_1080p();
-    let is_light = if let Some(buf) = &wallpaper_cache {
+    let (wallpaper_full, current_wallpaper_path) = init_wallpaper_1080p();
+    let (wallpaper_crop, is_light) = if let Some(buf) = &wallpaper_full {
         let crop = get_wallpaper_crop(buf, pos_x as u32, pos_y as u32, width, height);
-        is_buffer_light(&crop)
+        let light = is_buffer_light(&crop);
+        (Some(crop), light)
     } else {
-        false
+        (None, false)
     };
+    drop(wallpaper_full);
 
     let home = std::env::var("HOME").unwrap_or_default();
     let todo_path = format!("{}/.local/state/todos.json", home);
@@ -2320,7 +2349,8 @@ fn main() {
         first_configure: true,
         exit: false,
 
-        wallpaper_cache,
+        wallpaper_crop,
+        overlay_buffer: Vec::new(),
         current_wallpaper_path,
         last_wallpaper_check: Instant::now(),
         is_wallpaper_light: is_light,
@@ -2429,7 +2459,7 @@ fn main() {
         {
             16
         } else {
-            250
+            1000
         };
 
         let guard = match conn.prepare_read() {
