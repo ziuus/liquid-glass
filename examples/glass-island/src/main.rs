@@ -256,6 +256,8 @@ pub struct AppData {
     // Interaction & Swipe Navigation
     press_pos: [f32; 2],
     press_time: Instant,
+    last_click_time: Instant,
+    last_click_pos: [f32; 2],
     is_swiping: bool,
     last_interaction: Instant,
     last_mode_cycle: Instant,
@@ -1985,16 +1987,49 @@ impl AppData {
             return;
         }
 
+        // Track navigation button exemption (allows rapid skipping without triggering double-click collapse)
+        let ctrl_y = island_top + 68.0;
+        let play_cx = island_cx + island_w * 0.5 - 64.0;
+        let prev_cx = play_cx - 44.0;
+        let next_cx = play_cx + 44.0;
+        let is_track_nav = self.mode == IslandMode::MusicExpanded
+            && (((lx - prev_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt() <= 20.0
+                || ((lx - next_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt() <= 20.0);
+
+        // Double-click detection: expands compact pill and collapses/hides expanded pages
+        if !is_track_nav {
+            let click_dt = self.last_click_time.elapsed();
+            let click_dx = lx - self.last_click_pos[0];
+            let click_dy = ly - self.last_click_pos[1];
+            let click_dist = (click_dx * click_dx + click_dy * click_dy).sqrt();
+
+            if click_dt < Duration::from_millis(400) && click_dist < 35.0 {
+                self.last_click_time = Instant::now() - Duration::from_secs(10);
+                if self.mode == IslandMode::CompactPill {
+                    self.set_mode(IslandMode::MusicExpanded);
+                } else {
+                    self.set_mode(IslandMode::CompactPill);
+                }
+                return;
+            }
+        }
+
+        self.last_click_time = Instant::now();
+        self.last_click_pos = [lx, ly];
+
         match self.mode {
             IslandMode::CompactPill => {
-                self.set_mode(IslandMode::MusicExpanded);
+                // On CompactPill, single click on the disc/icon toggles playback
+                let disc_cx = island_cx - island_w * 0.5 + 20.0;
+                let island_cy = island_top + island_h * 0.5;
+                let d_disc = ((lx - disc_cx).powi(2) + (ly - island_cy).powi(2)).sqrt();
+                if d_disc <= 18.0 {
+                    let _ = Command::new("playerctl").args(["play-pause"]).spawn();
+                    self.music.is_playing = !self.music.is_playing;
+                }
+                // Note: single click does NOT expand. Expanding requires double-click.
             }
             IslandMode::MusicExpanded => {
-                let ctrl_y = island_top + 68.0;
-                let play_cx = island_cx + island_w * 0.5 - 64.0;
-                let prev_cx = play_cx - 44.0;
-                let next_cx = play_cx + 44.0;
-
                 let d_play = ((lx - play_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt();
                 let d_prev = ((lx - prev_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt();
                 let d_next = ((lx - next_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt();
@@ -2016,8 +2051,6 @@ impl AppData {
                     let _ = Command::new("playerctl")
                         .args(["position", &pos_str])
                         .spawn();
-                } else if lx < island_cx - island_w * 0.5 + 80.0 {
-                    self.set_mode(IslandMode::CompactPill);
                 }
             }
             IslandMode::Notification => {
@@ -2045,12 +2078,7 @@ impl AppData {
                     }
                 }
             }
-            IslandMode::SystemOverview => {
-                // Clicking outside tiles collapses or cycles to QuickAccess
-                if lx < island_cx - island_w * 0.5 + 80.0 {
-                    self.set_mode(IslandMode::CompactPill);
-                }
-            }
+            IslandMode::SystemOverview => {}
             IslandMode::PowerMenu => {
                 let item_w = (island_w - 52.0) / 4.0;
                 let start_x = island_cx - island_w * 0.5 + 26.0 + item_w * 0.5;
@@ -2620,6 +2648,8 @@ fn main() {
 
         press_pos: [-1.0, -1.0],
         press_time: Instant::now(),
+        last_click_time: Instant::now() - Duration::from_secs(10),
+        last_click_pos: [-100.0, -100.0],
         is_swiping: false,
         last_interaction: Instant::now(),
         last_mode_cycle: Instant::now() - Duration::from_secs(1),
