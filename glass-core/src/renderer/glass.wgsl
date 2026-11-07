@@ -1362,7 +1362,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 2. ANALYTIC CONVEX SQUIRCLE BEZEL & 2D OUTWARD NORMAL
     // ════════════════════════════════════════════
     let depth = max(-sdf, 0.0);
-    let bezel = clamp(params.bevel, 10.0, 14.0); // 10-14px physical bezel
+    let bezel = clamp(params.bevel, 12.0, 16.0); // 12-16px physical bezel
     let t = clamp(depth / bezel, 0.0, 1.0);       // 0.0 at outer edge, 1.0 where bezel ends
     let tilt = 1.0 - t;                            // steepest at rim, 0 in interior
 
@@ -1373,15 +1373,28 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     // 3. PHYSICAL 3D SNELL'S LAW REFRACTION BAND & CAUCHY DISPERSION
     // ════════════════════════════════════════════
-    // Refraction bending occurs strictly inside the bezel (depth < bezel)
-    let thickness = 11.0;
-    let off_px = grad_2d * (thickness * tilt * tilt);
+    // Optical refraction vector combines perimeter normal with radial center vector.
+    // This bends BOTH horizontal and vertical grid lines crossing ANY edge (not just corners)!
+    let radial_dir = normalize(local_px);
+    let refract_dir = normalize(mix(grad_2d, radial_dir, 0.40));
+
+    let thickness = 16.0;
+    let off_px = refract_dir * (thickness * tilt * tilt);
     let off_uv = off_px / params.surface_size;
 
-    // Chromatic Cauchy dispersion (offsets scaled 1.00, 1.04, 1.08 along bending vector):
-    let uv_r = clamp(uv + off_uv * 1.00, vec2<f32>(0.001), vec2<f32>(0.999));
-    let uv_g = clamp(uv + off_uv * 1.04, vec2<f32>(0.001), vec2<f32>(0.999));
-    let uv_b = clamp(uv + off_uv * 1.08, vec2<f32>(0.001), vec2<f32>(0.999));
+    let debug_mode = params._pad.y;
+    if debug_mode > 0.5 {
+        let mag = length(off_px) / thickness;
+        let r_disp = abs(off_px.x) / thickness;
+        let b_disp = abs(off_px.y) / thickness;
+        return vec4<f32>(r_disp, mag, b_disp, 1.0);
+    }
+
+    // Chromatic Cauchy dispersion (R bends least at 0.80x, G mid at 1.00x, B most at 1.30x):
+    // Separation is ~8px across the bezel, creating distinct cyan/magenta fringing!
+    let uv_r = clamp(uv + off_uv * 0.80, vec2<f32>(0.001), vec2<f32>(0.999));
+    let uv_g = clamp(uv + off_uv * 1.00, vec2<f32>(0.001), vec2<f32>(0.999));
+    let uv_b = clamp(uv + off_uv * 1.30, vec2<f32>(0.001), vec2<f32>(0.999));
 
     let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
     let sharp_g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
@@ -1392,10 +1405,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     if style_mode >= 1.5 {
         // ── 2.0: LIQUID GLASS ──
-        // Interior at 1.0x (unmagnified, clear), with subtle 2px softening and faint 6% lift
-        let cur_radius = 2.0 * t; // Sharp at rim, subtle soft interior
+        // For notifications (el_type == 27.0), blend subtle blur for crisp text contrast
+        let is_island = (params.padding >= 26.9 && params.padding <= 27.1);
+        let base_blur = select(0.0, 4.0, is_island);
+        let cur_radius = max(base_blur, 2.0 * t);
         let frosted_col = sample_frost_blur(uv, cur_radius);
-        let base_crystal = mix(sharp_col, frosted_col, 0.20 * t);
+        let base_crystal = mix(sharp_col, frosted_col, select(0.20 * t, 0.45, is_island));
 
         // Faint 6% physical lift across interior (no gray band, no slab darkening)
         col = base_crystal * 1.06;

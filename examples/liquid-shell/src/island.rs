@@ -1308,12 +1308,12 @@ impl IslandWidget {
 
         let is_light = self.effective_is_light();
         let col_ink = if is_light {
-            [12, 16, 24, 255]
+            [8, 12, 20, 255]
         } else {
             Tokens::TEXT_PRIMARY
         };
         let col_dim = if is_light {
-            [55, 65, 80, 255]
+            [28, 34, 46, 255]
         } else {
             Tokens::TEXT_SECONDARY
         };
@@ -1857,7 +1857,7 @@ impl IslandWidget {
                         8.5,
                         6.0,
                         if is_light {
-                            [0, 0, 0, 20]
+                            [20, 26, 38, 240]
                         } else {
                             [255, 255, 255, 28]
                         },
@@ -1870,8 +1870,12 @@ impl IslandWidget {
                         right_x - 38.0,
                         island_top + 26.0,
                         10.5,
-                        col_dim,
-                        col_shadow,
+                        if is_light {
+                            [255, 255, 255, 255]
+                        } else {
+                            col_dim
+                        },
+                        if is_light { [0, 0, 0, 0] } else { col_shadow },
                         FontWeight::Medium,
                     );
 
