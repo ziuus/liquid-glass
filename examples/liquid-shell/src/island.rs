@@ -297,9 +297,18 @@ pub struct IslandWidget {
 impl IslandWidget {
     pub fn effective_is_light(&self) -> bool {
         match self.theme_mode {
-            1 => false,                   // Forced Dark
-            2 => true,                    // Forced Light
-            _ => self.is_wallpaper_light, // Auto based on wallpaper
+            1 => false, // Forced Dark -> Pitch Black
+            2 => true,  // Forced Light -> Pure White
+            _ => {
+                // By default in auto mode:
+                // The compact island pill is ALWAYS the iconic Pitch Black capsule!
+                // When expanded on light wallpaper, it adopts the adaptive light theme.
+                if self.mode == IslandMode::CompactPill {
+                    false
+                } else {
+                    self.is_wallpaper_light
+                }
+            }
         }
     }
     pub fn new<D>(
@@ -316,7 +325,7 @@ impl IslandWidget {
     {
         let width = 640u32;
         let height = 180u32;
-        let pos_y = 12i32;
+        let pos_y = 0i32;
 
         let surface = compositor.create_surface(qh);
         let layer_surface = layer_shell.create_layer_surface(
@@ -355,20 +364,20 @@ impl IslandWidget {
             is_pressed: false,
             is_hovered: false,
 
-            current_w: 168.0,
-            target_w: 168.0,
+            current_w: Tokens::ISLAND_COMPACT_W,
+            target_w: Tokens::ISLAND_COMPACT_W,
             vel_w: 0.0,
 
-            current_h: 28.0,
-            target_h: 28.0,
+            current_h: Tokens::ISLAND_COMPACT_H,
+            target_h: Tokens::ISLAND_COMPACT_H,
             vel_h: 0.0,
 
             current_alpha: 1.0,
             target_alpha: 1.0,
             vel_alpha: 0.0,
 
-            current_y: 12.0,
-            target_y: 12.0,
+            current_y: 8.0,
+            target_y: 8.0,
             vel_y: 0.0,
 
             mode: IslandMode::CompactPill,
@@ -443,10 +452,11 @@ impl IslandWidget {
         let half_w = self.current_w * 0.5;
         let h = self.current_h;
 
+        // Cover from very top screen edge (ly >= 0.0) down through the pill
         lx >= (island_cx - half_w)
             && lx <= (island_cx + half_w)
-            && ly >= island_top
-            && ly <= (island_top + h)
+            && ly >= 0.0
+            && ly <= (island_top + h + 6.0)
     }
 
     pub fn apply_input_region<D>(&mut self, compositor: &CompositorState, qh: &QueueHandle<D>)
@@ -459,17 +469,16 @@ impl IslandWidget {
             match self.mode {
                 IslandMode::CompactPill => {
                     let pill_w = self.target_w as i32;
-                    let pill_h = self.target_h as i32;
+                    let pill_h = (self.target_y + self.target_h + 6.0) as i32;
                     let pill_x = (self.width as i32 - pill_w) / 2;
-                    let pill_y = self.target_y as i32;
-                    region.add(pill_x, pill_y, pill_w, pill_h);
+                    // Intercept from top edge y=0 down to bottom of pill
+                    region.add(pill_x, 0, pill_w, pill_h);
                 }
                 _ => {
                     let card_w = self.target_w as i32;
-                    let card_h = self.target_h as i32;
+                    let card_h = (self.target_y + self.target_h + 10.0) as i32;
                     let card_x = (self.width as i32 - card_w) / 2;
-                    let card_y = self.target_y as i32;
-                    region.add(card_x, card_y, card_w, card_h);
+                    region.add(card_x, 0, card_w, card_h);
                 }
             }
         }
@@ -722,7 +731,7 @@ impl IslandWidget {
             IslandMode::CompactPill => {
                 self.target_w = Tokens::ISLAND_COMPACT_W;
                 self.target_h = Tokens::ISLAND_COMPACT_H;
-                self.target_y = 12.0;
+                self.target_y = 8.0;
                 self.target_alpha = 1.0;
             }
             IslandMode::MusicExpanded
@@ -733,7 +742,7 @@ impl IslandWidget {
                 // Unified standard geometry: all expanded pages have identical 460x120px footprint
                 self.target_w = Tokens::ISLAND_EXPANDED_W;
                 self.target_h = Tokens::ISLAND_EXPANDED_H;
-                self.target_y = 12.0;
+                self.target_y = 8.0;
                 self.target_alpha = 1.0;
             }
         }
@@ -2354,11 +2363,13 @@ impl IslandWidget {
                 .blur(3.0)
                 .specular(1.10)
                 .fresnel(0.60)
-                .style_mode(if self.is_window_overlapping {
-                    0.0
-                } else {
-                    self.style_mode
-                })
+                .style_mode(
+                    if self.mode == IslandMode::CompactPill || self.is_window_overlapping {
+                        0.0
+                    } else {
+                        self.style_mode
+                    },
+                )
                 .tint(
                     if self.music.is_playing { 1.0 } else { 0.0 },
                     if self.is_pressed { 1.0 } else { 0.0 },
@@ -2386,11 +2397,11 @@ impl IslandWidget {
         let island_w = self.current_w;
         let island_h = self.current_h;
 
-        // Check if click was inside current island capsule
+        // Check if click was inside current island capsule or top edge
         if lx < island_cx - island_w * 0.5
             || lx > island_cx + island_w * 0.5
-            || ly < island_top
-            || ly > island_top + island_h
+            || ly < 0.0
+            || ly > island_top + island_h + 6.0
         {
             return;
         }
