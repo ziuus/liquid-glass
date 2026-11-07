@@ -136,7 +136,7 @@ impl ClockWidget {
             battery_level: 100.0,
             last_battery_check: Instant::now() - std::time::Duration::from_secs(60),
             last_minute: 99,
-            style_mode: 0.0,
+            style_mode: 2.0,
             theme_mode: 0,
         }
     }

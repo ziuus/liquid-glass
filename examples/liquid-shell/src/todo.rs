@@ -248,7 +248,7 @@ impl TodoWidget {
             font,
             tab_spring: Spring::with_params(0.0, spring_params),
             filter_spring: Spring::with_params(0.0, spring_params),
-            style_mode: 0.0,
+            style_mode: 2.0,
             theme_mode: 0,
         }
     }

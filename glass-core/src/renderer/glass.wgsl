@@ -1469,8 +1469,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         base_surface = col + rim_tint * rim_reflection;
     } else {
         // ── 2.0: LIQUID GLASS ──
-        // Seamless optical refraction band, zero artificial stroke border
-        base_surface = col + vec3<f32>(spec_rim * 0.45);
+        // Seamless optical refraction band + crisp directional diamond-cut specular hairline
+        let rim_reflection = (rim_1px * 0.95 + inner_highlight * 0.40) * dir_weight;
+        let rim_tint = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.65, 0.70, 0.80), is_light);
+        base_surface = col + rim_tint * rim_reflection;
     }
 
     let app = render_element_appearance(local_px, half_size, params.padding, params.tint.y, params.time, params.tint, is_light);

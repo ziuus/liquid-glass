@@ -432,7 +432,7 @@ impl IslandWidget {
             is_wallpaper_light: false,
             wallpaper_crop: None,
             start_time: Instant::now(),
-            style_mode: 0.0,
+            style_mode: 2.0,
             theme_mode: 0,
             hot_edge_dwell_start: None,
             needs_input_region_update: true,
@@ -2371,13 +2371,11 @@ impl IslandWidget {
                 .blur(3.0)
                 .specular(1.10)
                 .fresnel(0.60)
-                .style_mode(
-                    if self.mode == IslandMode::CompactPill || self.is_window_overlapping {
-                        0.0
-                    } else {
-                        self.style_mode
-                    },
-                )
+                .style_mode(if self.is_window_overlapping {
+                    0.0
+                } else {
+                    self.style_mode
+                })
                 .tint(
                     if self.music.is_playing { 1.0 } else { 0.0 },
                     if self.is_pressed { 1.0 } else { 0.0 },
