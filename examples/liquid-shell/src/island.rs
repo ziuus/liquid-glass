@@ -24,6 +24,15 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::ZwlrL
 
 const FIFO_PATH: &str = "/tmp/liquid_island.fifo";
 
+pub fn safe_truncate(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        s.to_string()
+    } else {
+        let truncated: String = s.chars().take(max_chars).collect();
+        format!("{}…", truncated)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IslandMode {
     Hidden,
@@ -435,21 +444,22 @@ impl IslandWidget {
     {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
-        match self.mode {
-            IslandMode::Hidden => {}
-            IslandMode::CompactPill => {
-                let pill_w = self.target_w as i32;
-                let pill_h = self.target_h as i32;
-                let pill_x = (self.width as i32 - pill_w) / 2;
-                let pill_y = self.target_y as i32;
-                region.add(pill_x, pill_y, pill_w, pill_h);
-            }
-            _ => {
-                let card_w = self.target_w as i32;
-                let card_h = self.target_h as i32;
-                let card_x = (self.width as i32 - card_w) / 2;
-                let card_y = self.target_y as i32;
-                region.add(card_x, card_y, card_w, card_h);
+        if self.mode != IslandMode::Hidden && self.current_alpha > 0.01 {
+            match self.mode {
+                IslandMode::CompactPill => {
+                    let pill_w = self.target_w as i32;
+                    let pill_h = self.target_h as i32;
+                    let pill_x = (self.width as i32 - pill_w) / 2;
+                    let pill_y = self.target_y as i32;
+                    region.add(pill_x, pill_y, pill_w, pill_h);
+                }
+                _ => {
+                    let card_w = self.target_w as i32;
+                    let card_h = self.target_h as i32;
+                    let card_x = (self.width as i32 - card_w) / 2;
+                    let card_y = self.target_y as i32;
+                    region.add(card_x, card_y, card_w, card_h);
+                }
             }
         }
         self.surface.set_input_region(Some(&region));
@@ -849,11 +859,7 @@ impl IslandWidget {
             if let Some(notif) = &self.active_notif {
                 if notif.timestamp.elapsed().as_secs_f32() > self.notif_timeout_secs {
                     self.active_notif = None;
-                    if self.music.is_playing {
-                        self.set_mode(IslandMode::CompactPill);
-                    } else {
-                        self.set_mode(IslandMode::Hidden);
-                    }
+                    self.set_mode(IslandMode::CompactPill);
                 }
             }
         }
@@ -1012,23 +1018,29 @@ impl IslandWidget {
     }
 
     pub fn check_window_overlap(&mut self) {
-        let check_interval = if self.is_hovered {
-            Duration::from_millis(500)
-        } else {
-            Duration::from_millis(2500)
-        };
+        let check_interval = Duration::from_millis(300);
         if self.last_window_check.elapsed() < check_interval {
             return;
         }
         self.last_window_check = Instant::now();
 
-        // Query active workspace and client geometries via Hyprland UNIX socket
-        let overlapping =
-            Self::query_hyprland_overlap(self.pos_x, self.pos_y, self.width as i32, 90);
+        // 1920x1080 display: Surface is 640x180 centered at (1920 - 640) / 2 = 640
+        // Pill target_w is 168, centered inside surface at (640 - 168) / 2 = 236
+        // Actual monitor X bounds of pill: 640 + 236 = 876, width: 168
+        // Actual monitor Y bounds: pos_y (12) + target_y (12) = 24, height: 28
+        let mon_w = 1920i32;
+        let surf_x = (mon_w - self.width as i32) / 2;
+        let pill_w = self.target_w as i32;
+        let pill_x = surf_x + (self.width as i32 - pill_w) / 2;
+        let pill_y = self.pos_y + self.target_y as i32;
+        let pill_h = self.target_h as i32;
+
+        let overlapping = Self::query_hyprland_overlap(pill_x, pill_y, pill_w, pill_h);
         if overlapping != self.is_window_overlapping {
             self.is_window_overlapping = overlapping;
             self.animating = true;
             self.needs_redraw = true;
+            self.needs_input_region_update = true;
         }
     }
 
@@ -1240,11 +1252,7 @@ impl IslandWidget {
                     );
 
                     // Center: Track Title
-                    let title = if self.music.title.len() > 18 {
-                        format!("{}…", &self.music.title[..16])
-                    } else {
-                        self.music.title.clone()
-                    };
+                    let title = safe_truncate(&self.music.title, 16);
                     self.font.draw_text_centered(
                         buf,
                         self.width,
@@ -1458,11 +1466,7 @@ impl IslandWidget {
 
                 // Track details
                 let title_x = cx - island_w * 0.5 + 88.0;
-                let title = if self.music.title.len() > 22 {
-                    format!("{}…", &self.music.title[..20])
-                } else {
-                    self.music.title.clone()
-                };
+                let title = safe_truncate(&self.music.title, 20);
                 self.font.draw_text(
                     buf,
                     self.width,
@@ -1700,11 +1704,7 @@ impl IslandWidget {
                     );
 
                     // Summary
-                    let summary = if notif.summary.len() > 30 {
-                        format!("{}...", &notif.summary[..28])
-                    } else {
-                        notif.summary.clone()
-                    };
+                    let summary = safe_truncate(&notif.summary, 28);
                     self.font.draw_text(
                         buf,
                         self.width,
@@ -1718,11 +1718,7 @@ impl IslandWidget {
                     );
 
                     // Body
-                    let body = if notif.body.len() > 38 {
-                        format!("{}...", &notif.body[..36])
-                    } else {
-                        notif.body.clone()
-                    };
+                    let body = safe_truncate(&notif.body, 36);
                     self.font.draw_text(
                         buf,
                         self.width,

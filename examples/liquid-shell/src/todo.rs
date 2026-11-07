@@ -1616,10 +1616,12 @@ impl TodoWidget {
                     );
 
                     // Title (starts at x = 108.0)
-                    let mut title = item.title.clone();
-                    if title.len() > 22 {
-                        title = format!("{}...", &title[..20]);
-                    }
+                    let title = if item.title.chars().count() > 22 {
+                        let truncated: String = item.title.chars().take(20).collect();
+                        format!("{}...", truncated)
+                    } else {
+                        item.title.clone()
+                    };
                     self.font.draw_text_centered_y(
                         buf,
                         self.width,
