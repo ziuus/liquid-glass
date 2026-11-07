@@ -1050,9 +1050,9 @@ impl IslandWidget {
 
     pub fn check_window_overlap(&mut self) {
         let check_interval = if self.mode == IslandMode::Hidden {
-            Duration::from_millis(50)
+            Duration::from_millis(16)
         } else {
-            Duration::from_millis(100)
+            Duration::from_millis(80)
         };
         if self.last_window_check.elapsed() < check_interval {
             return;
@@ -1083,8 +1083,8 @@ impl IslandWidget {
         } else {
             // Apps/windows are overlapping underneath the island zone
             if let Some((cx, cy)) = Self::query_hyprland_cursor() {
-                // Reaching the top edge: x in [840, 1080], y <= 2
-                let is_at_top_edge = (840..=1080).contains(&cx) && cy <= 2;
+                // Reaching top edge: x in [780, 1140], y <= 6
+                let is_at_top_edge = (780..=1140).contains(&cx) && cy <= 6;
                 let island_w = self.current_w as i32;
                 let island_left = (mon_w - island_w) / 2;
                 let island_right = island_left + island_w;
@@ -1094,7 +1094,12 @@ impl IslandWidget {
 
                 if is_at_top_edge {
                     let dwell = self.hot_edge_dwell_start.get_or_insert_with(Instant::now);
-                    if dwell.elapsed() >= Duration::from_millis(200) {
+                    let required_dwell = if cy <= 1 {
+                        Duration::from_millis(0)
+                    } else {
+                        Duration::from_millis(40)
+                    };
+                    if dwell.elapsed() >= required_dwell {
                         if self.mode == IslandMode::Hidden {
                             self.set_mode(IslandMode::CompactPill);
                         }
