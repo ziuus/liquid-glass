@@ -18,7 +18,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use wayland_backend::client::ObjectId;
-use wayland_client::protocol::wl_surface;
+use wayland_client::protocol::{wl_region, wl_surface};
 use wayland_client::{Dispatch, Proxy, QueueHandle};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::ZwlrLayerSurfaceV1;
 
@@ -278,6 +278,8 @@ pub struct IslandWidget {
     pub wallpaper_crop: Option<Vec<u8>>,
     pub start_time: Instant,
     pub style_mode: f32,
+    pub hot_edge_dwell_start: Option<Instant>,
+    pub needs_input_region_update: bool,
 }
 
 impl IslandWidget {
@@ -403,11 +405,59 @@ impl IslandWidget {
             wallpaper_crop: None,
             start_time: Instant::now(),
             style_mode: 0.0,
+            hot_edge_dwell_start: None,
+            needs_input_region_update: true,
         }
     }
 
     pub fn surface_id(&self) -> ObjectId {
         self.surface.id()
+    }
+
+    pub fn is_inside_island(&self, lx: f32, ly: f32) -> bool {
+        if self.mode == IslandMode::Hidden {
+            return false;
+        }
+        let island_cx = (self.width as f32) * 0.5;
+        let island_top = self.current_y;
+        let half_w = self.current_w * 0.5;
+        let h = self.current_h;
+
+        lx >= (island_cx - half_w - 6.0)
+            && lx <= (island_cx + half_w + 6.0)
+            && ly >= (island_top - 4.0).max(0.0)
+            && ly <= (island_top + h + 8.0)
+    }
+
+    pub fn apply_input_region<D>(&mut self, compositor: &CompositorState, qh: &QueueHandle<D>)
+    where
+        D: Dispatch<wl_region::WlRegion, ()> + 'static,
+    {
+        self.needs_input_region_update = false;
+        let region = compositor.wl_compositor().create_region(qh, ());
+        match self.mode {
+            IslandMode::Hidden => {
+                let strip_w = 160i32;
+                let strip_h = 6i32;
+                let strip_x = (self.width as i32 - strip_w) / 2;
+                region.add(strip_x, 0, strip_w, strip_h);
+            }
+            IslandMode::CompactPill => {
+                let pill_w = (self.target_w + 16.0) as i32;
+                let pill_h = (self.target_y + self.target_h + 8.0) as i32;
+                let pill_x = (self.width as i32 - pill_w) / 2;
+                region.add(pill_x, 0, pill_w, pill_h);
+            }
+            _ => {
+                let card_w = (self.target_w + 24.0) as i32;
+                let card_h = (self.target_y + self.target_h + 16.0) as i32;
+                let card_x = (self.width as i32 - card_w) / 2;
+                region.add(card_x, 0, card_w, card_h);
+            }
+        }
+        self.surface.set_input_region(Some(&region));
+        region.destroy();
+        self.surface.commit();
     }
 
     pub fn init_gpu(&mut self, gpu: &SharedGpu) {
@@ -448,14 +498,15 @@ impl IslandWidget {
     pub fn on_pointer_event(&mut self, event: &PointerEvent) -> bool {
         match event.kind {
             PointerEventKind::Enter { .. } => {
-                self.is_hovered = true;
-                self.last_interaction = Instant::now();
-                self.cursor_pos = [
-                    (event.position.0 as f32) / (self.width as f32),
-                    (event.position.1 as f32) / (self.height as f32),
-                ];
-                if self.mode == IslandMode::Hidden {
-                    self.set_mode(IslandMode::CompactPill);
+                let lx = event.position.0 as f32;
+                let ly = event.position.1 as f32;
+                self.cursor_pos = [lx / (self.width as f32), ly / (self.height as f32)];
+                self.hot_edge_dwell_start = None;
+                if self.is_inside_island(lx, ly) {
+                    self.is_hovered = true;
+                    self.last_interaction = Instant::now();
+                } else {
+                    self.is_hovered = false;
                 }
                 true
             }
@@ -463,26 +514,55 @@ impl IslandWidget {
                 self.is_hovered = false;
                 self.is_pressed = false;
                 self.is_swiping = false;
+                self.hot_edge_dwell_start = None;
                 self.cursor_pos = [-1.0, -1.0];
                 self.last_interaction = Instant::now() - Duration::from_millis(1000);
                 true
             }
             PointerEventKind::Motion { .. } => {
-                self.last_interaction = Instant::now();
-                self.cursor_pos = [
-                    (event.position.0 as f32) / (self.width as f32),
-                    (event.position.1 as f32) / (self.height as f32),
-                ];
-                if self.is_pressed {
-                    let dx = event.position.0 as f32 - self.press_pos[0];
-                    let dy = event.position.1 as f32 - self.press_pos[1];
+                let lx = event.position.0 as f32;
+                let ly = event.position.1 as f32;
+                self.cursor_pos = [lx / (self.width as f32), ly / (self.height as f32)];
+
+                let inside = self.is_inside_island(lx, ly);
+                if inside {
+                    self.is_hovered = true;
+                    self.last_interaction = Instant::now();
+                } else {
+                    self.is_hovered = false;
+                }
+
+                if self.mode == IslandMode::Hidden {
+                    let island_cx = (self.width as f32) * 0.5;
+                    if ly <= 6.0 && (lx - island_cx).abs() <= 80.0 {
+                        if let Some(start) = self.hot_edge_dwell_start {
+                            if start.elapsed() >= Duration::from_millis(350) {
+                                self.set_mode(IslandMode::CompactPill);
+                                self.hot_edge_dwell_start = None;
+                            }
+                        } else {
+                            self.hot_edge_dwell_start = Some(Instant::now());
+                        }
+                    } else {
+                        self.hot_edge_dwell_start = None;
+                    }
+                } else {
+                    self.hot_edge_dwell_start = None;
+                }
+
+                if self.is_pressed && inside {
+                    let dx = lx - self.press_pos[0];
+                    let dy = ly - self.press_pos[1];
                     let dist = (dx * dx + dy * dy).sqrt();
 
                     if dist > 8.0 {
                         self.power_held = None;
                     }
 
-                    if !self.is_swiping && dx.abs() > 25.0 {
+                    if !self.is_swiping
+                        && dx.abs() > 55.0
+                        && self.press_time.elapsed() >= Duration::from_millis(80)
+                    {
                         self.is_swiping = true;
                         if dx > 0.0 {
                             self.cycle_mode_backward();
@@ -494,12 +574,34 @@ impl IslandWidget {
                 true
             }
             PointerEventKind::Press { .. } => {
+                let lx = event.position.0 as f32;
+                let ly = event.position.1 as f32;
+                let inside = self.is_inside_island(lx, ly);
+
+                if !inside {
+                    self.is_pressed = false;
+                    self.is_swiping = false;
+                    self.power_held = None;
+                    if self.mode != IslandMode::Hidden {
+                        if self.mode == IslandMode::CompactPill {
+                            if !self.music.is_playing && self.active_notif.is_none() {
+                                self.set_mode(IslandMode::Hidden);
+                            }
+                        } else {
+                            if self.music.is_playing {
+                                self.set_mode(IslandMode::CompactPill);
+                            } else {
+                                self.set_mode(IslandMode::Hidden);
+                            }
+                        }
+                    }
+                    return true;
+                }
+
                 self.is_pressed = true;
                 self.is_swiping = false;
                 self.press_time = Instant::now();
                 self.last_interaction = Instant::now();
-                let lx = event.position.0 as f32;
-                let ly = event.position.1 as f32;
                 self.press_pos = [lx, ly];
 
                 if self.mode == IslandMode::PowerMenu
@@ -528,7 +630,8 @@ impl IslandWidget {
                 let dist =
                     ((lx - self.press_pos[0]).powi(2) + (ly - self.press_pos[1]).powi(2)).sqrt();
 
-                if !self.is_swiping
+                if self.is_inside_island(lx, ly)
+                    && !self.is_swiping
                     && dist < 8.0
                     && self.press_time.elapsed() < Duration::from_millis(600)
                     && self.last_mode_cycle.elapsed() >= Duration::from_millis(400)
@@ -551,19 +654,25 @@ impl IslandWidget {
                 vertical,
                 ..
             } => {
+                let lx = self.cursor_pos[0] * self.width as f32;
+                let ly = self.cursor_pos[1] * self.height as f32;
+                if !self.is_inside_island(lx, ly) || self.mode == IslandMode::Hidden {
+                    return false;
+                }
+
                 self.last_interaction = Instant::now();
                 self.is_swiping = true;
                 self.power_held = None;
 
-                let delta = if horizontal.absolute.abs() > 10.0 {
+                let delta = if horizontal.absolute.abs() > 30.0 {
                     horizontal.absolute
-                } else if vertical.absolute.abs() > 10.0 {
+                } else if vertical.absolute.abs() > 30.0 {
                     vertical.absolute
                 } else {
                     0.0
                 };
 
-                if delta.abs() > 10.0 && self.last_mode_cycle.elapsed() > Duration::from_millis(350)
+                if delta.abs() > 30.0 && self.last_mode_cycle.elapsed() > Duration::from_millis(450)
                 {
                     if delta > 0.0 {
                         self.cycle_mode_forward();
@@ -643,6 +752,7 @@ impl IslandWidget {
         self.power_held = None;
         self.animating = true;
         self.needs_redraw = true;
+        self.needs_input_region_update = true;
     }
 
     fn cycle_mode_forward(&mut self) {

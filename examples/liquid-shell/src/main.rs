@@ -134,6 +134,7 @@ impl LayerShellHandler for ShellApp {
             self.island.configure(configure);
             if self.island.renderer.is_none() {
                 self.island.init_gpu(&self.gpu);
+                self.island.apply_input_region(&self.compositor_state, _qh);
             }
             self.island.draw();
             self.first_configure_count += 1;
@@ -267,6 +268,9 @@ impl PointerHandler for ShellApp {
             if sid == self.clock.surface_id() && self.clock.on_pointer_event(event) {
                 self.clock.draw();
             } else if sid == self.island.surface_id() && self.island.on_pointer_event(event) {
+                if self.island.needs_input_region_update {
+                    self.island.apply_input_region(&self.compositor_state, _qh);
+                }
                 self.island.draw();
             } else if sid == self.todo.surface_id() && self.todo.on_pointer_event(event) {
                 self.todo.draw();
@@ -289,6 +293,18 @@ delegate_shm!(ShellApp);
 delegate_seat!(ShellApp);
 delegate_keyboard!(ShellApp);
 delegate_pointer!(ShellApp);
+
+impl wayland_client::Dispatch<wayland_client::protocol::wl_region::WlRegion, ()> for ShellApp {
+    fn event(
+        _state: &mut Self,
+        _proxy: &wayland_client::protocol::wl_region::WlRegion,
+        _event: wayland_client::protocol::wl_region::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qhandle: &QueueHandle<Self>,
+    ) {
+    }
+}
 
 impl ProvidesRegistryState for ShellApp {
     fn registry(&mut self) -> &mut RegistryState {
@@ -431,6 +447,10 @@ fn main() {
 
         let island_active = app.island.update_physics(dt);
         let todo_active = app.todo.update_physics(dt);
+
+        if app.island.needs_input_region_update {
+            app.island.apply_input_region(&app.compositor_state, &qh);
+        }
 
         // Check wallpaper updates across all widgets
         if app.wallpaper_mgr.check_update() {
