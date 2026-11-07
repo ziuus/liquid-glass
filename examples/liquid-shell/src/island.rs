@@ -336,24 +336,24 @@ impl IslandWidget {
             is_pressed: false,
             is_hovered: false,
 
-            current_w: 160.0,
-            target_w: 160.0,
+            current_w: 168.0,
+            target_w: 168.0,
             vel_w: 0.0,
 
-            current_h: 10.0,
-            target_h: 10.0,
+            current_h: 28.0,
+            target_h: 28.0,
             vel_h: 0.0,
 
-            current_alpha: 0.0,
-            target_alpha: 0.0,
+            current_alpha: 1.0,
+            target_alpha: 1.0,
             vel_alpha: 0.0,
 
-            current_y: -30.0,
-            target_y: -30.0,
+            current_y: 12.0,
+            target_y: 12.0,
             vel_y: 0.0,
 
-            mode: IslandMode::Hidden,
-            prev_mode: IslandMode::Hidden,
+            mode: IslandMode::CompactPill,
+            prev_mode: IslandMode::CompactPill,
 
             slide_offset: 0.0,
             slide_vel: 0.0,
@@ -423,10 +423,10 @@ impl IslandWidget {
         let half_w = self.current_w * 0.5;
         let h = self.current_h;
 
-        lx >= (island_cx - half_w - 6.0)
-            && lx <= (island_cx + half_w + 6.0)
-            && ly >= (island_top - 4.0).max(0.0)
-            && ly <= (island_top + h + 8.0)
+        lx >= (island_cx - half_w)
+            && lx <= (island_cx + half_w)
+            && ly >= island_top
+            && ly <= (island_top + h)
     }
 
     pub fn apply_input_region<D>(&mut self, compositor: &CompositorState, qh: &QueueHandle<D>)
@@ -436,23 +436,20 @@ impl IslandWidget {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
         match self.mode {
-            IslandMode::Hidden => {
-                let strip_w = 160i32;
-                let strip_h = 6i32;
-                let strip_x = (self.width as i32 - strip_w) / 2;
-                region.add(strip_x, 0, strip_w, strip_h);
-            }
+            IslandMode::Hidden => {}
             IslandMode::CompactPill => {
-                let pill_w = (self.target_w + 16.0) as i32;
-                let pill_h = (self.target_y + self.target_h + 8.0) as i32;
+                let pill_w = self.target_w as i32;
+                let pill_h = self.target_h as i32;
                 let pill_x = (self.width as i32 - pill_w) / 2;
-                region.add(pill_x, 0, pill_w, pill_h);
+                let pill_y = self.target_y as i32;
+                region.add(pill_x, pill_y, pill_w, pill_h);
             }
             _ => {
-                let card_w = (self.target_w + 24.0) as i32;
-                let card_h = (self.target_y + self.target_h + 16.0) as i32;
+                let card_w = self.target_w as i32;
+                let card_h = self.target_h as i32;
                 let card_x = (self.width as i32 - card_w) / 2;
-                region.add(card_x, 0, card_w, card_h);
+                let card_y = self.target_y as i32;
+                region.add(card_x, card_y, card_w, card_h);
             }
         }
         self.surface.set_input_region(Some(&region));
@@ -532,24 +529,6 @@ impl IslandWidget {
                     self.is_hovered = false;
                 }
 
-                if self.mode == IslandMode::Hidden {
-                    let island_cx = (self.width as f32) * 0.5;
-                    if ly <= 6.0 && (lx - island_cx).abs() <= 80.0 {
-                        if let Some(start) = self.hot_edge_dwell_start {
-                            if start.elapsed() >= Duration::from_millis(350) {
-                                self.set_mode(IslandMode::CompactPill);
-                                self.hot_edge_dwell_start = None;
-                            }
-                        } else {
-                            self.hot_edge_dwell_start = Some(Instant::now());
-                        }
-                    } else {
-                        self.hot_edge_dwell_start = None;
-                    }
-                } else {
-                    self.hot_edge_dwell_start = None;
-                }
-
                 if self.is_pressed && inside {
                     let dx = lx - self.press_pos[0];
                     let dy = ly - self.press_pos[1];
@@ -582,18 +561,8 @@ impl IslandWidget {
                     self.is_pressed = false;
                     self.is_swiping = false;
                     self.power_held = None;
-                    if self.mode != IslandMode::Hidden {
-                        if self.mode == IslandMode::CompactPill {
-                            if !self.music.is_playing && self.active_notif.is_none() {
-                                self.set_mode(IslandMode::Hidden);
-                            }
-                        } else {
-                            if self.music.is_playing {
-                                self.set_mode(IslandMode::CompactPill);
-                            } else {
-                                self.set_mode(IslandMode::Hidden);
-                            }
-                        }
+                    if self.mode != IslandMode::CompactPill && self.mode != IslandMode::Hidden {
+                        self.set_mode(IslandMode::CompactPill);
                     }
                     return true;
                 }
@@ -816,23 +785,6 @@ impl IslandWidget {
     pub fn update_physics(&mut self, dt: f32) -> bool {
         self.check_window_overlap();
 
-        // If a window is overlapping and user is NOT hovering, smoothly retract upwards & fade
-        // EXCEPT when displaying an active notification or when user is interacting
-        let is_alerting = self.mode == IslandMode::Notification;
-        let should_retract_for_window =
-            self.is_window_overlapping && !self.is_hovered && !self.is_pressed && !is_alerting;
-
-        let effective_target_y = if should_retract_for_window {
-            -self.target_h - 10.0
-        } else {
-            self.target_y
-        };
-        let effective_target_alpha = if should_retract_for_window {
-            0.0
-        } else {
-            self.target_alpha
-        };
-
         let spring_k = 380.0f32;
         let damping = 33.1f32;
 
@@ -844,19 +796,19 @@ impl IslandWidget {
         self.vel_h += force_h * dt;
         self.current_h += self.vel_h * dt;
 
-        let force_y = -spring_k * (self.current_y - effective_target_y) - damping * self.vel_y;
+        let force_y = -spring_k * (self.current_y - self.target_y) - damping * self.vel_y;
         self.vel_y += force_y * dt;
         self.current_y += self.vel_y * dt;
 
         let force_a =
-            -spring_k * (self.current_alpha - effective_target_alpha) - damping * self.vel_alpha;
+            -spring_k * (self.current_alpha - self.target_alpha) - damping * self.vel_alpha;
         self.vel_alpha += force_a * dt;
         self.current_alpha = (self.current_alpha + self.vel_alpha * dt).clamp(0.0, 1.0);
 
         let settling = (self.current_w - self.target_w).abs() < 0.5
             && (self.current_h - self.target_h).abs() < 0.5
-            && (self.current_y - effective_target_y).abs() < 0.5
-            && (self.current_alpha - effective_target_alpha).abs() < 0.01
+            && (self.current_y - self.target_y).abs() < 0.5
+            && (self.current_alpha - self.target_alpha).abs() < 0.01
             && self.vel_w.abs() < 1.0
             && self.vel_h.abs() < 1.0
             && self.vel_y.abs() < 1.0;
@@ -879,8 +831,8 @@ impl IslandWidget {
         if settling {
             self.current_w = self.target_w;
             self.current_h = self.target_h;
-            self.current_y = effective_target_y;
-            self.current_alpha = effective_target_alpha;
+            self.current_y = self.target_y;
+            self.current_alpha = self.target_alpha;
             self.vel_w = 0.0;
             self.vel_h = 0.0;
             self.vel_y = 0.0;
@@ -917,8 +869,7 @@ impl IslandWidget {
                 (self.music.elapsed_sec / self.music.duration_sec).clamp(0.0, 1.0);
         }
 
-        // Auto-hide / auto-collapse after inactivity:
-        // When expanded, retract back after 3.5s of no user interaction
+        // When expanded, retract back after 4s of no user interaction
         if !self.is_hovered
             && !self.is_pressed
             && matches!(
@@ -928,25 +879,9 @@ impl IslandWidget {
                     | IslandMode::SystemOverview
                     | IslandMode::PowerMenu
             )
-            && self.last_interaction.elapsed() >= Duration::from_millis(3500)
-        {
-            if self.music.is_playing {
-                self.set_mode(IslandMode::CompactPill);
-            } else {
-                self.set_mode(IslandMode::Hidden);
-            }
-        }
-
-        // Clean desktop presence: when idle in CompactPill with no media playing and no notification,
-        // smoothly hide after 4 seconds of inactivity so the desktop stays pristine
-        if !self.is_hovered
-            && !self.is_pressed
-            && self.mode == IslandMode::CompactPill
-            && !self.music.is_playing
-            && self.active_notif.is_none()
             && self.last_interaction.elapsed() >= Duration::from_millis(4000)
         {
-            self.set_mode(IslandMode::Hidden);
+            self.set_mode(IslandMode::CompactPill);
         }
 
         // Power menu hold-to-confirm progress update
@@ -2540,8 +2475,9 @@ impl IslandWidget {
                 if d_disc <= 18.0 {
                     let _ = Command::new("playerctl").args(["play-pause"]).spawn();
                     self.music.is_playing = !self.music.is_playing;
+                } else {
+                    self.set_mode(IslandMode::MusicExpanded);
                 }
-                // Note: single click does NOT expand. Expanding requires double-click.
             }
             IslandMode::MusicExpanded => {
                 let d_play = ((lx - play_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt();
@@ -2569,11 +2505,7 @@ impl IslandWidget {
             }
             IslandMode::Notification => {
                 self.active_notif = None;
-                if self.music.is_playing {
-                    self.set_mode(IslandMode::CompactPill);
-                } else {
-                    self.set_mode(IslandMode::Hidden);
-                }
+                self.set_mode(IslandMode::CompactPill);
             }
             IslandMode::QuickAccess => {
                 let apps = [
