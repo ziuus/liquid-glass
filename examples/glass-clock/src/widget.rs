@@ -76,9 +76,17 @@ pub struct ClockWidget {
     pub last_battery_check: Instant,
     pub last_minute: u32,
     pub style_mode: f32,
+    pub theme_mode: u32,
 }
 
 impl ClockWidget {
+    pub fn effective_is_light(&self) -> bool {
+        match self.theme_mode {
+            1 => false,                   // Forced Dark
+            2 => true,                    // Forced Light
+            _ => self.is_wallpaper_light, // Auto based on wallpaper
+        }
+    }
     pub fn new<D>(
         qh: &QueueHandle<D>,
         compositor: &CompositorState,
@@ -141,7 +149,8 @@ impl ClockWidget {
             battery_level: 100.0,
             last_battery_check: Instant::now() - std::time::Duration::from_secs(60),
             last_minute: 99,
-            style_mode: 1.0,
+            style_mode: 0.0,
+            theme_mode: 0,
         }
     }
 
@@ -280,20 +289,26 @@ impl ClockWidget {
             );
         }
 
-        let (date_col, date_sec) = if self.date_is_light {
-            ([8, 12, 20, 255], [18, 24, 34, 255])
+        let is_light = if self.style_mode < 0.5 {
+            self.effective_is_light()
         } else {
-            ([255, 255, 255, 255], [240, 245, 255, 255])
+            self.time_is_light
         };
 
-        let (time_col, ampm_col) = if self.time_is_light {
-            ([8, 12, 20, 255], [18, 24, 34, 255])
+        let (date_col, date_sec) = if is_light {
+            ([12, 16, 24, 255], [45, 55, 70, 255])
         } else {
-            ([255, 255, 255, 255], [240, 245, 255, 255])
+            ([255, 255, 255, 255], [220, 230, 245, 255])
         };
 
-        let bat_col = if self.bat_is_light {
-            [8, 12, 20, 255]
+        let (time_col, ampm_col) = if is_light {
+            ([12, 16, 24, 255], [45, 55, 70, 255])
+        } else {
+            ([255, 255, 255, 255], [220, 230, 245, 255])
+        };
+
+        let bat_col = if is_light {
+            [12, 16, 24, 255]
         } else {
             [255, 255, 255, 255]
         };
@@ -463,6 +478,8 @@ impl ClockWidget {
         let mut overlay_vec = std::mem::take(&mut self.overlay_buffer);
         self.render_ui_overlay(&mut overlay_vec);
 
+        let is_light_f32 = if self.effective_is_light() { 1.0 } else { 0.0 };
+
         let res = if let Some(renderer) = &mut self.renderer {
             renderer.update_overlay(self.width, self.height, &overlay_vec);
 
@@ -473,7 +490,6 @@ impl ClockWidget {
             let date_val = wday * 10000.0 + month * 100.0 + mday;
 
             let (px, py) = (self.cursor_pos[0], self.cursor_pos[1]);
-            let is_light_f32 = if self.is_wallpaper_light { 1.0 } else { 0.0 };
 
             let x_norm = CARD_PAD / (self.width as f32);
             let y_norm = CARD_PAD / (self.height as f32);

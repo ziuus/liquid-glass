@@ -190,6 +190,8 @@ pub enum IslandIpcEvent {
     PrevMenu,
     SetStyle(f32),
     CycleStyle,
+    SetTheme(u32),
+    CycleTheme,
 }
 
 pub struct WaylandWindow {
@@ -287,11 +289,19 @@ pub struct IslandWidget {
     pub wallpaper_crop: Option<Vec<u8>>,
     pub start_time: Instant,
     pub style_mode: f32,
+    pub theme_mode: u32,
     pub hot_edge_dwell_start: Option<Instant>,
     pub needs_input_region_update: bool,
 }
 
 impl IslandWidget {
+    pub fn effective_is_light(&self) -> bool {
+        match self.theme_mode {
+            1 => false,                   // Forced Dark
+            2 => true,                    // Forced Light
+            _ => self.is_wallpaper_light, // Auto based on wallpaper
+        }
+    }
     pub fn new<D>(
         qh: &QueueHandle<D>,
         compositor: &CompositorState,
@@ -405,7 +415,7 @@ impl IslandWidget {
 
             width,
             height,
-            pos_x: 0,
+            pos_x: 640,
             pos_y,
             animating: false,
             needs_redraw: true,
@@ -414,6 +424,7 @@ impl IslandWidget {
             wallpaper_crop: None,
             start_time: Instant::now(),
             style_mode: 0.0,
+            theme_mode: 0,
             hot_edge_dwell_start: None,
             needs_input_region_update: true,
         }
@@ -765,8 +776,9 @@ impl IslandWidget {
         }
     }
 
-    pub fn check_ipc(&mut self) -> Option<f32> {
+    pub fn check_ipc(&mut self) -> (Option<f32>, Option<u32>) {
         let mut style_changed = None;
+        let mut theme_changed = None;
         while let Ok(evt) = self.ipc_rx.try_recv() {
             match evt {
                 IslandIpcEvent::Toggle => self.toggle(),
@@ -783,13 +795,23 @@ impl IslandWidget {
                     self.needs_redraw = true;
                     style_changed = Some(self.style_mode);
                 }
+                IslandIpcEvent::SetTheme(t) => {
+                    self.theme_mode = t;
+                    self.needs_redraw = true;
+                    theme_changed = Some(t);
+                }
+                IslandIpcEvent::CycleTheme => {
+                    self.theme_mode = (self.theme_mode + 1) % 3;
+                    self.needs_redraw = true;
+                    theme_changed = Some(self.theme_mode);
+                }
                 IslandIpcEvent::Notification(notif) => {
                     self.active_notif = Some(notif);
                     self.set_mode(IslandMode::Notification);
                 }
             }
         }
-        style_changed
+        (style_changed, theme_changed)
     }
 
     pub fn update_physics(&mut self, dt: f32) -> bool {
@@ -1192,14 +1214,14 @@ impl IslandWidget {
         let mut overlay_vec = std::mem::take(&mut self.overlay_buffer);
         let buf = &mut overlay_vec[..];
 
-        let is_light = self.is_wallpaper_light;
+        let is_light = self.effective_is_light();
         let col_ink = if is_light {
-            [8, 12, 20, 255]
+            [12, 16, 24, 255]
         } else {
             Tokens::TEXT_PRIMARY
         };
         let col_dim = if is_light {
-            [50, 60, 75, 255]
+            [55, 65, 80, 255]
         } else {
             Tokens::TEXT_SECONDARY
         };
@@ -2298,6 +2320,8 @@ impl IslandWidget {
 
         self.render_ui_overlay();
 
+        let is_light = if self.effective_is_light() { 1.0 } else { 0.0 };
+
         if let Some(renderer) = &mut self.renderer {
             if self.current_alpha <= 0.01 {
                 let _ = renderer.render(&[]);
@@ -2310,8 +2334,6 @@ impl IslandWidget {
             let h_norm = self.current_h / (self.height as f32);
             let x_norm = 0.50 - w_norm * 0.5;
             let y_norm = self.current_y / (self.height as f32);
-
-            let is_light = if self.is_wallpaper_light { 1.0 } else { 0.0 };
 
             let island_shape = if self.mode == IslandMode::CompactPill {
                 Shape::Capsule
@@ -2606,6 +2628,25 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>, wakeup_fd: Option<i32>) {
                         send_evt(IslandIpcEvent::SetStyle(2.0));
                     } else if trimmed == "style" || trimmed == "style cycle" {
                         send_evt(IslandIpcEvent::CycleStyle);
+                    } else if trimmed == "theme auto" || trimmed == "auto" || trimmed == "theme 0" {
+                        send_evt(IslandIpcEvent::SetTheme(0));
+                    } else if trimmed == "theme dark"
+                        || trimmed == "dark"
+                        || trimmed == "pure black"
+                        || trimmed == "theme 1"
+                    {
+                        send_evt(IslandIpcEvent::SetTheme(1));
+                    } else if trimmed == "theme light"
+                        || trimmed == "light"
+                        || trimmed == "pure white"
+                        || trimmed == "theme 2"
+                    {
+                        send_evt(IslandIpcEvent::SetTheme(2));
+                    } else if trimmed == "theme"
+                        || trimmed == "theme toggle"
+                        || trimmed == "theme cycle"
+                    {
+                        send_evt(IslandIpcEvent::CycleTheme);
                     } else if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
                         if val.get("type").and_then(|t| t.as_str()) == Some("notification") {
                             let app = val

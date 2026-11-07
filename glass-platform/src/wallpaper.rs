@@ -167,7 +167,7 @@ impl WallpaperManager {
     /// Returns true if the cache was updated.
     pub fn check_update(&mut self) -> bool {
         let inotify_fired = self.poll_inotify_triggered();
-        let timer_due = self.last_check.elapsed().as_millis() >= 5000;
+        let timer_due = self.last_check.elapsed().as_millis() >= 800;
 
         if !inotify_fired && !timer_due {
             return false;

@@ -427,17 +427,33 @@ fn main() {
         let dt = (now - last_frame).as_secs_f32().clamp(0.001, 0.05);
         last_frame = now;
 
-        if let Some(new_style) = app.island.check_ipc() {
-            app.clock.style_mode = new_style;
+        let (new_style, new_theme) = app.island.check_ipc();
+        if let Some(s) = new_style {
+            app.clock.style_mode = s;
+            app.todo.style_mode = s;
             app.clock.draw();
-            app.todo.style_mode = new_style;
             app.todo.draw();
             app.island.draw();
-        } else if app.clock.style_mode != app.island.style_mode {
+        }
+        if let Some(t) = new_theme {
+            app.clock.theme_mode = t;
+            app.todo.theme_mode = t;
+            app.clock.draw();
+            app.todo.draw();
+            app.island.draw();
+        }
+        if app.clock.style_mode != app.island.style_mode {
             let s = app.island.style_mode;
             app.clock.style_mode = s;
-            app.clock.draw();
             app.todo.style_mode = s;
+            app.clock.draw();
+            app.todo.draw();
+        }
+        if app.clock.theme_mode != app.island.theme_mode {
+            let t = app.island.theme_mode;
+            app.clock.theme_mode = t;
+            app.todo.theme_mode = t;
+            app.clock.draw();
             app.todo.draw();
         }
         app.island.check_music();

@@ -128,9 +128,17 @@ pub struct TodoWidget {
     pub tab_spring: Spring,
     pub filter_spring: Spring,
     pub style_mode: f32,
+    pub theme_mode: u32,
 }
 
 impl TodoWidget {
+    pub fn effective_is_light(&self) -> bool {
+        match self.theme_mode {
+            1 => false,                   // Forced Dark
+            2 => true,                    // Forced Light
+            _ => self.is_wallpaper_light, // Auto based on wallpaper
+        }
+    }
     pub fn new<D>(
         qh: &QueueHandle<D>,
         compositor: &CompositorState,
@@ -240,7 +248,8 @@ impl TodoWidget {
             font,
             tab_spring: Spring::with_params(0.0, spring_params),
             filter_spring: Spring::with_params(0.0, spring_params),
-            style_mode: 1.0,
+            style_mode: 0.0,
+            theme_mode: 0,
         }
     }
 
@@ -839,28 +848,33 @@ impl TodoWidget {
         let tasks_offset_x = -self.tab_spring.value * (self.width as f32);
         let agenda_offset_x = (1.0 - self.tab_spring.value) * (self.width as f32);
 
+        let is_light = self.effective_is_light();
+
         // Apple macOS Typography & Contrast
-        let (col_primary, col_secondary, col_dimmed, _col_accent, col_shadow) =
-            if self.is_wallpaper_light {
-                (
-                    [8, 12, 20, 255],     // Primary text: Deep Obsidian Ink
-                    [28, 36, 48, 250],    // Secondary text: Refined Slate
-                    [45, 55, 70, 245],    // Tertiary/Dimmed: Muted Slate
-                    [6, 10, 16, 255],     // Accent text
-                    [255, 255, 255, 110], // Subtle 1px ambient bottom lift
-                )
-            } else {
-                (
-                    Tokens::TEXT_PRIMARY,   // Primary text: Crisp Pure White
-                    Tokens::TEXT_SECONDARY, // Secondary text: Soft White
-                    Tokens::TEXT_TERTIARY,  // Tertiary/Dimmed: Dimmed White
-                    Tokens::TEXT_PRIMARY,   // White accent
-                    Tokens::TEXT_SHADOW,    // Downward soft drop shadow (0, +1)
-                )
-            };
+        let (col_primary, col_secondary, col_dimmed, _col_accent, col_shadow) = if is_light {
+            (
+                [12, 16, 24, 255],    // Primary text: Deep Obsidian Ink
+                [36, 44, 56, 250],    // Secondary text: Refined Slate
+                [60, 72, 88, 245],    // Tertiary/Dimmed: Muted Slate
+                [8, 12, 18, 255],     // Accent text
+                [255, 255, 255, 110], // Subtle 1px ambient bottom lift
+            )
+        } else {
+            (
+                Tokens::TEXT_PRIMARY,   // Primary text: Crisp Pure White
+                Tokens::TEXT_SECONDARY, // Secondary text: Soft White
+                Tokens::TEXT_TERTIARY,  // Tertiary/Dimmed: Dimmed White
+                Tokens::TEXT_PRIMARY,   // White accent
+                Tokens::TEXT_SHADOW,    // Downward soft drop shadow (0, +1)
+            )
+        };
 
         // ── Top Segmented Tabs: "Tasks ({count})" & "Agenda" (cy = 32.5) ──
-        let selected_ink = [8, 12, 20, 255];
+        let selected_ink = if is_light {
+            [12, 16, 24, 255]
+        } else {
+            [8, 12, 20, 255]
+        };
         let tab_t = self.tab_spring.value.clamp(0.0, 1.0);
 
         // Segmented Track (cx = 160.0, cy = 32.5, half_w = 138.0, half_h = 16.0, r = 10.0)
@@ -873,8 +887,8 @@ impl TodoWidget {
             138.0,
             16.0,
             10.0,
-            if self.is_wallpaper_light {
-                Tokens::INNER_TILE_BG_LIGHT
+            if is_light {
+                [235, 240, 248, 220]
             } else {
                 Tokens::INNER_TILE_BG_DARK
             },
@@ -882,8 +896,8 @@ impl TodoWidget {
 
         // Sliding Active Tab Pill
         let tab_pill_cx = 96.0 * (1.0 - tab_t) + 224.0 * tab_t;
-        let pill_fill = if self.is_wallpaper_light {
-            [255, 255, 255, 235]
+        let pill_fill = if is_light {
+            [218, 226, 240, 255]
         } else {
             [255, 255, 255, 220]
         };
@@ -902,13 +916,13 @@ impl TodoWidget {
         // Top Right: Settings Icon Button
         let is_settings_active = self.is_cal_editing;
         let settings_bg = if is_settings_active {
-            if self.is_wallpaper_light {
+            if is_light {
                 Tokens::INNER_TILE_BG_HOVER_LIGHT
             } else {
                 Tokens::INNER_TILE_BG_HOVER_DARK
             }
-        } else if self.is_wallpaper_light {
-            Tokens::INNER_TILE_BG_LIGHT
+        } else if is_light {
+            [235, 240, 248, 200]
         } else {
             Tokens::INNER_TILE_BG_DARK
         };
@@ -990,16 +1004,16 @@ impl TodoWidget {
                 108.0,
                 13.0,
                 8.0,
-                if self.is_wallpaper_light {
-                    [255, 255, 255, 60]
+                if is_light {
+                    [235, 240, 248, 220]
                 } else {
                     Tokens::INNER_TILE_BG_DARK
                 },
             );
 
             // Sliding active filter pill (high-contrast near-white fill with dark ink)
-            let filter_pill_fill = if self.is_wallpaper_light {
-                [255, 255, 255, 235]
+            let filter_pill_fill = if is_light {
+                [218, 226, 240, 255]
             } else {
                 [255, 255, 255, 220]
             };
@@ -1147,8 +1161,12 @@ impl TodoWidget {
                     (0.5, 0.0, self.is_wallpaper_light)
                 };
 
-                // Strict 0.179 luminance threshold
-                let row_is_light = mean_lum > 0.179;
+                // In clean solid mode, follow effective theme; in glass modes, follow local wallpaper luminance
+                let row_is_light = if self.style_mode < 0.5 {
+                    is_light
+                } else {
+                    mean_lum > 0.179
+                };
 
                 // If spread is high (row crosses diagonal edge), apply local scrim shadow
                 let text_shadow_col = if spread > 0.05 {
@@ -1819,6 +1837,8 @@ impl TodoWidget {
         let mut overlay_buf = std::mem::take(&mut self.overlay_buffer);
         self.render_ui_overlay(&mut overlay_buf);
 
+        let is_light_f32 = if self.effective_is_light() { 1.0 } else { 0.0 };
+
         let rendered = if let Some(renderer) = &mut self.renderer {
             renderer.update_overlay(self.width, self.height, &overlay_buf);
 
@@ -1827,8 +1847,6 @@ impl TodoWidget {
 
             // Pass continuous spring-animated values to shader
             let tab_val = self.tab_spring.value;
-
-            let is_light_f32 = if self.is_wallpaper_light { 1.0 } else { 0.0 };
 
             // Hug content: glass card bounds match calculated height
             let h_norm = (card_h / (self.height as f32)).clamp(0.1, 1.0);

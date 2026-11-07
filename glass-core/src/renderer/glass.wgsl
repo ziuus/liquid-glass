@@ -1436,8 +1436,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var base_surface: vec3<f32>;
 
     if style_mode < 0.5 {
-        // ── 0.0: OBSIDIAN / PITCH BLACK CLEAN BACKGROUND ──
-        base_surface = vec3<f32>(0.0, 0.0, 0.0);
+        // ── 0.0: SOLID CLEAN BACKGROUND (Pure White on light, Pure Black on dark) ──
+        if is_light > 0.5 {
+            let edge_subtle = smoothstep(1.5, 0.0, depth) * 0.06;
+            base_surface = vec3<f32>(1.0, 1.0, 1.0) - vec3<f32>(edge_subtle);
+        } else {
+            base_surface = vec3<f32>(0.0, 0.0, 0.0);
+        }
     } else if style_mode < 1.5 {
         // ── 1.0: FROSTED GLASSMORPHISM ──
         base_surface = col + vec3<f32>(spec_rim * 0.45);
