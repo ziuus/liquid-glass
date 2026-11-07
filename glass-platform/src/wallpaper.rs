@@ -226,9 +226,9 @@ impl WallpaperManager {
         if count > 0 {
             let mean = total_lum / count as f64;
             if current_state {
-                mean > 0.15
+                mean > 0.28
             } else {
-                mean > 0.21
+                mean > 0.35
             }
         } else {
             current_state

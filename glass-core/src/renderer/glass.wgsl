@@ -62,7 +62,7 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
     }
     
     // Dilation padding in normalized coordinates to prevent edge clipping of anti-aliasing and specular rim
-    let quad_pad = vec2<f32>(8.0, 8.0) / params.surface_size;
+    let quad_pad = vec2<f32>(12.0, 12.0) / params.surface_size;
     let min_bounds = max(params.bounds.xy - quad_pad, vec2<f32>(0.0));
     let max_bounds = min(params.bounds.xy + params.bounds.zw + quad_pad, vec2<f32>(1.0));
     let quad_size = max_bounds - min_bounds;
@@ -120,7 +120,7 @@ fn droplet_height(p: vec2<f32>, b: vec2<f32>, r: f32, z_radius: f32, cur_px: vec
     return h_bevel;
 }
 
-// ── Apple CoreAnimation-grade 24-tap Poisson Blur (Single-Fetch Bilinear Hardware Filtering) ──
+// ── Apple VisionOS / macOS 32-tap Multi-Scale Golden-Angle Diffusion Blur ──
 fn sample_frost_blur(uv: vec2<f32>, radius: f32) -> vec3<f32> {
     if radius <= 0.5 {
         return textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
@@ -128,20 +128,17 @@ fn sample_frost_blur(uv: vec2<f32>, radius: f32) -> vec3<f32> {
     let rad_uv = radius / params.surface_size;
     let golden_angle = 2.39996323;
 
-    var col = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb * 0.08;
-    var total_w = 0.08;
+    var col = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb * 0.06;
+    var total_w = 0.06;
 
-    // Uniform optical diffusion across entire interior
-    let safe_rad_uv = rad_uv;
-
-    for (var i = 0.0; i < 24.0; i += 1.0) {
-        let t = (i + 0.5) / 24.0;
+    for (var i = 0.0; i < 32.0; i += 1.0) {
+        let t = (i + 0.5) / 32.0;
         let r = sqrt(t);
         let theta = i * golden_angle;
-        let offset = vec2<f32>(r * cos(theta), r * sin(theta)) * safe_rad_uv;
+        let offset = vec2<f32>(r * cos(theta), r * sin(theta)) * rad_uv;
         let sample_uv = clamp(uv + offset, vec2<f32>(0.001), vec2<f32>(0.999));
         let s = textureSampleLevel(background_texture, background_sampler, sample_uv, 0.0).rgb;
-        let w = exp(-r * r * 1.5);
+        let w = exp(-r * r * 1.6);
         col += s * w;
         total_w += w;
     }
@@ -1347,9 +1344,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     // Crisp, stable rounded-rectangle SDF
     let sdf = rr_sdf(local_px, half_size, r);
+
+    let style_mode = params._pad.x; // 0.0 = Obsidian (Clean), 1.0 = Glassmorphism (Frosted), 2.0 = Liquid Glass
+    let is_light = params.is_light;
     
-    // Outside the rounded rectangle: 100% transparent (no black halo / no square bounding shadow)
+    // Outside the rounded rectangle: soft ambient drop shadow or transparent
     if sdf > 0.0 {
+        if style_mode >= 0.5 && sdf <= 10.0 {
+            let shadow_falloff = exp(-sdf * 0.38);
+            let shadow_alpha = shadow_falloff * 0.35 * (1.0 - is_light * 0.25);
+            return vec4<f32>(vec3<f32>(0.0, 0.0, 0.0), shadow_alpha);
+        }
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
     
@@ -1364,9 +1369,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Exact analytical 2D outward unit normal of rounded rectangle
     let grad_2d = rr_normal(local_px, half_size, r);
     let corner_factor = clamp(abs(grad_2d.x * grad_2d.y) * 4.0, 0.0, 1.0);
-
-    let style_mode = params._pad.x; // 0.0 = Obsidian (Clean), 1.0 = Glassmorphism (Frosted), 2.0 = Liquid Glass
-    let is_light = params.is_light;
 
     // ════════════════════════════════════════════
     // 3. PHYSICAL 3D SNELL'S LAW REFRACTION BAND & CAUCHY DISPERSION
@@ -1402,11 +1404,27 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let diag_t = clamp((local_px.x + local_px.y) / (half_size.x + half_size.y) * 0.5 + 0.5, 0.0, 1.0);
         col *= mix(1.04, 0.98, diag_t);
     } else if style_mode >= 0.5 {
-        // ── 1.0: FROSTED GLASSMORPHISM ──
-        // 20-tap frosted blur with subtle translucent milky or dark vibrancy lift
-        let frosted_col = sample_frost_blur(uv, clamp(params.blur_radius, 4.0, 8.0));
-        let vibrancy_lift = mix(vec3<f32>(0.14, 0.16, 0.22), vec3<f32>(0.94, 0.96, 1.0), is_light);
-        col = mix(frosted_col, vibrancy_lift, 0.14) * 1.04;
+        // ── 1.0: LUXURIOUS APPLE / VISIONOS FROSTED GLASSMORPHISM ──
+        // Deep 32-tap multi-scale backdrop diffusion (28px radius)
+        let frosted_col = sample_frost_blur(uv, 28.0);
+        
+        // 1. Color Vibrancy & Saturation Boost (Apple Vibrancy algorithm)
+        let luma = dot(frosted_col, vec3<f32>(0.2126, 0.7152, 0.0722));
+        let vibrant_col = max(mix(vec3<f32>(luma), frosted_col, 1.45), vec3<f32>(0.0));
+
+        // 2. Physical Glass Satin Sheen & Translucency
+        let top_lighting = mix(1.10, 0.93, (local_px.y / half_size.y) * 0.5 + 0.5);
+        if is_light > 0.5 {
+            // Apple Porcelain Ceramic Glass (Light mode)
+            let ceramic_base = mix(vibrant_col, vec3<f32>(1.0, 1.0, 1.0), 0.76);
+            col = ceramic_base * top_lighting;
+        } else {
+            // Apple Smoked Acrylic Satin Glass (Dark mode)
+            // Deep transmission + 18% translucent white satin lift (never muddy gray sludge!)
+            let satin_lift = vec3<f32>(1.0, 1.0, 1.0) * 0.18;
+            let glass_base = mix(vibrant_col * 1.15, satin_lift, 0.26);
+            col = glass_base * top_lighting;
+        }
     } else {
         // ── 0.0: OBSIDIAN / CLEAN BACKGROUND ──
         col = sharp_col;
@@ -1444,8 +1462,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             base_surface = vec3<f32>(0.0, 0.0, 0.0);
         }
     } else if style_mode < 1.5 {
-        // ── 1.0: FROSTED GLASSMORPHISM ──
-        base_surface = col + vec3<f32>(spec_rim * 0.45);
+        // ── 1.0: LUXURIOUS FROSTED GLASSMORPHISM ──
+        // Crisp 1.0px specular rim reflection + soft 2.5px inner bevel glow
+        let rim_reflection = (rim_1px * 0.95 + inner_highlight * 0.35) * dir_weight;
+        let rim_tint = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.50, 0.55, 0.65), is_light);
+        base_surface = col + rim_tint * rim_reflection;
     } else {
         // ── 2.0: LIQUID GLASS ──
         // Seamless optical refraction band, zero artificial stroke border

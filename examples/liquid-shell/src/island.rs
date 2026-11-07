@@ -2579,7 +2579,7 @@ fn is_buffer_light(buf: &[u8]) -> bool {
         }
     }
     if count > 0 {
-        (total_lum / count as f64) > 0.179
+        (total_lum / count as f64) > 0.32
     } else {
         false
     }

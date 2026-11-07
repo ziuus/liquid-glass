@@ -1909,7 +1909,7 @@ fn buffer_lum_stats(buf: &[u8]) -> (f32, f32, bool) {
         let mean = total_lum / count as f64;
         let var = (total_sq / count as f64 - mean * mean).max(0.0);
         let spread = var.sqrt();
-        (mean as f32, spread as f32, mean > 0.179)
+        (mean as f32, spread as f32, mean > 0.32)
     } else {
         (0.0, 0.0, false)
     }
