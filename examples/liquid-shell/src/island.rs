@@ -1049,7 +1049,11 @@ impl IslandWidget {
     }
 
     pub fn check_window_overlap(&mut self) {
-        let check_interval = Duration::from_millis(150);
+        let check_interval = if self.mode == IslandMode::Hidden {
+            Duration::from_millis(50)
+        } else {
+            Duration::from_millis(100)
+        };
         if self.last_window_check.elapsed() < check_interval {
             return;
         }
@@ -1070,16 +1074,71 @@ impl IslandWidget {
             self.needs_input_region_update = true;
         }
 
-        if overlapping {
-            // Automatically hide when overlapping with apps/windows, even if expanded
-            if self.mode != IslandMode::Hidden {
-                self.set_mode(IslandMode::Hidden);
-            }
-        } else {
+        if !overlapping {
             // Always show on desktop, whether previously hidden or not
+            self.hot_edge_dwell_start = None;
             if self.mode == IslandMode::Hidden {
                 self.set_mode(IslandMode::CompactPill);
             }
+        } else {
+            // Apps/windows are overlapping underneath the island zone
+            if let Some((cx, cy)) = Self::query_hyprland_cursor() {
+                // Reaching the top edge: x in [840, 1080], y <= 2
+                let is_at_top_edge = (840..=1080).contains(&cx) && cy <= 2;
+                let island_w = self.current_w as i32;
+                let island_left = (mon_w - island_w) / 2;
+                let island_right = island_left + island_w;
+                let island_bottom = (self.current_y + self.current_h + 12.0) as i32;
+                let is_inside_island =
+                    (island_left..=island_right).contains(&cx) && (0..=island_bottom).contains(&cy);
+
+                if is_at_top_edge {
+                    let dwell = self.hot_edge_dwell_start.get_or_insert_with(Instant::now);
+                    if dwell.elapsed() >= Duration::from_millis(200) {
+                        if self.mode == IslandMode::Hidden {
+                            self.set_mode(IslandMode::CompactPill);
+                        }
+                        self.last_interaction = Instant::now();
+                    }
+                } else if is_inside_island && self.mode != IslandMode::Hidden {
+                    self.last_interaction = Instant::now();
+                    self.hot_edge_dwell_start = None;
+                } else {
+                    self.hot_edge_dwell_start = None;
+                    // Outside the island while an app is underneath: auto-hide after brief idle
+                    if self.mode != IslandMode::Hidden
+                        && self.last_interaction.elapsed() >= Duration::from_millis(1200)
+                    {
+                        self.set_mode(IslandMode::Hidden);
+                    }
+                }
+            } else if self.mode != IslandMode::Hidden {
+                self.set_mode(IslandMode::Hidden);
+            }
+        }
+    }
+
+    fn query_hyprland_cursor() -> Option<(i32, i32)> {
+        use std::io::{Read, Write};
+        use std::os::unix::net::UnixStream;
+
+        let his = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok()?;
+        let xdg = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
+            let uid = unsafe { libc::getuid() };
+            format!("/run/user/{}", uid)
+        });
+        let sock_path = format!("{}/hypr/{}/.socket.sock", xdg, his);
+        let mut stream = UnixStream::connect(&sock_path).ok()?;
+        stream.write_all(b"cursorpos").ok()?;
+        let mut resp = String::new();
+        stream.read_to_string(&mut resp).ok()?;
+        let parts: Vec<&str> = resp.trim().split(',').map(|s| s.trim()).collect();
+        if parts.len() == 2 {
+            let x = parts[0].parse::<i32>().ok()?;
+            let y = parts[1].parse::<i32>().ok()?;
+            Some((x, y))
+        } else {
+            None
         }
     }
 
