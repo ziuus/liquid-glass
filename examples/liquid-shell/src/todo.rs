@@ -834,44 +834,10 @@ impl TodoWidget {
     }
 
     fn render_ui_overlay(&self, buf: &mut [u8]) {
-        let card_h = self.get_card_height();
         let tasks_add_bar_cy = self.get_tasks_add_bar_cy();
         let agenda_add_bar_cy = self.get_agenda_add_bar_cy();
         let tasks_offset_x = -self.tab_spring.value * (self.width as f32);
         let agenda_offset_x = (1.0 - self.tab_spring.value) * (self.width as f32);
-
-        // 1. 1px Outer Specular Rim (ONLY on outer shell)
-        UIFont::draw_rounded_rect_stroke(
-            buf,
-            self.width,
-            self.height,
-            180.0,
-            card_h * 0.5,
-            178.0,
-            card_h * 0.5 - 2.0,
-            Tokens::RADIUS_OUTER,
-            1.0,
-            if self.is_wallpaper_light {
-                Tokens::RIM_OUTER_LIGHT
-            } else {
-                Tokens::RIM_OUTER_DARK
-            },
-        );
-
-        // 2. Top Specular Bevel Highlight
-        UIFont::draw_segment(
-            buf,
-            self.width,
-            self.height,
-            (32.0, 2.0),
-            (328.0, 2.0),
-            1.0,
-            if self.is_wallpaper_light {
-                [255, 255, 255, 180]
-            } else {
-                [255, 255, 255, 65]
-            },
-        );
 
         // Apple macOS Typography & Contrast
         let (col_primary, col_secondary, col_dimmed, _col_accent, col_shadow) =

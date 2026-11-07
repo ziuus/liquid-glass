@@ -344,26 +344,6 @@ impl ClockWidget {
         let half_w = self.width as f32 * 0.5;
         let card_top = CARD_PAD;
 
-        // Outer rim specular highlight (clean 1px diamond cut, perfectly insetting padding)
-        let card_cx = half_w;
-        let card_cy = card_top + CARD_H * 0.5;
-        UIFont::draw_rounded_rect_stroke(
-            buf,
-            self.width,
-            self.height,
-            card_cx,
-            card_cy,
-            CARD_W * 0.5,
-            CARD_H * 0.5,
-            28.0,
-            1.0,
-            if self.is_wallpaper_light {
-                glass_core::Tokens::RIM_OUTER_LIGHT
-            } else {
-                glass_core::Tokens::RIM_OUTER_DARK
-            },
-        );
-
         // Top Centered Date
         let date_w = self.font.measure_text(&full_date_str, 16.5, FontWeight::Bold);
         let date_total_w = 18.0 + date_w;

@@ -1203,47 +1203,6 @@ impl IslandWidget {
         let island_h = self.current_h;
         let island_cy = island_top + island_h * 0.5;
 
-        // Base Island Physical Glass Body (Apple Liquid Glass rendered by WGPU glass shader)
-        let island_r = if self.mode == IslandMode::CompactPill {
-            island_h * 0.5
-        } else {
-            Tokens::RADIUS_OUTER
-        };
-
-        // Specular outer rim highlight (ONLY on outer shell)
-        UIFont::draw_rounded_rect_stroke(
-            buf,
-            self.width,
-            self.height,
-            island_cx,
-            island_cy,
-            island_w * 0.5,
-            island_h * 0.5,
-            island_r,
-            1.0,
-            if is_light {
-                Tokens::RIM_OUTER_LIGHT
-            } else {
-                Tokens::RIM_OUTER_DARK
-            },
-        );
-
-        // Top specular bevel highlight
-        let bevel_span = (island_w * 0.5 - island_r).max(10.0);
-        UIFont::draw_segment(
-            buf,
-            self.width,
-            self.height,
-            (island_cx - bevel_span, island_top + 1.2),
-            (island_cx + bevel_span, island_top + 1.2),
-            1.0,
-            if is_light {
-                [255, 255, 255, 180]
-            } else {
-                [255, 255, 255, 65]
-            },
-        );
-
         match self.mode {
             IslandMode::CompactPill => {
                 let disc_cx = island_cx - island_w * 0.5 + 22.0;

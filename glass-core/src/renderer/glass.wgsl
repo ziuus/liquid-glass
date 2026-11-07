@@ -1436,16 +1436,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var base_surface: vec3<f32>;
 
     if style_mode < 0.5 {
-        // ── 0.0: OBSIDIAN / CLEAN BACKGROUND ──
-        let obsidian_base = vec3<f32>(0.015, 0.015, 0.022);
-        base_surface = obsidian_base + vec3<f32>(spec_rim * 0.95);
+        // ── 0.0: OBSIDIAN / PITCH BLACK CLEAN BACKGROUND ──
+        base_surface = vec3<f32>(0.0, 0.0, 0.0);
     } else if style_mode < 1.5 {
         // ── 1.0: FROSTED GLASSMORPHISM ──
-        base_surface = col + vec3<f32>(spec_rim * 1.05);
+        base_surface = col + vec3<f32>(spec_rim * 0.45);
     } else {
         // ── 2.0: LIQUID GLASS ──
-        // Strictly NO gray meniscus band! Only the bent backdrop col + crisp directional specular rim!
-        base_surface = col + vec3<f32>(spec_rim * 1.15);
+        // Seamless optical refraction band, zero artificial stroke border
+        base_surface = col + vec3<f32>(spec_rim * 0.45);
     }
 
     let app = render_element_appearance(local_px, half_size, params.padding, params.tint.y, params.time, params.tint, is_light);
