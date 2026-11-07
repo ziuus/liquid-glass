@@ -2436,13 +2436,17 @@ impl IslandWidget {
                 .shape(island_shape)
                 .bounds(x_norm, y_norm, w_norm, h_norm)
                 .curvature(0.04)
-                .bevel(14.0)
+                .bevel(12.0)
                 .refraction(0.40)
                 .dispersion(0.015)
-                .blur(8.0)
+                .blur(3.0)
                 .specular(1.10)
                 .fresnel(0.60)
-                .style_mode(self.style_mode)
+                .style_mode(if self.is_window_overlapping {
+                    0.0
+                } else {
+                    self.style_mode
+                })
                 .tint(
                     if self.music.is_playing { 1.0 } else { 0.0 },
                     if self.is_pressed { 1.0 } else { 0.0 },
@@ -2752,8 +2756,14 @@ fn start_dbus_monitor() {
         let _ = Command::new("pkill")
             .args(["-f", "python3.*liquid_island"])
             .status();
+        let _ = Command::new("systemctl")
+            .args(["--user", "stop", "mako"])
+            .status();
+        let _ = Command::new("pkill").args(["-9", "mako"]).status();
+
         let script = r#"
 import dbus
+import dbus.service
 from dbus.mainloop.glib import DBusGMainLoop
 from gi.repository import GLib
 import json
@@ -2783,28 +2793,60 @@ def writer():
 threading.Thread(target=writer, daemon=True).start()
 
 DBusGMainLoop(set_as_default=True)
+bus = dbus.SessionBus()
+
+class NotificationServer(dbus.service.Object):
+    def __init__(self, bus):
+        bus_name = dbus.service.BusName('org.freedesktop.Notifications', bus, do_not_queue=True)
+        super().__init__(bus_name, '/org/freedesktop/Notifications')
+        self._next_id = 1
+
+    @dbus.service.method('org.freedesktop.Notifications', in_signature='susssasa{sv}i', out_signature='u')
+    def Notify(self, app_name, replaces_id, app_icon, summary, body, actions, hints, timeout):
+        nid = self._next_id
+        self._next_id += 1
+        raw_app = str(app_name).strip()
+        if not raw_app:
+            raw_app = "System"
+        payload = json.dumps({"type": "notification", "app": raw_app, "summary": str(summary), "body": str(body)})
+        q.put(payload)
+        return nid
+
+    @dbus.service.method('org.freedesktop.Notifications', in_signature='', out_signature='ssss')
+    def GetServerInformation(self):
+        return ("LiquidIsland", "LiquidGlass", "1.0", "1.2")
+
+    @dbus.service.method('org.freedesktop.Notifications', in_signature='', out_signature='as')
+    def GetCapabilities(self):
+        return ["body", "actions"]
+
+    @dbus.service.method('org.freedesktop.Notifications', in_signature='u', out_signature='')
+    def CloseNotification(self, id):
+        pass
+
 try:
-    bus = dbus.SessionBus()
-    bus_obj = bus.get_object('org.freedesktop.DBus', '/org/freedesktop/DBus')
-    bus_iface = dbus.Interface(bus_obj, 'org.freedesktop.DBus.Monitoring')
-    bus_iface.BecomeMonitor(["interface='org.freedesktop.Notifications'"], 0)
-
-    def msg_handler(bus, msg):
-        if msg.get_member() == 'Notify':
-            args = msg.get_args_list()
-            raw_app = str(args[0]) if len(args) > 0 else 'System'
-            summary = str(args[3]) if len(args) > 3 else ''
-            body = str(args[4]) if len(args) > 4 else ''
-            app_name = raw_app
-            if raw_app.lower() == 'notify-send':
-                app_name = 'Notification'
-            payload = json.dumps({"type": "notification", "app": app_name, "summary": summary, "body": body})
-            q.put(payload)
-
-    bus.add_message_filter(msg_handler)
-    GLib.MainLoop().run()
+    server = NotificationServer(bus)
 except Exception:
-    pass
+    # Fallback to monitor mode if another service has the name
+    try:
+        bus_obj = bus.get_object('org.freedesktop.DBus', '/org/freedesktop/DBus')
+        bus_iface = dbus.Interface(bus_obj, 'org.freedesktop.DBus.Monitoring')
+        bus_iface.BecomeMonitor(["interface='org.freedesktop.Notifications'"], 0)
+
+        def msg_handler(bus, msg):
+            if msg.get_member() == 'Notify':
+                args = msg.get_args_list()
+                raw_app = str(args[0]).strip() if len(args) > 0 and str(args[0]).strip() else 'System'
+                summary = str(args[3]) if len(args) > 3 else ''
+                body = str(args[4]) if len(args) > 4 else ''
+                payload = json.dumps({"type": "notification", "app": raw_app, "summary": summary, "body": body})
+                q.put(payload)
+
+        bus.add_message_filter(msg_handler)
+    except Exception:
+        pass
+
+GLib.MainLoop().run()
 "#;
         let child = Command::new("python3").arg("-c").arg(script).spawn();
         if let Ok(mut c) = child {

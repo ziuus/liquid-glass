@@ -1354,161 +1354,103 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     
     // ════════════════════════════════════════════
-    // 2. ANALYTIC CONVEX SQUIRCLE BEZEL & 3D NORMAL
+    // 2. ANALYTIC CONVEX SQUIRCLE BEZEL & 2D OUTWARD NORMAL
     // ════════════════════════════════════════════
     let depth = max(-sdf, 0.0);
-    // Meniscus bezel proportional to element size: max 35% of min(w, h), floor of 14.0px
-    let max_element_bezel = max(0.35 * min(bounds_px.z, bounds_px.w), 14.0);
-    let bezel = clamp(params.bevel, 14.0, max_element_bezel); // Clean edge bevel (14-18px)
-    let t = clamp(depth / bezel, 0.0, 1.0);                  // 0.0 at outer rim, 1.0 at flat interior
-    let u = 1.0 - t;
-
-    // Height profile: convex liquid squircle curve (0.0 at rim -> 1.0 at flat interior)
-    let h = sqrt(max(1.0 - u * u, 0.0));
-
-    // Analytic slope: dh/d(depth) = u / (bezel * sqrt(1.0 - u^2))
-    // Strictly zero at t = 1.0 (flat interior), physically bounded contact angle at rim
-    let dh_dt = u / max(sqrt(1.0 - u * u), 0.28);
-    let slope = dh_dt / bezel;
+    let bezel = clamp(params.bevel, 10.0, 14.0); // 10-14px physical bezel
+    let t = clamp(depth / bezel, 0.0, 1.0);       // 0.0 at outer edge, 1.0 where bezel ends
+    let tilt = 1.0 - t;                            // steepest at rim, 0 in interior
 
     // Exact analytical 2D outward unit normal of rounded rectangle
     let grad_2d = rr_normal(local_px, half_size, r);
-
-    // C1-continuous corner curvature factor (0.0 on straight edges, 1.0 at 45-deg corner apex)
     let corner_factor = clamp(abs(grad_2d.x * grad_2d.y) * 4.0, 0.0, 1.0);
 
-    // 3D Surface Normal from convex liquid bubble:
-    let N = normalize(vec3<f32>(grad_2d * (slope * 20.0), 1.0));
-    let N_2d = N.xy;
-
-    // ════════════════════════════════════════════
-    // 3. PHYSICAL 3D SNELL'S LAW REFRACTION & CAUCHY DISPERSION
-    // ════════════════════════════════════════════
-    // Refract incoming eye ray (0, 0, -1) through surface normal N with acrylic index n = 1.52
-    let eta = 1.0 / 1.52;
-    let R = refract(vec3<f32>(0.0, 0.0, -1.0), N, eta);
-
     let style_mode = params._pad.x; // 0.0 = Obsidian (Clean), 1.0 = Glassmorphism (Frosted), 2.0 = Liquid Glass
-
-    // Smooth, physically bounded optical ray deflection
-    let corner_refract_boost = 1.0 + 0.30 * corner_factor;
-    let meniscus_lensing = pow(1.0 - t, 1.4) * corner_refract_boost;
-    let px_to_uv = vec2<f32>(1.0, 1.0) / params.surface_size;
-
-    // Optical convex lens magnification for Liquid Glass mode (style 2.0)
-    let center_uv = center / params.surface_size;
-    let lens_magnify_uv = mix(uv, center_uv + (uv - center_uv) * 0.90, pow(t, 1.2) * 0.35);
-    let sample_origin_uv = select(uv, lens_magnify_uv, style_mode >= 1.5);
-
-    let refr_scale = select(0.28, 0.42, style_mode >= 1.5);
-    let refr_px = (R.xy / max(-R.z, 0.001)) * (bezel * refr_scale * meniscus_lensing * params.refraction_strength);
-    let base_uv = sample_origin_uv + refr_px * px_to_uv;
-
-    // Clean, sub-pixel Cauchy dispersion (prevents wavy artifacts / rainbow smear)
-    let disp_scale = select(16.0, 24.0, style_mode >= 1.5);
-    let ca_offset = grad_2d * (params.dispersion * disp_scale * meniscus_lensing) * px_to_uv;
-
-    let uv_r = clamp(base_uv - ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
-    let uv_g = clamp(base_uv, vec2<f32>(0.001), vec2<f32>(0.999));
-    let uv_b = clamp(base_uv + ca_offset, vec2<f32>(0.001), vec2<f32>(0.999));
+    let is_light = params.is_light;
 
     // ════════════════════════════════════════════
-    // 4. TRUE PHYSICAL LIQUID GLASS TRANSMISSION
+    // 3. PHYSICAL 3D SNELL'S LAW REFRACTION BAND & CAUCHY DISPERSION
     // ════════════════════════════════════════════
+    // Refraction bending occurs strictly inside the bezel (depth < bezel)
+    let thickness = 11.0;
+    let off_px = grad_2d * (thickness * tilt * tilt);
+    let off_uv = off_px / params.surface_size;
+
+    // Chromatic Cauchy dispersion (offsets scaled 1.00, 1.04, 1.08 along bending vector):
+    let uv_r = clamp(uv + off_uv * 1.00, vec2<f32>(0.001), vec2<f32>(0.999));
+    let uv_g = clamp(uv + off_uv * 1.04, vec2<f32>(0.001), vec2<f32>(0.999));
+    let uv_b = clamp(uv + off_uv * 1.08, vec2<f32>(0.001), vec2<f32>(0.999));
+
     let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
     let sharp_g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
     let sharp_b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
     let sharp_col = vec3<f32>(sharp_r, sharp_g, sharp_b);
 
     var col: vec3<f32>;
-    // In Liquid Glass mode: preserve crystal-clear optical transparency with subtle softening
-    let effective_blur = select(params.blur_radius, min(params.blur_radius, 2.0), style_mode >= 1.5);
-    if effective_blur <= 0.5 {
-        col = sharp_col;
+
+    if style_mode >= 1.5 {
+        // ── 2.0: LIQUID GLASS ──
+        // Interior at 1.0x (unmagnified, clear), with subtle 2px softening and faint 6% lift
+        let cur_radius = 2.0 * t; // Sharp at rim, subtle soft interior
+        let frosted_col = sample_frost_blur(uv, cur_radius);
+        let base_crystal = mix(sharp_col, frosted_col, 0.20 * t);
+
+        // Faint 6% physical lift across interior (no gray band, no slab darkening)
+        col = base_crystal * 1.06;
+
+        // Faint diagonal gradient across interior (top-left lighter 3-5%) for physical glass depth
+        let diag_t = clamp((local_px.x + local_px.y) / (half_size.x + half_size.y) * 0.5 + 0.5, 0.0, 1.0);
+        col *= mix(1.04, 0.98, diag_t);
+    } else if style_mode >= 0.5 {
+        // ── 1.0: FROSTED GLASSMORPHISM ──
+        // 20-tap frosted blur with subtle translucent milky or dark vibrancy lift
+        let frosted_col = sample_frost_blur(uv, clamp(params.blur_radius, 4.0, 8.0));
+        let vibrancy_lift = mix(vec3<f32>(0.14, 0.16, 0.22), vec3<f32>(0.94, 0.96, 1.0), is_light);
+        col = mix(frosted_col, vibrancy_lift, 0.14) * 1.04;
     } else {
-        // Continuous variable blur: smoothly scales from sharp rim to frosted core
-        let blur_t = smoothstep(0.0, 2.0 * bezel, depth);
-        let cur_radius = clamp(effective_blur * blur_t, 0.0, 14.0);
-        if cur_radius <= 0.4 {
-            col = sharp_col;
-        } else {
-            let frosted_col = sample_frost_blur(uv, cur_radius);
-            col = mix(sharp_col, frosted_col, blur_t);
-        }
-    }
-
-    // Clean transmissive glass substrate without artificial darkening veils (keeps interior within ±5% of backdrop)
-    let is_light = params.is_light;
-    let bg_luma = dot(col, vec3<f32>(0.299, 0.587, 0.114));
-    let sat_boost = mix(1.08, 1.05, is_light);
-    col = mix(vec3<f32>(bg_luma), col, sat_boost);
-
-    // Subtle physical transmission substrate
-    let light_substrate = mix(col, vec3<f32>(0.99, 0.995, 1.0), 0.02);
-    let dark_substrate = col;
-    col = mix(dark_substrate, light_substrate, is_light);
-
-    // Optional custom tint absorption (Beer-Lambert attenuation for generic glass cards)
-    if params.padding <= 0.0 && length(params.tint.xyz) > 0.01 && max(max(params.tint.x, params.tint.y), params.tint.z) <= 1.0 {
-        let tint_absorb = mix(vec3<f32>(1.0), params.tint.xyz, 0.35);
-        col *= tint_absorb;
+        // ── 0.0: OBSIDIAN / CLEAN BACKGROUND ──
+        col = sharp_col;
     }
 
     // ════════════════════════════════════════════
-    // 5. DIRECTIONAL 3D LIGHT SOURCE & GEOMETRY
+    // 4. DIRECTIONAL SPECULAR HAIRLINE & INNER HIGHLIGHT
     // ════════════════════════════════════════════
-    let light_dir_3d = normalize(vec3<f32>(-0.45, -0.65, 0.75));
-    let view_dir_3d = vec3<f32>(0.0, 0.0, 1.0);
+    let light_vec_2d = normalize(vec2<f32>(-0.45, -0.65)); // Top-left light source
+    let light_facing = max(dot(grad_2d, light_vec_2d), 0.0);
 
-    let light_vec_2d = normalize(vec2<f32>(-0.45, -0.65));
-    let light_facing = max(dot(N_2d, light_vec_2d), 0.0);
+    // Directional weight: ~100% at top-left and ~30% at bottom-right (gives glass tangible thickness)
+    let dir_weight = mix(0.30, 1.00, light_facing);
 
-    // Pure directional specular glint: strong at top-left, fading cleanly to zero at bottom rim (no bottom smudge)
+    // Crisp 1.0 - 1.5px specular line right at the outer edge
     let corner_mult = 1.0 + 0.35 * corner_factor;
-    let dir_spec = pow(light_facing, 1.40);
-    let edge_spec = smoothstep(1.4, 0.0, depth) * dir_spec * corner_mult;
-    let soft_falloff = smoothstep(3.0, 0.0, depth) * 0.10 * dir_spec;
-    let spec_rim = (edge_spec + soft_falloff) * params.specular_strength;
+    let rim_1px = smoothstep(1.5, 0.2, depth) * corner_mult;
 
-    // On light backdrops: directional dark contour dip to prevent washed-out white-on-white edges
-    let dark_edge = smoothstep(1.8, 0.0, depth) * (1.0 - light_facing * 0.60) * mix(0.0, 0.28, is_light);
-    col = col * (1.0 - dark_edge) + vec3<f32>(spec_rim);
+    // Soft 2.0 - 4.0px inner highlight
+    let inner_highlight = smoothstep(4.0, 0.8, depth) * 0.20;
 
-    let side_bevel_flare = 0.0; // Strictly eliminated bottom-rim interactive smudge/blob
-    let side_rim_flare = 0.0;
+    let spec_rim = (rim_1px * dir_weight + inner_highlight * dir_weight) * params.specular_strength;
 
     // ════════════════════════════════════════════
-    // 9. CONTROLS, FLUID EMISSION & GLYPHS
-    // ════════════════════════════════════════════
-    let app = render_element_appearance(local_px, half_size, params.padding, params.tint.y, params.time, params.tint, is_light);
-
-    // ════════════════════════════════════════════
-    // 10. MASTER COMPOSITE (THREE DISTINCT OPTIONS: OBSIDIAN, GLASSMORPHISM, LIQUID GLASS)
+    // 5. MASTER COMPOSITE (OBSIDIAN, GLASSMORPHISM, LIQUID GLASS)
     // ════════════════════════════════════════════
     var base_surface: vec3<f32>;
 
     if style_mode < 0.5 {
-        // ── 0.0: OBSIDIAN / CLEAN BACKGROUND (Apple iOS Dynamic Island & Siri) ──
-        // Pure deep obsidian pitch-black body (#040406) with crisp 1.2px diamond-cut glass hairline rim
+        // ── 0.0: OBSIDIAN / CLEAN BACKGROUND ──
         let obsidian_base = vec3<f32>(0.015, 0.015, 0.022);
-        let rim_sheen = spec_rim * 0.95;
-        base_surface = obsidian_base + vec3<f32>(rim_sheen);
+        base_surface = obsidian_base + vec3<f32>(spec_rim * 0.95);
     } else if style_mode < 1.5 {
-        // ── 1.0: FROSTED GLASSMORPHISM (Apple macOS Big Sur / Sonoma Vibrancy) ──
-        // 20-tap frosted blur with subtle translucent milky or dark vibrancy lift
-        let frosted_base = col; // Sampled Poisson frost blur
-        let vibrancy_lift = mix(vec3<f32>(0.12, 0.14, 0.20), vec3<f32>(0.96, 0.97, 1.0), is_light);
-        let vibrancy_alpha = mix(0.22, 0.28, is_light);
-        let rim_sheen = spec_rim * 1.05;
-        base_surface = mix(frosted_base, vibrancy_lift, vibrancy_alpha) + vec3<f32>(rim_sheen);
+        // ── 1.0: FROSTED GLASSMORPHISM ──
+        base_surface = col + vec3<f32>(spec_rim * 1.05);
     } else {
-        // ── 2.0: LIQUID GLASS (Clean Optical Lens Magnification / Water Droplet) ──
-        // Translucent convex lens magnification with realistic meniscus caustic curvature
-        let liquid_base = col;
-        let caustic_meniscus = pow(sin(t * 3.14159), 2.2) * 0.14 * params.specular_strength;
-        let rim_sheen = spec_rim * 1.25;
-        base_surface = liquid_base + vec3<f32>(caustic_meniscus + rim_sheen);
+        // ── 2.0: LIQUID GLASS ──
+        // Strictly NO gray meniscus band! Only the bent backdrop col + crisp directional specular rim!
+        base_surface = col + vec3<f32>(spec_rim * 1.15);
     }
+
+    let app = render_element_appearance(local_px, half_size, params.padding, params.tint.y, params.time, params.tint, is_light);
+    let side_bevel_flare = 0.0;
+    let side_rim_flare = 0.0;
 
     var fin = base_surface;
 

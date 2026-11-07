@@ -1070,19 +1070,19 @@ impl TodoWidget {
                 });
 
             let f0_unselected = if f0_is_light {
-                [18, 24, 34, 255]
+                [12, 16, 24, 255]
             } else {
-                [170, 178, 195, 230]
+                [215, 222, 238, 255]
             };
             let f1_unselected = if f1_is_light {
-                [18, 24, 34, 255]
+                [12, 16, 24, 255]
             } else {
-                [170, 178, 195, 230]
+                [215, 222, 238, 255]
             };
             let f2_unselected = if f2_is_light {
-                [18, 24, 34, 255]
+                [12, 16, 24, 255]
             } else {
-                [170, 178, 195, 230]
+                [215, 222, 238, 255]
             };
 
             let f0_col = if self.active_filter == 0 {
@@ -1859,7 +1859,6 @@ impl TodoWidget {
 
             // Pass continuous spring-animated values to shader
             let tab_val = self.tab_spring.value;
-            let filter_val = self.filter_spring.value;
 
             let is_light_f32 = if self.is_wallpaper_light { 1.0 } else { 0.0 };
 
@@ -1873,10 +1872,10 @@ impl TodoWidget {
                 })
                 .bounds(0.0, 0.0, 1.0, h_norm)
                 .curvature(0.04)
-                .bevel(14.0)
+                .bevel(12.0)
                 .refraction(0.40)
-                .dispersion(filter_val) // Continuous Filter spring
-                .blur(8.0)
+                .dispersion(0.015)
+                .blur(3.0)
                 .tint(0.0, progress_packed, 0.0, is_light_f32)
                 .roughness(-1.0)
                 .specular(1.10)

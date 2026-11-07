@@ -163,9 +163,9 @@ fn test_render_liquid_glass_card() {
             dispersion: 0.015,
             fresnel_strength: 0.60,
             specular_strength: 1.10,
-            blur_radius: 8.0,
+            blur_radius: 3.0,
             curvature: 0.04,
-            bevel: 14.0,
+            bevel: 12.0,
             time: 1.0,
             deformation: 0.0,
             corner_radius: 28.0,
@@ -173,7 +173,7 @@ fn test_render_liquid_glass_card() {
             surface_size: [width as f32, height as f32],
             is_light: 0.0,
             padding: 0.0,
-            _pad: [0.0, 0.0],
+            _pad: [2.0, 0.0],
         };
 
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -357,10 +357,26 @@ fn test_render_liquid_glass_card() {
         rx.recv().unwrap().expect("Failed to map buffer");
 
         let data = buffer_slice.get_mapped_range();
+        let mut final_composite = bg_data.clone();
+        for i in (0..final_composite.len()).step_by(4) {
+            let a = data[i + 3] as f32 / 255.0;
+            if a > 0.0 {
+                let r = data[i] as f32;
+                let g = data[i + 1] as f32;
+                let b = data[i + 2] as f32;
+                let bg_r = final_composite[i] as f32;
+                let bg_g = final_composite[i + 1] as f32;
+                let bg_b = final_composite[i + 2] as f32;
+                final_composite[i] = (r * a + bg_r * (1.0 - a)).round() as u8;
+                final_composite[i + 1] = (g * a + bg_g * (1.0 - a)).round() as u8;
+                final_composite[i + 2] = (b * a + bg_b * (1.0 - a)).round() as u8;
+            }
+        }
+
         let out_path = "/home/zius/.gemini/antigravity-cli/brain/64634fbc-40f0-4ff7-b05d-73575fd4890c/liquid_glass_rendered_card.png";
         image::save_buffer(
             out_path,
-            &data,
+            &final_composite,
             width,
             height,
             image::ExtendedColorType::Rgba8,
