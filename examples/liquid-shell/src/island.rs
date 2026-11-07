@@ -481,6 +481,11 @@ impl IslandWidget {
                     region.add(card_x, 0, card_w, card_h);
                 }
             }
+        } else {
+            // Invisible 2px hair strip across top center for immediate edge contact
+            let strip_w = 400;
+            let strip_x = (self.width as i32 - strip_w) / 2;
+            region.add(strip_x, 0, strip_w, 2);
         }
         self.surface.set_input_region(Some(&region));
         region.destroy();
@@ -529,6 +534,12 @@ impl IslandWidget {
                 let ly = event.position.1 as f32;
                 self.cursor_pos = [lx / (self.width as f32), ly / (self.height as f32)];
                 self.hot_edge_dwell_start = None;
+                if self.mode == IslandMode::Hidden {
+                    self.set_mode(IslandMode::CompactPill);
+                    self.is_hovered = true;
+                    self.last_interaction = Instant::now();
+                    return true;
+                }
                 if self.is_inside_island(lx, ly) {
                     self.is_hovered = true;
                     self.last_interaction = Instant::now();
@@ -550,6 +561,13 @@ impl IslandWidget {
                 let lx = event.position.0 as f32;
                 let ly = event.position.1 as f32;
                 self.cursor_pos = [lx / (self.width as f32), ly / (self.height as f32)];
+
+                if self.mode == IslandMode::Hidden {
+                    self.set_mode(IslandMode::CompactPill);
+                    self.is_hovered = true;
+                    self.last_interaction = Instant::now();
+                    return true;
+                }
 
                 let inside = self.is_inside_island(lx, ly);
                 if inside {
@@ -1093,18 +1111,11 @@ impl IslandWidget {
                     (island_left..=island_right).contains(&cx) && (0..=island_bottom).contains(&cy);
 
                 if is_at_top_edge {
-                    let dwell = self.hot_edge_dwell_start.get_or_insert_with(Instant::now);
-                    let required_dwell = if cy <= 1 {
-                        Duration::from_millis(0)
-                    } else {
-                        Duration::from_millis(40)
-                    };
-                    if dwell.elapsed() >= required_dwell {
-                        if self.mode == IslandMode::Hidden {
-                            self.set_mode(IslandMode::CompactPill);
-                        }
-                        self.last_interaction = Instant::now();
+                    if self.mode == IslandMode::Hidden {
+                        self.set_mode(IslandMode::CompactPill);
                     }
+                    self.last_interaction = Instant::now();
+                    self.hot_edge_dwell_start = None;
                 } else if is_inside_island && self.mode != IslandMode::Hidden {
                     self.last_interaction = Instant::now();
                     self.hot_edge_dwell_start = None;

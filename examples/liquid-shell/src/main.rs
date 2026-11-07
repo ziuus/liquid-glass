@@ -24,7 +24,7 @@ use wayland_client::{Connection, Proxy, QueueHandle};
 
 mod island;
 mod todo;
-use island::IslandWidget;
+use island::{IslandMode, IslandWidget};
 use todo::TodoWidget;
 
 struct ShellApp {
@@ -529,7 +529,7 @@ fn main() {
             || app.island.is_hovered
             || app.todo.is_hovered;
 
-        let timeout_ms = if animating {
+        let timeout_ms = if animating || app.island.mode == IslandMode::Hidden {
             16
         } else {
             let sec = now_local.second();
