@@ -1049,29 +1049,37 @@ impl IslandWidget {
     }
 
     pub fn check_window_overlap(&mut self) {
-        let check_interval = Duration::from_millis(300);
+        let check_interval = Duration::from_millis(150);
         if self.last_window_check.elapsed() < check_interval {
             return;
         }
         self.last_window_check = Instant::now();
 
-        // 1920x1080 display: Surface is 640x180 centered at (1920 - 640) / 2 = 640
-        // Pill target_w is 168, centered inside surface at (640 - 168) / 2 = 236
-        // Actual monitor X bounds of pill: 640 + 236 = 876, width: 168
-        // Actual monitor Y bounds: pos_y (12) + target_y (12) = 24, height: 28
+        // Stable monitor top-center zone: x in 845..1075, y in 0..50
         let mon_w = 1920i32;
-        let surf_x = (mon_w - self.width as i32) / 2;
-        let pill_w = self.target_w as i32;
-        let pill_x = surf_x + (self.width as i32 - pill_w) / 2;
-        let pill_y = self.pos_y + self.target_y as i32;
-        let pill_h = self.target_h as i32;
+        let check_w = 230i32;
+        let check_x = (mon_w - check_w) / 2;
+        let check_y = 0i32;
+        let check_h = 50i32;
 
-        let overlapping = Self::query_hyprland_overlap(pill_x, pill_y, pill_w, pill_h);
+        let overlapping = Self::query_hyprland_overlap(check_x, check_y, check_w, check_h);
         if overlapping != self.is_window_overlapping {
             self.is_window_overlapping = overlapping;
             self.animating = true;
             self.needs_redraw = true;
             self.needs_input_region_update = true;
+        }
+
+        if overlapping {
+            // Automatically hide when overlapping with apps/windows, even if expanded
+            if self.mode != IslandMode::Hidden {
+                self.set_mode(IslandMode::Hidden);
+            }
+        } else {
+            // Always show on desktop, whether previously hidden or not
+            if self.mode == IslandMode::Hidden {
+                self.set_mode(IslandMode::CompactPill);
+            }
         }
     }
 
