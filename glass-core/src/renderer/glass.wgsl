@@ -1350,18 +1350,27 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     // Outside the rounded rectangle: soft ambient drop shadow or transparent
     if sdf > 0.0 {
-        if style_mode >= 0.5 && sdf <= 26.0 {
-            let bg_under_shadow = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
-            let shadow_luma = dot(bg_under_shadow, vec3<f32>(0.2126, 0.7152, 0.0722));
-            let is_shadow_light = (is_light > 0.5 || shadow_luma > 0.50);
+        if style_mode >= 0.5 {
+            // Directional downward shadow (sunlight from top: +3.0px downward offset)
+            let shadow_px = local_px - vec2<f32>(0.0, 3.0);
+            let shadow_sdf = rr_sdf(shadow_px, half_size, r);
 
-            // Dual-lobe shadow: tight contact occlusion (0-6px) + soft ambient spread (6-26px)
-            let contact = exp(-sdf * 0.35) * 0.40;
-            // On light backgrounds, ambient shadow is deeper and wider to lift the card off the surface
-            let ambient_weight = select(0.18, 0.42, is_shadow_light);
-            let ambient = exp(-sdf * 0.08) * ambient_weight;
-            let shadow_alpha = (contact + ambient) * (1.0 - smoothstep(20.0, 26.0, sdf));
-            return vec4<f32>(vec3<f32>(0.0, 0.0, 0.0), shadow_alpha);
+            if shadow_sdf <= 18.0 {
+                let bg_under_shadow = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
+                let shadow_luma = dot(bg_under_shadow, vec3<f32>(0.2126, 0.7152, 0.0722));
+                let is_shadow_light = (is_light > 0.5 || shadow_luma > 0.50);
+
+                // Subtle tight contact shadow (0-3px, max 0.08 alpha)
+                let contact = exp(-sdf * 0.55) * 0.08;
+                // Soft directional ambient pool (max 0.08 on dark, 0.12 on light)
+                let ambient_weight = select(0.08, 0.12, is_shadow_light);
+                let ambient = exp(-shadow_sdf * 0.18) * ambient_weight;
+                let shadow_alpha = (contact + ambient) * (1.0 - smoothstep(14.0, 18.0, shadow_sdf));
+
+                // Elegant slate-tinted shadow (never harsh ink-black smudge)
+                let shadow_rgb = vec3<f32>(0.03, 0.04, 0.07);
+                return vec4<f32>(shadow_rgb, shadow_alpha);
+            }
         }
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
@@ -1431,24 +1440,26 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     if style_mode >= 1.5 {
         // ── 2.0: LIQUID GLASS ──
-        // For notifications (el_type == 27.0), blend subtle blur for crisp text contrast
+        // For island notifications and capsules (el_type == 27.0), blend blur & backing for stellar legibility
         let is_island = (params.padding >= 26.9 && params.padding <= 27.1);
-        let base_blur = select(0.0, 4.0, is_island);
+        let base_blur = select(0.0, 5.0, is_island);
         let cur_radius = max(base_blur, 2.0 * t);
         let frosted_col = sample_frost_blur(uv, cur_radius);
-        let base_crystal = mix(sharp_col, frosted_col, select(0.20 * t, 0.45, is_island));
+        let base_crystal = mix(sharp_col, frosted_col, select(0.20 * t, 0.60, is_island));
 
         let local_crystal_luma = dot(base_crystal, vec3<f32>(0.2126, 0.7152, 0.0722));
 
         if effective_light > 0.5 {
             // Pristine optical glass over light backdrops (linear light space)
             let light_density = mix(0.92, 0.86, (local_px.y / half_size.y) * 0.5 + 0.5);
-            col = base_crystal * light_density;
+            let porcelain_tint = vec3<f32>(0.96, 0.97, 0.99);
+            col = mix(base_crystal * light_density, porcelain_tint, select(0.0, 0.25, is_island));
         } else {
             // Luminous smoked crystal over dark backdrops:
-            // 0.003 linear ambient sheen gives delicate ~15/255 sRGB presence (never gray mud!)
             let top_sheen = mix(0.003, 0.0005, (local_px.y / half_size.y) * 0.5 + 0.5);
-            col = base_crystal * 1.04 + vec3<f32>(top_sheen) * clamp(1.0 - local_crystal_luma * 4.0, 0.0, 1.0);
+            let smoked_tint = vec3<f32>(0.07, 0.08, 0.11);
+            let crystal_base = mix(base_crystal * 1.04, smoked_tint, select(0.0, 0.35, is_island));
+            col = crystal_base + vec3<f32>(top_sheen) * clamp(1.0 - local_crystal_luma * 4.0, 0.0, 1.0);
         }
 
         // Faint diagonal gradient across interior (top-left lighter 3-5%) for physical glass depth

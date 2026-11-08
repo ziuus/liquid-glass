@@ -80,6 +80,10 @@ impl HasDisplayHandle for WaylandWindow {
     }
 }
 
+pub const CARD_W: f32 = 360.0;
+pub const CARD_H: f32 = 455.0;
+pub const CARD_PAD: f32 = 24.0;
+
 pub struct TodoWidget {
     #[allow(dead_code)]
     pub layer_surface: Option<LayerSurface>,
@@ -150,10 +154,10 @@ impl TodoWidget {
             + Dispatch<ZwlrLayerSurfaceV1, LayerSurfaceData>
             + 'static,
     {
-        let width = 360u32;
-        let height = 455u32;
-        let pos_x = 1532i32;
-        let pos_y = 56i32;
+        let width = (CARD_W + CARD_PAD * 2.0) as u32; // 408
+        let height = (CARD_H + CARD_PAD * 2.0) as u32; // 503
+        let pos_x = 1532i32 - CARD_PAD as i32; // 1508
+        let pos_y = 56i32 - CARD_PAD as i32; // 32
 
         let surface = compositor.create_surface(qh);
         let layer_surface = layer_shell.create_layer_surface(
@@ -309,8 +313,13 @@ impl TodoWidget {
                 let new_y = py / self.height as f32;
                 self.cursor_pos = [new_x, new_y];
 
+                let lx = px - CARD_PAD;
+                let ly = py - CARD_PAD;
+                self.is_hovered =
+                    (0.0..=CARD_W).contains(&lx) && (0.0..=self.get_card_height()).contains(&ly);
+
                 if let Some(row) = self.task_pressed_row {
-                    let dx = px - self.press_start_pos[0];
+                    let dx = lx - self.press_start_pos[0];
                     if dx < -6.0 || self.is_sliding {
                         self.is_sliding = true;
                         self.slide_offsets[row] = dx.clamp(-140.0, 0.0);
@@ -321,12 +330,18 @@ impl TodoWidget {
             PointerEventKind::Press { button, .. } => {
                 let px = event.position.0 as f32;
                 let py = event.position.1 as f32;
+                let lx = px - CARD_PAD;
+                let ly = py - CARD_PAD;
                 let is_right = button == 0x111;
 
-                let half_w = self.width as f32 * 0.5;
-                let half_h = self.height as f32 * 0.5;
-                let local_x = px - half_w;
-                let local_y = py - half_h;
+                if lx < 0.0 || lx > CARD_W || ly < 0.0 || ly > self.get_card_height() {
+                    return false;
+                }
+
+                let half_w = CARD_W * 0.5;
+                let half_h = CARD_H * 0.5;
+                let local_x = lx - half_w;
+                let local_y = ly - half_h;
 
                 let mut touched_row = None;
                 if self.active_tab == 0 && !is_right {
@@ -342,10 +357,10 @@ impl TodoWidget {
 
                 if let Some(r) = touched_row {
                     self.task_pressed_row = Some(r);
-                    self.press_start_pos = [px, py];
+                    self.press_start_pos = [lx, ly];
                     self.is_sliding = false;
                 } else {
-                    self.handle_click(px, py, is_right);
+                    self.handle_click(lx, ly, is_right);
                 }
                 true
             }
@@ -525,11 +540,11 @@ impl TodoWidget {
         }
     }
 
-    fn handle_click(&mut self, px: f32, py: f32, is_right: bool) -> bool {
-        let half_w = self.width as f32 * 0.5;
-        let half_h = self.height as f32 * 0.5;
-        let local_x = px - half_w;
-        let local_y = py - half_h;
+    fn handle_click(&mut self, lx: f32, ly: f32, is_right: bool) -> bool {
+        let half_w = CARD_W * 0.5;
+        let half_h = CARD_H * 0.5;
+        let local_x = lx - half_w;
+        let local_y = ly - half_h;
 
         // Check Top Tabs & Header Settings Button (tab_y = -195.0, cy = 32.5)
         if (local_y - (-195.0)).abs() <= 22.0 {
@@ -843,10 +858,12 @@ impl TodoWidget {
     }
 
     fn render_ui_overlay(&self, buf: &mut [u8]) {
+        let content_w = CARD_W as u32;
+        let content_h = CARD_H as u32;
         let tasks_add_bar_cy = self.get_tasks_add_bar_cy();
         let agenda_add_bar_cy = self.get_agenda_add_bar_cy();
-        let tasks_offset_x = -self.tab_spring.value * (self.width as f32);
-        let agenda_offset_x = (1.0 - self.tab_spring.value) * (self.width as f32);
+        let tasks_offset_x = -self.tab_spring.value * CARD_W;
+        let agenda_offset_x = (1.0 - self.tab_spring.value) * CARD_W;
 
         let is_light = self.effective_is_light();
 
@@ -880,8 +897,8 @@ impl TodoWidget {
         // Segmented Track (cx = 160.0, cy = 32.5, half_w = 138.0, half_h = 16.0, r = 10.0)
         UIFont::draw_rounded_rect_fill(
             buf,
-            self.width,
-            self.height,
+            content_w,
+            content_h,
             160.0,
             32.5,
             138.0,
@@ -903,8 +920,8 @@ impl TodoWidget {
         };
         UIFont::draw_rounded_rect_fill(
             buf,
-            self.width,
-            self.height,
+            content_w,
+            content_h,
             tab_pill_cx,
             32.5,
             64.0,
@@ -928,8 +945,8 @@ impl TodoWidget {
         };
         UIFont::draw_rounded_rect_fill(
             buf,
-            self.width,
-            self.height,
+            content_w,
+            content_h,
             330.0,
             32.5,
             13.0,
@@ -942,7 +959,7 @@ impl TodoWidget {
         } else {
             Tokens::TEXT_PRIMARY
         };
-        UIFont::draw_settings_icon(buf, self.width, self.height, 330.0, 32.5, settings_col);
+        UIFont::draw_settings_icon(buf, content_w, content_h, 330.0, 32.5, settings_col);
 
         let tasks_count = self.todos.tasks.len();
         let tasks_label = format!("Tasks ({})", tasks_count);
@@ -955,8 +972,8 @@ impl TodoWidget {
         };
         self.font.draw_text_centered(
             buf,
-            self.width,
-            self.height,
+            content_w,
+            content_h,
             &tasks_label,
             96.0,
             32.5,
@@ -976,8 +993,8 @@ impl TodoWidget {
         };
         self.font.draw_text_centered(
             buf,
-            self.width,
-            self.height,
+            content_w,
+            content_h,
             agenda_label,
             224.0,
             32.5,
@@ -987,7 +1004,7 @@ impl TodoWidget {
             FontWeight::SemiBold,
         );
 
-        if tasks_offset_x > -(self.width as f32) + 2.0 {
+        if tasks_offset_x > -(content_w as f32) + 2.0 {
             let add_bar_cy = tasks_add_bar_cy;
 
             // 2. Filter Bar (cy = 79.5)
@@ -997,8 +1014,8 @@ impl TodoWidget {
             // Subtle filter track
             UIFont::draw_rounded_rect_fill(
                 buf,
-                self.width,
-                self.height,
+                content_w,
+                content_h,
                 156.0 + tasks_offset_x,
                 79.5,
                 108.0,
@@ -1019,8 +1036,8 @@ impl TodoWidget {
             };
             UIFont::draw_rounded_rect_fill(
                 buf,
-                self.width,
-                self.height,
+                content_w,
+                content_h,
                 filt_cx + tasks_offset_x,
                 79.5,
                 32.0,
@@ -1034,19 +1051,19 @@ impl TodoWidget {
                 .wallpaper_crop
                 .as_ref()
                 .map_or(self.is_wallpaper_light, |crop| {
-                    sample_subcrop_is_light(crop, self.width, self.height, 60, 68, 50, 22)
+                    sample_subcrop_is_light(crop, content_w, content_h, 60, 68, 50, 22)
                 });
             let f1_is_light = self
                 .wallpaper_crop
                 .as_ref()
                 .map_or(self.is_wallpaper_light, |crop| {
-                    sample_subcrop_is_light(crop, self.width, self.height, 130, 68, 55, 22)
+                    sample_subcrop_is_light(crop, content_w, content_h, 130, 68, 55, 22)
                 });
             let f2_is_light = self
                 .wallpaper_crop
                 .as_ref()
                 .map_or(self.is_wallpaper_light, |crop| {
-                    sample_subcrop_is_light(crop, self.width, self.height, 205, 68, 50, 22)
+                    sample_subcrop_is_light(crop, content_w, content_h, 205, 68, 50, 22)
                 });
 
             let f0_unselected = if f0_is_light {
@@ -1083,8 +1100,8 @@ impl TodoWidget {
 
             self.font.draw_text_centered(
                 buf,
-                self.width,
-                self.height,
+                content_w,
+                content_h,
                 "All",
                 84.0 + tasks_offset_x,
                 79.5,
@@ -1095,8 +1112,8 @@ impl TodoWidget {
             );
             self.font.draw_text_centered(
                 buf,
-                self.width,
-                self.height,
+                content_w,
+                content_h,
                 "Active",
                 156.0 + tasks_offset_x,
                 79.5,
@@ -1107,8 +1124,8 @@ impl TodoWidget {
             );
             self.font.draw_text_centered(
                 buf,
-                self.width,
-                self.height,
+                content_w,
+                content_h,
                 "Done",
                 228.0 + tasks_offset_x,
                 79.5,
@@ -1128,8 +1145,8 @@ impl TodoWidget {
                 };
                 self.font.draw_text_centered(
                     buf,
-                    self.width,
-                    self.height,
+                    content_w,
+                    content_h,
                     msg,
                     180.0 + tasks_offset_x,
                     200.0,
@@ -1150,8 +1167,8 @@ impl TodoWidget {
                 let (mean_lum, spread, _) = if let Some(crop) = &self.wallpaper_crop {
                     sample_subcrop_stats(
                         crop,
-                        self.width,
-                        self.height,
+                        content_w,
+                        content_h,
                         68,
                         (cy - 13.0).max(0.0) as u32,
                         text_w,
@@ -1199,8 +1216,8 @@ impl TodoWidget {
 
                     UIFont::draw_rounded_rect_fill(
                         buf,
-                        self.width,
-                        self.height,
+                        content_w,
+                        content_h,
                         180.0 + tasks_offset_x,
                         cy,
                         156.0,
@@ -1210,8 +1227,8 @@ impl TodoWidget {
                     );
                     UIFont::draw_rounded_rect_stroke(
                         buf,
-                        self.width,
-                        self.height,
+                        content_w,
+                        content_h,
                         180.0 + tasks_offset_x,
                         cy,
                         156.0,
@@ -1228,8 +1245,8 @@ impl TodoWidget {
                     };
                     self.font.draw_text_centered(
                         buf,
-                        self.width,
-                        self.height,
+                        content_w,
+                        content_h,
                         label,
                         270.0 + tasks_offset_x,
                         cy,
@@ -1252,8 +1269,8 @@ impl TodoWidget {
                     };
                     UIFont::draw_rounded_rect_fill(
                         buf,
-                        self.width,
-                        self.height,
+                        content_w,
+                        content_h,
                         180.0 + slide_x + tasks_offset_x,
                         cy,
                         156.0,
@@ -1263,8 +1280,8 @@ impl TodoWidget {
                     );
                     UIFont::draw_rounded_rect_stroke(
                         buf,
-                        self.width,
-                        self.height,
+                        content_w,
+                        content_h,
                         180.0 + slide_x + tasks_offset_x,
                         cy,
                         156.0,
@@ -1281,8 +1298,8 @@ impl TodoWidget {
                     };
                     UIFont::draw_rounded_rect_fill(
                         buf,
-                        self.width,
-                        self.height,
+                        content_w,
+                        content_h,
                         180.0 + slide_x + tasks_offset_x,
                         cy,
                         156.0,
@@ -1298,8 +1315,8 @@ impl TodoWidget {
                     };
                     UIFont::draw_segment(
                         buf,
-                        self.width,
-                        self.height,
+                        content_w,
+                        content_h,
                         (180.0 + slide_x + tasks_offset_x - 120.0, cy - 17.0),
                         (180.0 + slide_x + tasks_offset_x + 120.0, cy - 17.0),
                         1.0,
@@ -1321,26 +1338,9 @@ impl TodoWidget {
                         [10, 14, 22, 255]
                     };
                     UIFont::draw_rounded_rect_fill(
-                        buf,
-                        self.width,
-                        self.height,
-                        chk_cx,
-                        cy,
-                        9.0,
-                        9.0,
-                        5.0,
-                        bg_box,
+                        buf, content_w, content_h, chk_cx, cy, 9.0, 9.0, 5.0, bg_box,
                     );
-                    UIFont::draw_checkmark(
-                        buf,
-                        self.width,
-                        self.height,
-                        chk_cx,
-                        cy,
-                        1.1,
-                        1.6,
-                        fg_chk,
-                    );
+                    UIFont::draw_checkmark(buf, content_w, content_h, chk_cx, cy, 1.1, 1.6, fg_chk);
                 } else {
                     let stroke_box = if row_is_light {
                         [10, 14, 22, 230]
@@ -1348,16 +1348,7 @@ impl TodoWidget {
                         [255, 255, 255, 230]
                     };
                     UIFont::draw_rounded_rect_stroke(
-                        buf,
-                        self.width,
-                        self.height,
-                        chk_cx,
-                        cy,
-                        9.0,
-                        9.0,
-                        5.0,
-                        1.3,
-                        stroke_box,
+                        buf, content_w, content_h, chk_cx, cy, 9.0, 9.0, 5.0, 1.3, stroke_box,
                     );
                 }
 
@@ -1379,8 +1370,8 @@ impl TodoWidget {
 
                 let end_x = self.font.draw_text_centered_y(
                     buf,
-                    self.width,
-                    self.height,
+                    content_w,
+                    content_h,
                     &display_text,
                     text_x,
                     cy,
@@ -1394,8 +1385,8 @@ impl TodoWidget {
                     // Strikethrough
                     QuicksandFont::draw_strikethrough(
                         buf,
-                        self.width,
-                        self.height,
+                        content_w,
+                        content_h,
                         57.0 + slide_x + tasks_offset_x,
                         end_x + 2.0,
                         cy,
@@ -1412,8 +1403,8 @@ impl TodoWidget {
                     .map_or(self.is_wallpaper_light, |crop| {
                         sample_subcrop_is_light(
                             crop,
-                            self.width,
-                            self.height,
+                            content_w,
+                            content_h,
                             42,
                             (add_bar_cy - 12.0).max(0.0) as u32,
                             200,
@@ -1437,8 +1428,8 @@ impl TodoWidget {
             };
             UIFont::draw_rounded_rect_fill(
                 buf,
-                self.width,
-                self.height,
+                content_w,
+                content_h,
                 180.0 + tasks_offset_x,
                 add_bar_cy,
                 156.0,
@@ -1454,8 +1445,8 @@ impl TodoWidget {
             };
             UIFont::draw_segment(
                 buf,
-                self.width,
-                self.height,
+                content_w,
+                content_h,
                 (180.0 + tasks_offset_x - 120.0, add_bar_cy - 15.0),
                 (180.0 + tasks_offset_x + 120.0, add_bar_cy - 15.0),
                 1.0,
@@ -1476,8 +1467,8 @@ impl TodoWidget {
 
                 let end_x = self.font.draw_text_centered_y(
                     buf,
-                    self.width,
-                    self.height,
+                    content_w,
+                    content_h,
                     input_str,
                     42.0 + tasks_offset_x,
                     add_bar_cy,
@@ -1497,8 +1488,8 @@ impl TodoWidget {
                     };
                     QuicksandFont::draw_cursor(
                         buf,
-                        self.width,
-                        self.height,
+                        content_w,
+                        content_h,
                         cursor_x,
                         add_bar_cy - 9.0,
                         18.0,
@@ -1510,8 +1501,8 @@ impl TodoWidget {
                 // Key hint: "↵ Enter"
                 self.font.draw_text_centered(
                     buf,
-                    self.width,
-                    self.height,
+                    content_w,
+                    content_h,
                     "↵ Enter",
                     295.0 + tasks_offset_x,
                     add_bar_cy,
@@ -1523,8 +1514,8 @@ impl TodoWidget {
             } else {
                 self.font.draw_text_centered_y(
                     buf,
-                    self.width,
-                    self.height,
+                    content_w,
+                    content_h,
                     "Add task",
                     42.0 + tasks_offset_x,
                     add_bar_cy,
@@ -1537,8 +1528,8 @@ impl TodoWidget {
                 // Dedicated '+' action button pill on right sharing input bar's ink
                 UIFont::draw_rounded_rect_fill(
                     buf,
-                    self.width,
-                    self.height,
+                    content_w,
+                    content_h,
                     315.0 + tasks_offset_x,
                     add_bar_cy,
                     11.0,
@@ -1552,8 +1543,8 @@ impl TodoWidget {
                 );
                 self.font.draw_text_centered(
                     buf,
-                    self.width,
-                    self.height,
+                    content_w,
+                    content_h,
                     "+",
                     315.0 + tasks_offset_x,
                     add_bar_cy,
@@ -1565,15 +1556,15 @@ impl TodoWidget {
             }
         }
 
-        if agenda_offset_x < (self.width as f32) - 2.0 {
+        if agenda_offset_x < (content_w as f32) - 2.0 {
             let add_bar_cy = agenda_add_bar_cy;
 
             // Agenda View (Events from ~/.local/state/calendar_events.json, cy = 122.5 + idx * 44.0)
             if self.events.is_empty() {
                 self.font.draw_text_centered(
                     buf,
-                    self.width,
-                    self.height,
+                    content_w,
+                    content_h,
                     "No upcoming events",
                     180.0 + agenda_offset_x,
                     190.0,
@@ -1584,8 +1575,8 @@ impl TodoWidget {
                 );
                 self.font.draw_text_centered(
                     buf,
-                    self.width,
-                    self.height,
+                    content_w,
+                    content_h,
                     "Click ⚙ Secret below to connect Google Calendar",
                     180.0 + agenda_offset_x,
                     216.0,
@@ -1600,8 +1591,8 @@ impl TodoWidget {
 
                     UIFont::draw_rounded_rect_fill(
                         buf,
-                        self.width,
-                        self.height,
+                        content_w,
+                        content_h,
                         180.0 + agenda_offset_x,
                         cy,
                         156.0,
@@ -1622,8 +1613,8 @@ impl TodoWidget {
                     };
                     self.font.draw_text_centered(
                         buf,
-                        self.width,
-                        self.height,
+                        content_w,
+                        content_h,
                         time_str,
                         64.0 + agenda_offset_x,
                         cy,
@@ -1642,8 +1633,8 @@ impl TodoWidget {
                     };
                     self.font.draw_text_centered_y(
                         buf,
-                        self.width,
-                        self.height,
+                        content_w,
+                        content_h,
                         &title,
                         108.0 + agenda_offset_x,
                         cy,
@@ -1657,8 +1648,8 @@ impl TodoWidget {
                     let tag_str = if item.isToday { "TODAY" } else { "EVENT" };
                     self.font.draw_text_centered(
                         buf,
-                        self.width,
-                        self.height,
+                        content_w,
+                        content_h,
                         tag_str,
                         304.0 + agenda_offset_x,
                         cy,
@@ -1685,8 +1676,8 @@ impl TodoWidget {
 
                 let end_x = self.font.draw_text_centered_y(
                     buf,
-                    self.width,
-                    self.height,
+                    content_w,
+                    content_h,
                     input_str,
                     38.0 + agenda_offset_x,
                     add_bar_cy,
@@ -1705,8 +1696,8 @@ impl TodoWidget {
                     };
                     QuicksandFont::draw_cursor(
                         buf,
-                        self.width,
-                        self.height,
+                        content_w,
+                        content_h,
                         cursor_x,
                         add_bar_cy - 9.0,
                         18.0,
@@ -1717,8 +1708,8 @@ impl TodoWidget {
 
                 self.font.draw_text_centered(
                     buf,
-                    self.width,
-                    self.height,
+                    content_w,
+                    content_h,
                     "↵ Save",
                     315.0 + agenda_offset_x,
                     add_bar_cy,
@@ -1737,8 +1728,8 @@ impl TodoWidget {
                 // 1. Sync button pill (cx = 64.0) with Lucide Sync icon
                 UIFont::draw_rounded_rect_fill(
                     buf,
-                    self.width,
-                    self.height,
+                    content_w,
+                    content_h,
                     64.0 + agenda_offset_x,
                     add_bar_cy,
                     32.0,
@@ -1748,16 +1739,16 @@ impl TodoWidget {
                 );
                 UIFont::draw_sync_icon(
                     buf,
-                    self.width,
-                    self.height,
+                    content_w,
+                    content_h,
                     46.0 + agenda_offset_x,
                     add_bar_cy,
                     col_primary,
                 );
                 self.font.draw_text_centered(
                     buf,
-                    self.width,
-                    self.height,
+                    content_w,
+                    content_h,
                     "Sync",
                     72.0 + agenda_offset_x,
                     add_bar_cy,
@@ -1771,8 +1762,8 @@ impl TodoWidget {
                 let cal_status = format!("{} Events", self.events.len());
                 self.font.draw_text_centered(
                     buf,
-                    self.width,
-                    self.height,
+                    content_w,
+                    content_h,
                     &cal_status,
                     175.0 + agenda_offset_x,
                     add_bar_cy,
@@ -1785,8 +1776,8 @@ impl TodoWidget {
                 // 3. Settings button pill with Lucide Settings gear icon (cx = 308.0)
                 UIFont::draw_rounded_rect_fill(
                     buf,
-                    self.width,
-                    self.height,
+                    content_w,
+                    content_h,
                     308.0 + agenda_offset_x,
                     add_bar_cy,
                     15.0,
@@ -1796,8 +1787,8 @@ impl TodoWidget {
                 );
                 UIFont::draw_settings_icon(
                     buf,
-                    self.width,
-                    self.height,
+                    content_w,
+                    content_h,
                     308.0 + agenda_offset_x,
                     add_bar_cy,
                     col_primary,
@@ -1835,7 +1826,22 @@ impl TodoWidget {
             self.overlay_buffer.fill(0);
         }
         let mut overlay_buf = std::mem::take(&mut self.overlay_buffer);
-        self.render_ui_overlay(&mut overlay_buf);
+
+        let content_w = CARD_W as usize;
+        let content_h = CARD_H as usize;
+        let mut content_buf = vec![0u8; content_w * content_h * 4];
+        self.render_ui_overlay(&mut content_buf);
+
+        let pad_x = CARD_PAD as usize;
+        let pad_y = CARD_PAD as usize;
+        let stride_dst = self.width as usize * 4;
+        let stride_src = content_w * 4;
+        for row in 0..content_h {
+            let src_start = row * stride_src;
+            let dst_start = (row + pad_y) * stride_dst + pad_x * 4;
+            overlay_buf[dst_start..dst_start + stride_src]
+                .copy_from_slice(&content_buf[src_start..src_start + stride_src]);
+        }
 
         let is_light_f32 = if self.effective_is_light() { 1.0 } else { 0.0 };
 
@@ -1848,15 +1854,18 @@ impl TodoWidget {
             // Pass continuous spring-animated values to shader
             let tab_val = self.tab_spring.value;
 
-            // Hug content: glass card bounds match calculated height
-            let h_norm = (card_h / (self.height as f32)).clamp(0.1, 1.0);
+            // Hug content: glass card bounds match calculated height inside padded surface
+            let x_norm = CARD_PAD / (self.width as f32);
+            let y_norm = CARD_PAD / (self.height as f32);
+            let w_norm = CARD_W / (self.width as f32);
+            let h_norm = card_h / (self.height as f32);
 
             let todo_card = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::RoundedRectangle {
                     radius: Tokens::RADIUS_OUTER,
                 })
-                .bounds(0.0, 0.0, 1.0, h_norm)
+                .bounds(x_norm, y_norm, w_norm, h_norm)
                 .curvature(0.04)
                 .bevel(22.0)
                 .refraction(24.0)
@@ -1925,6 +1934,8 @@ fn sample_subcrop_stats(
     lw: u32,
     lh: u32,
 ) -> (f32, f32, bool) {
+    let lx = lx + CARD_PAD as u32;
+    let ly = ly + CARD_PAD as u32;
     let mut sub = Vec::with_capacity((lw * lh * 4) as usize);
     for row in 0..lh {
         let sy = (ly + row).min(crop_h.saturating_sub(1));

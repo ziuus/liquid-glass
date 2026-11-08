@@ -295,20 +295,36 @@ pub struct IslandWidget {
 }
 
 impl IslandWidget {
+    pub fn sample_island_is_light(&self) -> bool {
+        if let Some(crop) = &self.wallpaper_crop {
+            let tw = self.target_w.max(Tokens::ISLAND_COMPACT_W);
+            let th = self.target_h.max(Tokens::ISLAND_COMPACT_H);
+            let ty = self.target_y.max(8.0);
+            let cx = ((self.width as f32 * 0.5) - tw * 0.5).max(0.0) as u32;
+            let cy = ty as u32;
+            let cw = (tw as u32).min(self.width.saturating_sub(cx));
+            let ch = (th as u32).min(self.height.saturating_sub(cy));
+            if cw > 0 && ch > 0 {
+                let mut sub = Vec::with_capacity((cw * ch * 4) as usize);
+                for dy in 0..ch {
+                    let sy = (cy + dy).min(self.height.saturating_sub(1));
+                    let src_idx = ((sy * self.width + cx) * 4) as usize;
+                    let end_idx = src_idx + (cw * 4) as usize;
+                    if end_idx <= crop.len() {
+                        sub.extend_from_slice(&crop[src_idx..end_idx]);
+                    }
+                }
+                return is_buffer_light(&sub);
+            }
+        }
+        self.is_wallpaper_light
+    }
+
     pub fn effective_is_light(&self) -> bool {
         match self.theme_mode {
-            1 => false, // Forced Dark -> Pitch Black
-            2 => true,  // Forced Light -> Pure White
-            _ => {
-                // By default in auto mode:
-                // The compact island pill is ALWAYS the iconic Pitch Black capsule!
-                // When expanded on light wallpaper, it adopts the adaptive light theme.
-                if self.mode == IslandMode::CompactPill {
-                    false
-                } else {
-                    self.is_wallpaper_light
-                }
-            }
+            1 => false, // Forced Dark
+            2 => true,  // Forced Light
+            _ => self.sample_island_is_light(),
         }
     }
     pub fn new<D>(
