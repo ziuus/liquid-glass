@@ -1349,35 +1349,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     // Outside the rounded rectangle: soft physical ambient drop shadow or transparent
     if sdf > 0.0 {
-        if style_mode >= 0.5 {
-            // Directional downward offset (light from top-center: +5.0px downward)
-            let shadow_px = local_px - vec2<f32>(0.0, 5.0);
-            let d_shadow = max(rr_sdf(shadow_px, half_size, r), 0.0);
-
-            // Shadow bounds check
-            if d_shadow <= 28.0 {
-                let bg_under_shadow = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
-                let shadow_luma = dot(bg_under_shadow, vec3<f32>(0.2126, 0.7152, 0.0722));
-                let is_shadow_light = (is_light > 0.5 || shadow_luma > 0.50);
-
-                // Directional weight: Top edge (light facing) receives zero shadow,
-                // bottom edge receives full shadow (1.0), sides receive subtle 0.25
-                let norm_y = clamp(local_px.y / half_size.y, -1.0, 1.0);
-                let dir_weight = clamp(norm_y * 0.75 + 0.25, 0.0, 1.0);
-
-                // Wide soft Gaussian pool (sigma = 16.0px) for ultra-diffuse physical glass shadow
-                let amb_sigma = 16.0;
-                let amb_weight = select(0.040, 0.048, is_shadow_light);
-                let ambient = exp(-(d_shadow * d_shadow) / (2.0 * amb_sigma * amb_sigma)) * amb_weight;
-
-                // Seamless edge blend: fade in smoothly over 2px from glass perimeter (no hard step or stroke)
+        // Dynamic Island (el_type 27.0) and Liquid Glass (style_mode >= 1.5) are pure optical elements with zero drop shadow
+        let is_island = (params.padding >= 26.9 && params.padding <= 27.1);
+        if !is_island && style_mode >= 0.5 && style_mode < 1.5 {
+            // Frosted Glassmorphism: delicate, symmetrical ambient shadow (no directional shelf)
+            if sdf <= 16.0 {
+                let amb_sigma = 8.0;
+                let ambient = exp(-(sdf * sdf) / (2.0 * amb_sigma * amb_sigma)) * 0.035;
                 let edge_blend = clamp(sdf * 0.5, 0.0, 1.0);
-
-                // Smooth cutoff at outer perimeter (18px to 28px)
-                let cutoff = 1.0 - smoothstep(18.0, 28.0, d_shadow);
-                let shadow_alpha = ambient * dir_weight * edge_blend * cutoff;
-
-                // Return premultiplied black: Wayland compositor computes bg * (1.0 - shadow_alpha)
+                let shadow_alpha = ambient * edge_blend * (1.0 - smoothstep(10.0, 16.0, sdf));
                 return vec4<f32>(0.0, 0.0, 0.0, shadow_alpha);
             }
         }
