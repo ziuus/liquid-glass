@@ -1347,24 +1347,37 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let style_mode = params._pad.x; // 0.0 = Obsidian (Clean), 1.0 = Glassmorphism (Frosted), 2.0 = Liquid Glass
     let is_light = params.is_light;
     
-    // Outside the rounded rectangle: soft ambient drop shadow or transparent
+    // Outside the rounded rectangle: soft physical ambient drop shadow or transparent
     if sdf > 0.0 {
         if style_mode >= 0.5 {
-            // Directional downward shadow (sunlight from top: +3.0px downward offset)
-            let shadow_px = local_px - vec2<f32>(0.0, 3.0);
-            let shadow_sdf = rr_sdf(shadow_px, half_size, r);
+            // Directional downward offset (light from top-center: +4.0px downward)
+            let shadow_px = local_px - vec2<f32>(0.0, 4.0);
+            let d_shadow = max(rr_sdf(shadow_px, half_size, r), 0.0);
 
-            if shadow_sdf <= 22.0 {
+            // Shadow bounds check
+            if d_shadow <= 24.0 {
                 let bg_under_shadow = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
                 let shadow_luma = dot(bg_under_shadow, vec3<f32>(0.2126, 0.7152, 0.0722));
                 let is_shadow_light = (is_light > 0.5 || shadow_luma > 0.50);
 
-                // Subtle tight contact shadow (0-3px)
-                let contact = exp(-sdf * 0.70) * 0.08;
-                // Soft directional ambient pool smoothly decaying to zero
-                let ambient_weight = select(0.06, 0.10, is_shadow_light);
-                let ambient = exp(-shadow_sdf * 0.14) * ambient_weight;
-                let shadow_alpha = (contact + ambient) * (1.0 - smoothstep(12.0, 22.0, shadow_sdf));
+                // Directional weight: Top edge (light facing) receives near-zero shadow (0.02),
+                // bottom edge receives full shadow (1.0), sides receive smooth 0.35
+                let norm_y = clamp(local_px.y / half_size.y, -1.0, 1.0);
+                let dir_weight = clamp(norm_y * 0.65 + 0.35, 0.02, 1.0);
+
+                // Smooth Gaussian-like ambient pool (decay over 14px)
+                let amb_sigma = 10.0;
+                let amb_weight = select(0.045, 0.075, is_shadow_light);
+                let ambient = exp(-(d_shadow * d_shadow) / (2.0 * amb_sigma * amb_sigma)) * amb_weight;
+
+                // Subtle tight contact shadow under bottom edge (decay over 2.5px)
+                let con_sigma = 2.5;
+                let con_weight = select(0.025, 0.040, is_shadow_light);
+                let contact = exp(-(sdf * sdf) / (2.0 * con_sigma * con_sigma)) * con_weight;
+
+                // Smooth cutoff at shadow perimeter
+                let cutoff = 1.0 - smoothstep(16.0, 24.0, d_shadow);
+                let shadow_alpha = (ambient * dir_weight + contact * max(norm_y, 0.0)) * cutoff;
 
                 // In Wayland premultiplied alpha: color must be 0.0 so the compositor
                 // attenuates the background [bg * (1 - alpha)] without adding emissive color.
