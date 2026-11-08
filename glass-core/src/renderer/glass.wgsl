@@ -1362,9 +1362,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 2. ANALYTIC CONVEX SQUIRCLE BEZEL & 2D OUTWARD NORMAL
     // ════════════════════════════════════════════
     let depth = max(-sdf, 0.0);
-    let bezel = clamp(params.bevel, 12.0, 16.0); // 12-16px physical bezel
+    let bezel = clamp(params.bevel, 10.0, 36.0); // 10-36px physical bezel
     let t = clamp(depth / bezel, 0.0, 1.0);       // 0.0 at outer edge, 1.0 where bezel ends
-    let tilt = 1.0 - t;                            // steepest at rim, 0 in interior
 
     // Exact analytical 2D outward unit normal of rounded rectangle
     let grad_2d = rr_normal(local_px, half_size, r);
@@ -1374,12 +1373,25 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 3. PHYSICAL 3D SNELL'S LAW REFRACTION BAND & CAUCHY DISPERSION
     // ════════════════════════════════════════════
     // Optical refraction vector combines perimeter normal with radial center vector.
-    // This bends BOTH horizontal and vertical grid lines crossing ANY edge (not just corners)!
+    // 0.65 radial mix delivers decisive tangential deflection across straight horizontal and vertical grid lines!
     let radial_dir = normalize(local_px);
-    let refract_dir = normalize(mix(grad_2d, radial_dir, 0.40));
+    let refract_dir = normalize(mix(grad_2d, radial_dir, 0.65));
 
-    let thickness = 16.0;
-    let off_px = refract_dir * (thickness * tilt * tilt);
+    // Superellipse height derivative h'(t) with high slope clamp
+    let u = clamp(1.0 - t, 0.0, 1.0);
+    let u4 = u * u * u * u;
+    let denom = pow(max(1.0 - u4, 0.0001), 0.75);
+    let raw_slope = (u * u * u) / denom;
+    let se_slope = clamp(raw_slope, 0.0, 6.0) / 6.0;
+
+    // Smooth cosine spread across full bezel depth (ensures wide 14-22px visible optical bend)
+    let wide_spread = cos(t * 1.5707963);
+
+    // Blended gentler profile: maintains high rim tilt while staying elevated across the entire bezel
+    let lens_profile = mix(wide_spread, se_slope, 0.35);
+
+    let thickness = select(24.0, params.refraction_strength, params.refraction_strength >= 1.0);
+    let off_px = refract_dir * (thickness * lens_profile);
     let off_uv = off_px / params.surface_size;
 
     let debug_mode = params._pad.y;
@@ -1390,11 +1402,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(r_disp, mag, b_disp, 1.0);
     }
 
-    // Chromatic Cauchy dispersion (R bends least at 0.80x, G mid at 1.00x, B most at 1.30x):
-    // Separation is ~8px across the bezel, creating distinct cyan/magenta fringing!
-    let uv_r = clamp(uv + off_uv * 0.80, vec2<f32>(0.001), vec2<f32>(0.999));
+    // Chromatic Cauchy dispersion (scaled by params.dispersion, default 0.28):
+    // Separation is 4-6px bands across the wide bezel!
+    let disp = select(0.28, params.dispersion, params.dispersion >= 0.05);
+    let uv_r = clamp(uv + off_uv * (1.0 - disp), vec2<f32>(0.001), vec2<f32>(0.999));
     let uv_g = clamp(uv + off_uv * 1.00, vec2<f32>(0.001), vec2<f32>(0.999));
-    let uv_b = clamp(uv + off_uv * 1.30, vec2<f32>(0.001), vec2<f32>(0.999));
+    let uv_b = clamp(uv + off_uv * (1.0 + disp), vec2<f32>(0.001), vec2<f32>(0.999));
 
     let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
     let sharp_g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;

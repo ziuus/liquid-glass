@@ -24,6 +24,18 @@ struct GlassUniforms {
     _pad: [f32; 2],
 }
 
+pub struct RenderTestConfig<'a> {
+    pub width: u32,
+    pub height: u32,
+    pub bounds: [f32; 4],
+    pub thickness: f32,
+    pub bevel: f32,
+    pub dispersion: f32,
+    pub corner_radius: f32,
+    pub debug_mode: f32,
+    pub out_path: &'a str,
+}
+
 fn load_calibration_crop(x: u32, y: u32, width: u32, height: u32) -> Vec<u8> {
     if let Ok(img) = image::open("/home/zius/Downloads/calibration_wallpaper.png") {
         let rgba = img.to_rgba8();
@@ -63,13 +75,12 @@ async fn run_render(
     params_bgl: &wgpu::BindGroupLayout,
     bg_bgl: &wgpu::BindGroupLayout,
     sampler: &wgpu::Sampler,
-    width: u32,
-    height: u32,
     bg_data: &[u8],
-    bounds: [f32; 4],
-    debug_mode: f32,
-    out_path: &str,
+    cfg: &RenderTestConfig<'_>,
 ) {
+    let width = cfg.width;
+    let height = cfg.height;
+
     let bg_texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("Background Texture"),
         size: wgpu::Extent3d {
@@ -140,25 +151,25 @@ async fn run_render(
     let target_view = target_texture.create_view(&Default::default());
 
     let uniforms = GlassUniforms {
-        bounds,
+        bounds: cfg.bounds,
         tint: [0.0, 0.0, 1.0, 0.0],
         ior: 1.52,
         roughness: 0.05,
-        refraction_strength: 0.40,
-        dispersion: 0.015,
+        refraction_strength: cfg.thickness,
+        dispersion: cfg.dispersion,
         fresnel_strength: 0.60,
         specular_strength: 1.10,
         blur_radius: 3.0,
         curvature: 0.04,
-        bevel: 12.0,
+        bevel: cfg.bevel,
         time: 1.0,
         deformation: 0.0,
-        corner_radius: 28.0,
+        corner_radius: cfg.corner_radius,
         pointer_pos: [-1.0, -1.0],
         surface_size: [width as f32, height as f32],
         is_light: 0.0,
         padding: 0.0,
-        _pad: [2.0, debug_mode], // 2.0 = Liquid Glass, _pad.y = debug_mode
+        _pad: [2.0, cfg.debug_mode], // 2.0 = Liquid Glass, _pad.y = debug_mode
     };
 
     let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -288,7 +299,7 @@ async fn run_render(
     }
 
     image::save_buffer(
-        out_path,
+        cfg.out_path,
         &final_composite,
         width,
         height,
@@ -296,7 +307,7 @@ async fn run_render(
     )
     .expect("Failed to save image");
 
-    println!("Saved snapshot: {}", out_path);
+    println!("Saved snapshot: {}", cfg.out_path);
 }
 
 #[test]
@@ -422,7 +433,10 @@ fn test_render_calibration_snapshots() {
             ..Default::default()
         });
 
-        // 1. Clock widget crop: 392x290 at (0, 28)
+        let out_dir =
+            "/home/zius/.gemini/antigravity-cli/brain/64634fbc-40f0-4ff7-b05d-73575fd4890c";
+
+        // 1. Clock widget crop: 392x290 at (0, 28) - Production settings (bezel 22, thickness 24, disp 0.28)
         let clock_w = 392u32;
         let clock_h = 290u32;
         let clock_crop = load_calibration_crop(0, 28, clock_w, clock_h);
@@ -433,10 +447,17 @@ fn test_render_calibration_snapshots() {
             218.0 / clock_h as f32,
         ];
 
-        let out_dir =
-            "/home/zius/.gemini/antigravity-cli/brain/64634fbc-40f0-4ff7-b05d-73575fd4890c";
-
-        // Render debug_mode = 0.0 (physical liquid glass)
+        let cfg_clock_0 = RenderTestConfig {
+            width: clock_w,
+            height: clock_h,
+            bounds: clock_bounds,
+            thickness: 24.0,
+            bevel: 22.0,
+            dispersion: 0.28,
+            corner_radius: 28.0,
+            debug_mode: 0.0,
+            out_path: &format!("{}/refraction_debug_0.png", out_dir),
+        };
         run_render(
             &device,
             &queue,
@@ -444,21 +465,22 @@ fn test_render_calibration_snapshots() {
             &params_bind_group_layout,
             &bg_bind_group_layout,
             &sampler,
-            clock_w,
-            clock_h,
             &clock_crop,
-            clock_bounds,
-            0.0,
-            &format!("{}/refraction_debug_0.png", out_dir),
+            &cfg_clock_0,
         )
         .await;
 
-        // 2. Wide calibration test: 800x600 centered on the grid and wave rings
-        let wide_w = 800u32;
-        let wide_h = 600u32;
-        let wide_crop = load_calibration_crop(100, 100, wide_w, wide_h);
-        let wide_bounds = [0.15, 0.15, 0.70, 0.70];
-
+        let cfg_clock_1 = RenderTestConfig {
+            width: clock_w,
+            height: clock_h,
+            bounds: clock_bounds,
+            thickness: 24.0,
+            bevel: 22.0,
+            dispersion: 0.28,
+            corner_radius: 28.0,
+            debug_mode: 1.0,
+            out_path: &format!("{}/refraction_debug_1.png", out_dir),
+        };
         run_render(
             &device,
             &queue,
@@ -466,15 +488,33 @@ fn test_render_calibration_snapshots() {
             &params_bind_group_layout,
             &bg_bind_group_layout,
             &sampler,
-            wide_w,
-            wide_h,
-            &wide_crop,
-            wide_bounds,
-            0.0,
-            &format!("{}/calibration_wide_0.png", out_dir),
+            &clock_crop,
+            &cfg_clock_1,
         )
         .await;
 
+        // 2. Rings & Wave edges panel: 500x380 at (140, 500) - Production settings
+        let rings_w = 500u32;
+        let rings_h = 380u32;
+        let rings_crop = load_calibration_crop(140, 500, rings_w, rings_h);
+        let rings_bounds = [
+            24.0 / rings_w as f32,
+            24.0 / rings_h as f32,
+            452.0 / rings_w as f32,
+            332.0 / rings_h as f32,
+        ];
+
+        let cfg_rings_prod_0 = RenderTestConfig {
+            width: rings_w,
+            height: rings_h,
+            bounds: rings_bounds,
+            thickness: 24.0,
+            bevel: 22.0,
+            dispersion: 0.28,
+            corner_radius: 28.0,
+            debug_mode: 0.0,
+            out_path: &format!("{}/panel_rings_production.png", out_dir),
+        };
         run_render(
             &device,
             &queue,
@@ -482,12 +522,78 @@ fn test_render_calibration_snapshots() {
             &params_bind_group_layout,
             &bg_bind_group_layout,
             &sampler,
-            wide_w,
-            wide_h,
-            &wide_crop,
-            wide_bounds,
-            1.0,
-            &format!("{}/calibration_wide_1.png", out_dir),
+            &rings_crop,
+            &cfg_rings_prod_0,
+        )
+        .await;
+
+        let cfg_rings_prod_1 = RenderTestConfig {
+            width: rings_w,
+            height: rings_h,
+            bounds: rings_bounds,
+            thickness: 24.0,
+            bevel: 22.0,
+            dispersion: 0.28,
+            corner_radius: 28.0,
+            debug_mode: 1.0,
+            out_path: &format!("{}/panel_rings_production_heatmap.png", out_dir),
+        };
+        run_render(
+            &device,
+            &queue,
+            &render_pipeline,
+            &params_bind_group_layout,
+            &bg_bind_group_layout,
+            &sampler,
+            &rings_crop,
+            &cfg_rings_prod_1,
+        )
+        .await;
+
+        // 3. Rings & Wave edges panel: Exaggerated harness settings (bezel 28, thickness 40, disp 0.30)
+        let cfg_rings_exagg_0 = RenderTestConfig {
+            width: rings_w,
+            height: rings_h,
+            bounds: rings_bounds,
+            thickness: 40.0,
+            bevel: 28.0,
+            dispersion: 0.30,
+            corner_radius: 28.0,
+            debug_mode: 0.0,
+            out_path: &format!("{}/panel_rings_exaggerated.png", out_dir),
+        };
+        run_render(
+            &device,
+            &queue,
+            &render_pipeline,
+            &params_bind_group_layout,
+            &bg_bind_group_layout,
+            &sampler,
+            &rings_crop,
+            &cfg_rings_exagg_0,
+        )
+        .await;
+
+        let cfg_rings_exagg_1 = RenderTestConfig {
+            width: rings_w,
+            height: rings_h,
+            bounds: rings_bounds,
+            thickness: 40.0,
+            bevel: 28.0,
+            dispersion: 0.30,
+            corner_radius: 28.0,
+            debug_mode: 1.0,
+            out_path: &format!("{}/panel_rings_exaggerated_heatmap.png", out_dir),
+        };
+        run_render(
+            &device,
+            &queue,
+            &render_pipeline,
+            &params_bind_group_layout,
+            &bg_bind_group_layout,
+            &sampler,
+            &rings_crop,
+            &cfg_rings_exagg_1,
         )
         .await;
     });

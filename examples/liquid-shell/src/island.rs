@@ -1317,7 +1317,9 @@ impl IslandWidget {
         } else {
             Tokens::TEXT_SECONDARY
         };
-        let col_shadow = if is_light {
+        let col_shadow = if self.mode == IslandMode::CompactPill {
+            [0, 0, 0, 0] // No halo or capsule clutter in compact status pill
+        } else if is_light {
             [255, 255, 255, 120]
         } else {
             [0, 0, 0, 180]
@@ -1333,23 +1335,6 @@ impl IslandWidget {
             IslandMode::CompactPill => {
                 let disc_cx = island_cx - island_w * 0.5 + 22.0;
                 let right_x = island_cx + island_w * 0.5 - 22.0;
-
-                // Subtle inner disc backing
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    disc_cx,
-                    island_cy,
-                    11.0,
-                    11.0,
-                    11.0,
-                    if is_light {
-                        Tokens::INNER_TILE_BG_LIGHT
-                    } else {
-                        Tokens::INNER_TILE_BG_DARK
-                    },
-                );
 
                 if self.music.is_playing {
                     // ── Active Music Playing Mode ──
@@ -2444,9 +2429,9 @@ impl IslandWidget {
                 .shape(island_shape)
                 .bounds(x_norm, y_norm, w_norm, h_norm)
                 .curvature(0.04)
-                .bevel(12.0)
-                .refraction(0.40)
-                .dispersion(0.015)
+                .bevel(14.0)
+                .refraction(16.0)
+                .dispersion(0.28)
                 .blur(3.0)
                 .specular(1.10)
                 .fresnel(0.60)
