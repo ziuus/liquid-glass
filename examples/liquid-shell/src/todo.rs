@@ -1051,35 +1051,35 @@ impl TodoWidget {
                 .wallpaper_crop
                 .as_ref()
                 .map_or(self.is_wallpaper_light, |crop| {
-                    sample_subcrop_is_light(crop, content_w, content_h, 60, 68, 50, 22)
+                    sample_subcrop_is_light(crop, self.width, self.height, 60, 68, 50, 22)
                 });
             let f1_is_light = self
                 .wallpaper_crop
                 .as_ref()
                 .map_or(self.is_wallpaper_light, |crop| {
-                    sample_subcrop_is_light(crop, content_w, content_h, 130, 68, 55, 22)
+                    sample_subcrop_is_light(crop, self.width, self.height, 130, 68, 55, 22)
                 });
             let f2_is_light = self
                 .wallpaper_crop
                 .as_ref()
                 .map_or(self.is_wallpaper_light, |crop| {
-                    sample_subcrop_is_light(crop, content_w, content_h, 205, 68, 50, 22)
+                    sample_subcrop_is_light(crop, self.width, self.height, 205, 68, 50, 22)
                 });
 
             let f0_unselected = if f0_is_light {
-                [12, 16, 24, 255]
+                [8, 12, 20, 255]
             } else {
-                [215, 222, 238, 255]
+                [235, 240, 252, 255]
             };
             let f1_unselected = if f1_is_light {
-                [12, 16, 24, 255]
+                [8, 12, 20, 255]
             } else {
-                [215, 222, 238, 255]
+                [235, 240, 252, 255]
             };
             let f2_unselected = if f2_is_light {
-                [12, 16, 24, 255]
+                [8, 12, 20, 255]
             } else {
-                [215, 222, 238, 255]
+                [235, 240, 252, 255]
             };
 
             let f0_col = if self.active_filter == 0 {
@@ -1167,8 +1167,8 @@ impl TodoWidget {
                 let (mean_lum, spread, _) = if let Some(crop) = &self.wallpaper_crop {
                     sample_subcrop_stats(
                         crop,
-                        content_w,
-                        content_h,
+                        self.width,
+                        self.height,
                         68,
                         (cy - 13.0).max(0.0) as u32,
                         text_w,
@@ -1197,9 +1197,9 @@ impl TodoWidget {
                 };
 
                 let (row_primary, row_dimmed) = if row_is_light {
-                    ([8, 12, 20, 255], [45, 55, 70, 245])
+                    ([8, 12, 20, 255], [24, 32, 44, 255])
                 } else {
-                    ([255, 255, 255, 255], [170, 178, 195, 200])
+                    ([255, 255, 255, 255], [235, 240, 252, 255])
                 };
 
                 let (text_col, weight) = if task.done {
@@ -1403,8 +1403,8 @@ impl TodoWidget {
                     .map_or(self.is_wallpaper_light, |crop| {
                         sample_subcrop_is_light(
                             crop,
-                            content_w,
-                            content_h,
+                            self.width,
+                            self.height,
                             42,
                             (add_bar_cy - 12.0).max(0.0) as u32,
                             200,
@@ -1412,12 +1412,12 @@ impl TodoWidget {
                         )
                     });
             let (add_primary, add_dimmed, add_secondary) = if add_is_light {
-                ([8, 12, 20, 255], [45, 55, 70, 245], [18, 24, 34, 250])
+                ([8, 12, 20, 255], [24, 32, 44, 255], [18, 24, 34, 255])
             } else {
                 (
                     Tokens::TEXT_PRIMARY,
-                    Tokens::TEXT_TERTIARY,
-                    Tokens::TEXT_SECONDARY,
+                    [235, 240, 252, 255],
+                    [235, 240, 252, 255],
                 )
             };
 
@@ -1868,7 +1868,7 @@ impl TodoWidget {
                 .bounds(x_norm, y_norm, w_norm, h_norm)
                 .curvature(0.04)
                 .bevel(22.0)
-                .refraction(24.0)
+                .refraction(15.0)
                 .dispersion(0.12)
                 .blur(2.0)
                 .tint(0.0, progress_packed, 0.0, is_light_f32)

@@ -474,9 +474,9 @@ fn test_render_calibration_snapshots() {
             width: clock_w,
             height: clock_h,
             bounds: clock_bounds,
-            thickness: 24.0,
+            thickness: 15.0,
             bevel: 22.0,
-            dispersion: 0.28,
+            dispersion: 0.12,
             corner_radius: 28.0,
             debug_mode: 0.0,
             style_mode: 2.0,
@@ -499,9 +499,9 @@ fn test_render_calibration_snapshots() {
             width: clock_w,
             height: clock_h,
             bounds: clock_bounds,
-            thickness: 24.0,
+            thickness: 15.0,
             bevel: 22.0,
-            dispersion: 0.28,
+            dispersion: 0.12,
             corner_radius: 28.0,
             debug_mode: 1.0,
             style_mode: 2.0,
@@ -520,6 +520,31 @@ fn test_render_calibration_snapshots() {
         )
         .await;
 
+        let cfg_clock_2 = RenderTestConfig {
+            width: clock_w,
+            height: clock_h,
+            bounds: clock_bounds,
+            thickness: 15.0,
+            bevel: 22.0,
+            dispersion: 0.12,
+            corner_radius: 28.0,
+            debug_mode: 2.0,
+            style_mode: 2.0,
+            is_light: 0.0,
+            out_path: &format!("{}/refraction_debug_2.png", out_dir),
+        };
+        run_render(
+            &device,
+            &queue,
+            &render_pipeline,
+            &params_bind_group_layout,
+            &bg_bind_group_layout,
+            &sampler,
+            &clock_crop,
+            &cfg_clock_2,
+        )
+        .await;
+
         // 2. Rings & Wave edges panel: 500x380 at (140, 500) - Production settings
         let rings_w = 500u32;
         let rings_h = 380u32;
@@ -535,9 +560,9 @@ fn test_render_calibration_snapshots() {
             width: rings_w,
             height: rings_h,
             bounds: rings_bounds,
-            thickness: 24.0,
+            thickness: 15.0,
             bevel: 22.0,
-            dispersion: 0.28,
+            dispersion: 0.12,
             corner_radius: 28.0,
             debug_mode: 0.0,
             style_mode: 2.0,
@@ -560,9 +585,9 @@ fn test_render_calibration_snapshots() {
             width: rings_w,
             height: rings_h,
             bounds: rings_bounds,
-            thickness: 24.0,
+            thickness: 15.0,
             bevel: 22.0,
-            dispersion: 0.28,
+            dispersion: 0.12,
             corner_radius: 28.0,
             debug_mode: 1.0,
             style_mode: 2.0,
@@ -578,6 +603,31 @@ fn test_render_calibration_snapshots() {
             &sampler,
             &rings_crop,
             &cfg_rings_prod_1,
+        )
+        .await;
+
+        let cfg_rings_prod_2 = RenderTestConfig {
+            width: rings_w,
+            height: rings_h,
+            bounds: rings_bounds,
+            thickness: 15.0,
+            bevel: 22.0,
+            dispersion: 0.12,
+            corner_radius: 28.0,
+            debug_mode: 2.0,
+            style_mode: 2.0,
+            is_light: 0.0,
+            out_path: &format!("{}/panel_rings_normals.png", out_dir),
+        };
+        run_render(
+            &device,
+            &queue,
+            &render_pipeline,
+            &params_bind_group_layout,
+            &bg_bind_group_layout,
+            &sampler,
+            &rings_crop,
+            &cfg_rings_prod_2,
         )
         .await;
 

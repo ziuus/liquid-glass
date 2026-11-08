@@ -1329,17 +1329,11 @@ impl IslandWidget {
             Tokens::TEXT_PRIMARY
         };
         let col_dim = if is_light {
-            [14, 18, 26, 255]
+            [18, 24, 34, 255]
         } else {
-            Tokens::TEXT_SECONDARY
+            [235, 240, 252, 255]
         };
-        let col_shadow = if self.mode == IslandMode::CompactPill {
-            [0, 0, 0, 0] // No halo or capsule clutter in compact status pill
-        } else if is_light {
-            [255, 255, 255, 120]
-        } else {
-            [0, 0, 0, 180]
-        };
+        let col_shadow = [0, 0, 0, 0];
 
         let island_cx = (self.width as f32) * 0.5;
         let island_top = self.current_y;
@@ -2446,7 +2440,7 @@ impl IslandWidget {
                 .bounds(x_norm, y_norm, w_norm, h_norm)
                 .curvature(0.04)
                 .bevel(14.0)
-                .refraction(20.0)
+                .refraction(14.0)
                 .dispersion(0.12)
                 .blur(2.0)
                 .specular(1.10)

@@ -81,17 +81,16 @@ fn rr_sdf(p: vec2<f32>, b: vec2<f32>, r: f32) -> f32 {
 }
 
 fn rr_normal(p: vec2<f32>, b: vec2<f32>, r: f32) -> vec2<f32> {
-    let corner_center = b - vec2<f32>(r);
-    let ap = abs(p);
-    let s = sign(p);
-    let q = ap - corner_center;
-    if q.x > 0.0 && q.y > 0.0 {
-        return s * normalize(q);
-    } else if q.x > q.y {
-        return vec2<f32>(s.x, 0.0);
-    } else {
-        return vec2<f32>(0.0, s.y);
+    let b0 = max(b - vec2<f32>(r), vec2<f32>(0.0));
+    let p0 = clamp(p, -b0, b0);
+    let v = p - p0;
+    let d2 = dot(v, v);
+    if d2 > 0.000001 {
+        return v * inverseSqrt(d2);
     }
+    let d = b0 - abs(p);
+    let s = select(sign(p), vec2<f32>(1.0, 1.0), p == vec2<f32>(0.0));
+    return select(vec2<f32>(0.0, s.y), vec2<f32>(s.x, 0.0), d.x < d.y);
 }
 
 // ── Authentic Physical Planar Glass Lens with Perimeter Meniscus ──
@@ -1389,10 +1388,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ════════════════════════════════════════════
     // 3. PHYSICAL 3D SNELL'S LAW REFRACTION BAND & CAUCHY DISPERSION
     // ════════════════════════════════════════════
-    // Optical refraction vector combines perimeter normal with radial center vector.
-    // 0.65 radial mix delivers decisive tangential deflection across straight horizontal and vertical grid lines!
-    let radial_dir = normalize(local_px);
-    let refract_dir = normalize(mix(grad_2d, radial_dir, 0.65));
+    // Meniscus refraction vector follows the true analytic surface normal
+    let refract_dir = grad_2d;
 
     // Superellipse height derivative h'(t) with high slope clamp
     let u = clamp(1.0 - t, 0.0, 1.0);
@@ -1407,12 +1404,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Blended gentler profile: maintains high rim tilt while staying elevated across the entire bezel
     let lens_profile = mix(wide_spread, se_slope, 0.35);
 
-    let thickness = select(24.0, params.refraction_strength, params.refraction_strength >= 1.0);
+    let thickness = select(15.0, params.refraction_strength, params.refraction_strength >= 1.0);
     let off_px = refract_dir * (thickness * lens_profile);
     let off_uv = off_px / params.surface_size;
 
     let debug_mode = params._pad.y;
     if debug_mode > 0.5 {
+        if debug_mode > 1.5 {
+            // debug_mode = 2.0: Surface normal view (chromatic rotation around corners)
+            let norm_rgb = grad_2d * 0.5 + 0.5;
+            return vec4<f32>(norm_rgb.x, norm_rgb.y, 0.5, 1.0);
+        }
         let mag = length(off_px) / thickness;
         let r_disp = abs(off_px.x) / thickness;
         let b_disp = abs(off_px.y) / thickness;
