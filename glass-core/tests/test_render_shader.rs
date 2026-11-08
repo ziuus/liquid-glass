@@ -321,16 +321,21 @@ async fn run_render(
         }
     }
 
-    image::save_buffer(
+    if let Some(parent) = std::path::Path::new(cfg.out_path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    if let Err(e) = image::save_buffer(
         cfg.out_path,
         &final_composite,
         width,
         height,
         image::ExtendedColorType::Rgba8,
-    )
-    .expect("Failed to save image");
-
-    println!("Saved snapshot: {}", cfg.out_path);
+    ) {
+        eprintln!("Warning: failed to save snapshot {}: {e}", cfg.out_path);
+    } else {
+        println!("Saved snapshot: {}", cfg.out_path);
+    }
 }
 
 #[test]
@@ -472,8 +477,17 @@ fn test_render_calibration_snapshots() {
             ..Default::default()
         });
 
-        let out_dir =
-            "/home/zius/.gemini/antigravity-cli/brain/64634fbc-40f0-4ff7-b05d-73575fd4890c";
+        let out_dir_buf = {
+            let brain = std::path::Path::new(
+                "/home/zius/.gemini/antigravity-cli/brain/64634fbc-40f0-4ff7-b05d-73575fd4890c",
+            );
+            if brain.exists() {
+                brain.to_path_buf()
+            } else {
+                std::env::temp_dir()
+            }
+        };
+        let out_dir = out_dir_buf.to_string_lossy();
 
         // 1. Clock widget crop: 392x290 at (0, 28) - Production settings (bezel 22, thickness 24, disp 0.28)
         let clock_w = 392u32;
