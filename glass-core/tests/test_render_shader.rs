@@ -33,6 +33,8 @@ pub struct RenderTestConfig<'a> {
     pub dispersion: f32,
     pub corner_radius: f32,
     pub debug_mode: f32,
+    pub style_mode: f32,
+    pub is_light: f32,
     pub out_path: &'a str,
 }
 
@@ -131,6 +133,27 @@ async fn run_render(
         view_formats: &[],
     });
 
+    let clear_overlay = vec![0u8; (width * height * 4) as usize];
+    queue.write_texture(
+        wgpu::ImageCopyTexture {
+            texture: &overlay_texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        &clear_overlay,
+        wgpu::ImageDataLayout {
+            offset: 0,
+            bytes_per_row: Some(4 * width),
+            rows_per_image: Some(height),
+        },
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+    );
+
     let target_texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("Target Texture"),
         size: wgpu::Extent3d {
@@ -167,9 +190,9 @@ async fn run_render(
         corner_radius: cfg.corner_radius,
         pointer_pos: [-1.0, -1.0],
         surface_size: [width as f32, height as f32],
-        is_light: 0.0,
+        is_light: cfg.is_light,
         padding: 0.0,
-        _pad: [2.0, cfg.debug_mode], // 2.0 = Liquid Glass, _pad.y = debug_mode
+        _pad: [cfg.style_mode, cfg.debug_mode], // _pad.x = style_mode, _pad.y = debug_mode
     };
 
     let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -456,6 +479,8 @@ fn test_render_calibration_snapshots() {
             dispersion: 0.28,
             corner_radius: 28.0,
             debug_mode: 0.0,
+            style_mode: 2.0,
+            is_light: 0.0,
             out_path: &format!("{}/refraction_debug_0.png", out_dir),
         };
         run_render(
@@ -479,6 +504,8 @@ fn test_render_calibration_snapshots() {
             dispersion: 0.28,
             corner_radius: 28.0,
             debug_mode: 1.0,
+            style_mode: 2.0,
+            is_light: 0.0,
             out_path: &format!("{}/refraction_debug_1.png", out_dir),
         };
         run_render(
@@ -513,6 +540,8 @@ fn test_render_calibration_snapshots() {
             dispersion: 0.28,
             corner_radius: 28.0,
             debug_mode: 0.0,
+            style_mode: 2.0,
+            is_light: 0.0,
             out_path: &format!("{}/panel_rings_production.png", out_dir),
         };
         run_render(
@@ -536,6 +565,8 @@ fn test_render_calibration_snapshots() {
             dispersion: 0.28,
             corner_radius: 28.0,
             debug_mode: 1.0,
+            style_mode: 2.0,
+            is_light: 0.0,
             out_path: &format!("{}/panel_rings_production_heatmap.png", out_dir),
         };
         run_render(
@@ -560,6 +591,8 @@ fn test_render_calibration_snapshots() {
             dispersion: 0.30,
             corner_radius: 28.0,
             debug_mode: 0.0,
+            style_mode: 2.0,
+            is_light: 0.0,
             out_path: &format!("{}/panel_rings_exaggerated.png", out_dir),
         };
         run_render(
@@ -583,6 +616,8 @@ fn test_render_calibration_snapshots() {
             dispersion: 0.30,
             corner_radius: 28.0,
             debug_mode: 1.0,
+            style_mode: 2.0,
+            is_light: 0.0,
             out_path: &format!("{}/panel_rings_exaggerated_heatmap.png", out_dir),
         };
         run_render(
@@ -596,5 +631,205 @@ fn test_render_calibration_snapshots() {
             &cfg_rings_exagg_1,
         )
         .await;
+        // 4. White Background Test (verifies physical glass presence, dark-field meniscus, and shadow on white)
+        let white_w = 400u32;
+        let white_h = 300u32;
+        let white_bg = vec![255u8; (white_w * white_h * 4) as usize];
+        let white_bounds = [
+            36.0 / white_w as f32,
+            36.0 / white_h as f32,
+            328.0 / white_w as f32,
+            228.0 / white_h as f32,
+        ];
+
+        let cfg_white_frost = RenderTestConfig {
+            width: white_w,
+            height: white_h,
+            bounds: white_bounds,
+            thickness: 24.0,
+            bevel: 22.0,
+            dispersion: 0.28,
+            corner_radius: 28.0,
+            debug_mode: 0.0,
+            style_mode: 1.0, // Glassmorphism (Frosted)
+            is_light: 1.0,   // Light mode
+            out_path: &format!("{}/glassmorphism_white.png", out_dir),
+        };
+        run_render(
+            &device,
+            &queue,
+            &render_pipeline,
+            &params_bind_group_layout,
+            &bg_bind_group_layout,
+            &sampler,
+            &white_bg,
+            &cfg_white_frost,
+        )
+        .await;
+
+        let cfg_white_liquid = RenderTestConfig {
+            width: white_w,
+            height: white_h,
+            bounds: white_bounds,
+            thickness: 24.0,
+            bevel: 22.0,
+            dispersion: 0.28,
+            corner_radius: 28.0,
+            debug_mode: 0.0,
+            style_mode: 2.0, // Liquid Glass
+            is_light: 1.0,   // Light mode
+            out_path: &format!("{}/liquid_glass_white.png", out_dir),
+        };
+        run_render(
+            &device,
+            &queue,
+            &render_pipeline,
+            &params_bind_group_layout,
+            &bg_bind_group_layout,
+            &sampler,
+            &white_bg,
+            &cfg_white_liquid,
+        )
+        .await;
+
+        // 5. Synthwave Sunset Wallpaper Test (verifies zero gray sludge on dark sky & vibrant cloud transmission)
+        let synthwave_path = "/home/zius/Pictures/wallpaper/5826770.jpg";
+        if let Ok(img) = image::open(synthwave_path) {
+            let rgba = img.to_rgba8();
+            // Clock crop (dark sky with stars)
+            let sc_w = 392u32;
+            let sc_h = 290u32;
+            let mut sc_crop = vec![0u8; (sc_w * sc_h * 4) as usize];
+            for dy in 0..sc_h {
+                for dx in 0..sc_w {
+                    let sx = dx.min(rgba.width().saturating_sub(1));
+                    let sy = (28 + dy).min(rgba.height().saturating_sub(1));
+                    let p = rgba.get_pixel(sx, sy);
+                    let idx = ((dy * sc_w + dx) * 4) as usize;
+                    sc_crop[idx..idx + 4].copy_from_slice(&p.0);
+                }
+            }
+            let sc_bounds = [
+                36.0 / sc_w as f32,
+                36.0 / sc_h as f32,
+                320.0 / sc_w as f32,
+                218.0 / sc_h as f32,
+            ];
+
+            let cfg_sc_frost = RenderTestConfig {
+                width: sc_w,
+                height: sc_h,
+                bounds: sc_bounds,
+                thickness: 24.0,
+                bevel: 22.0,
+                dispersion: 0.28,
+                corner_radius: 28.0,
+                debug_mode: 0.0,
+                style_mode: 1.0,
+                is_light: 0.0,
+                out_path: &format!("{}/synthwave_clock_glassmorphism.png", out_dir),
+            };
+            run_render(
+                &device,
+                &queue,
+                &render_pipeline,
+                &params_bind_group_layout,
+                &bg_bind_group_layout,
+                &sampler,
+                &sc_crop,
+                &cfg_sc_frost,
+            )
+            .await;
+
+            let cfg_sc_liquid = RenderTestConfig {
+                width: sc_w,
+                height: sc_h,
+                bounds: sc_bounds,
+                thickness: 24.0,
+                bevel: 22.0,
+                dispersion: 0.28,
+                corner_radius: 28.0,
+                debug_mode: 0.0,
+                style_mode: 2.0,
+                is_light: 0.0,
+                out_path: &format!("{}/synthwave_clock_liquid.png", out_dir),
+            };
+            run_render(
+                &device,
+                &queue,
+                &render_pipeline,
+                &params_bind_group_layout,
+                &bg_bind_group_layout,
+                &sampler,
+                &sc_crop,
+                &cfg_sc_liquid,
+            )
+            .await;
+
+            // Tasks crop (straddling dark sky at top and pink clouds at bottom)
+            let st_w = 360u32;
+            let st_h = 455u32;
+            let mut st_crop = vec![0u8; (st_w * st_h * 4) as usize];
+            for dy in 0..st_h {
+                for dx in 0..st_w {
+                    let sx = (1532 * 2 + dx * 2).min(rgba.width().saturating_sub(1));
+                    let sy = (56 * 2 + dy * 2).min(rgba.height().saturating_sub(1));
+                    let p = rgba.get_pixel(sx, sy);
+                    let idx = ((dy * st_w + dx) * 4) as usize;
+                    st_crop[idx..idx + 4].copy_from_slice(&p.0);
+                }
+            }
+            let st_bounds = [0.0, 0.0, 1.0, 1.0];
+
+            let cfg_st_frost = RenderTestConfig {
+                width: st_w,
+                height: st_h,
+                bounds: st_bounds,
+                thickness: 24.0,
+                bevel: 22.0,
+                dispersion: 0.28,
+                corner_radius: 24.0,
+                debug_mode: 0.0,
+                style_mode: 1.0,
+                is_light: 0.0,
+                out_path: &format!("{}/synthwave_tasks_glassmorphism.png", out_dir),
+            };
+            run_render(
+                &device,
+                &queue,
+                &render_pipeline,
+                &params_bind_group_layout,
+                &bg_bind_group_layout,
+                &sampler,
+                &st_crop,
+                &cfg_st_frost,
+            )
+            .await;
+
+            let cfg_st_liquid = RenderTestConfig {
+                width: st_w,
+                height: st_h,
+                bounds: st_bounds,
+                thickness: 24.0,
+                bevel: 22.0,
+                dispersion: 0.28,
+                corner_radius: 24.0,
+                debug_mode: 0.0,
+                style_mode: 2.0,
+                is_light: 0.0,
+                out_path: &format!("{}/synthwave_tasks_liquid.png", out_dir),
+            };
+            run_render(
+                &device,
+                &queue,
+                &render_pipeline,
+                &params_bind_group_layout,
+                &bg_bind_group_layout,
+                &sampler,
+                &st_crop,
+                &cfg_st_liquid,
+            )
+            .await;
+        }
     });
 }

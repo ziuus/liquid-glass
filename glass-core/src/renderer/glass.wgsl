@@ -61,8 +61,8 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
         default: {}
     }
     
-    // Dilation padding in normalized coordinates to prevent edge clipping of anti-aliasing and specular rim
-    let quad_pad = vec2<f32>(12.0, 12.0) / params.surface_size;
+    // Dilation padding in normalized coordinates to prevent edge clipping of anti-aliasing, specular rim and drop shadow
+    let quad_pad = vec2<f32>(28.0, 28.0) / params.surface_size;
     let min_bounds = max(params.bounds.xy - quad_pad, vec2<f32>(0.0));
     let max_bounds = min(params.bounds.xy + params.bounds.zw + quad_pad, vec2<f32>(1.0));
     let quad_size = max_bounds - min_bounds;
@@ -1350,9 +1350,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     // Outside the rounded rectangle: soft ambient drop shadow or transparent
     if sdf > 0.0 {
-        if style_mode >= 0.5 && sdf <= 10.0 {
-            let shadow_falloff = exp(-sdf * 0.38);
-            let shadow_alpha = shadow_falloff * 0.35 * (1.0 - is_light * 0.25);
+        if style_mode >= 0.5 && sdf <= 26.0 {
+            let bg_under_shadow = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
+            let shadow_luma = dot(bg_under_shadow, vec3<f32>(0.2126, 0.7152, 0.0722));
+            let is_shadow_light = (is_light > 0.5 || shadow_luma > 0.50);
+
+            // Dual-lobe shadow: tight contact occlusion (0-6px) + soft ambient spread (6-26px)
+            let contact = exp(-sdf * 0.35) * 0.40;
+            // On light backgrounds, ambient shadow is deeper and wider to lift the card off the surface
+            let ambient_weight = select(0.18, 0.42, is_shadow_light);
+            let ambient = exp(-sdf * 0.08) * ambient_weight;
+            let shadow_alpha = (contact + ambient) * (1.0 - smoothstep(20.0, 26.0, sdf));
             return vec4<f32>(vec3<f32>(0.0, 0.0, 0.0), shadow_alpha);
         }
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
@@ -1414,6 +1422,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let sharp_b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
     let sharp_col = vec3<f32>(sharp_r, sharp_g, sharp_b);
 
+    // Dynamic local background luminance adaptation:
+    // Respects the surface is_light uniform, while seamlessly responding to local background luminance
+    let local_luma = dot(sharp_col, vec3<f32>(0.2126, 0.7152, 0.0722));
+    let effective_light = select(select(0.0, 1.0, local_luma > 0.55), 1.0, is_light > 0.5);
+
     var col: vec3<f32>;
 
     if style_mode >= 1.5 {
@@ -1425,33 +1438,42 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let frosted_col = sample_frost_blur(uv, cur_radius);
         let base_crystal = mix(sharp_col, frosted_col, select(0.20 * t, 0.45, is_island));
 
-        // Faint 6% physical lift across interior (no gray band, no slab darkening)
-        col = base_crystal * 1.06;
+        let local_crystal_luma = dot(base_crystal, vec3<f32>(0.2126, 0.7152, 0.0722));
+
+        if effective_light > 0.5 {
+            // Pristine optical glass over light backdrops (linear light space)
+            let light_density = mix(0.92, 0.86, (local_px.y / half_size.y) * 0.5 + 0.5);
+            col = base_crystal * light_density;
+        } else {
+            // Luminous smoked crystal over dark backdrops:
+            // 0.003 linear ambient sheen gives delicate ~15/255 sRGB presence (never gray mud!)
+            let top_sheen = mix(0.003, 0.0005, (local_px.y / half_size.y) * 0.5 + 0.5);
+            col = base_crystal * 1.04 + vec3<f32>(top_sheen) * clamp(1.0 - local_crystal_luma * 4.0, 0.0, 1.0);
+        }
 
         // Faint diagonal gradient across interior (top-left lighter 3-5%) for physical glass depth
         let diag_t = clamp((local_px.x + local_px.y) / (half_size.x + half_size.y) * 0.5 + 0.5, 0.0, 1.0);
-        col *= mix(1.04, 0.98, diag_t);
+        col *= mix(1.03, 0.97, diag_t);
     } else if style_mode >= 0.5 {
         // ── 1.0: LUXURIOUS APPLE / VISIONOS FROSTED GLASSMORPHISM ──
-        // Deep 32-tap multi-scale backdrop diffusion (28px radius)
-        let frosted_col = sample_frost_blur(uv, 28.0);
+        // Deep 32-tap multi-scale backdrop diffusion (24px radius)
+        let frosted_col = sample_frost_blur(uv, 24.0);
         
-        // 1. Color Vibrancy & Saturation Boost (Apple Vibrancy algorithm)
-        let luma = dot(frosted_col, vec3<f32>(0.2126, 0.7152, 0.0722));
-        let vibrant_col = max(mix(vec3<f32>(luma), frosted_col, 1.45), vec3<f32>(0.0));
+        // 1. Color Vibrancy & Saturation Boost (Apple Vibrancy algorithm in linear space)
+        let f_luma = dot(frosted_col, vec3<f32>(0.2126, 0.7152, 0.0722));
+        let vibrant_col = max(mix(vec3<f32>(f_luma), frosted_col, 1.35), vec3<f32>(0.0));
 
         // 2. Physical Glass Satin Sheen & Translucency
-        let top_lighting = mix(1.10, 0.93, (local_px.y / half_size.y) * 0.5 + 0.5);
-        if is_light > 0.5 {
-            // Apple Porcelain Ceramic Glass (Light mode)
-            let ceramic_base = mix(vibrant_col, vec3<f32>(1.0, 1.0, 1.0), 0.76);
-            col = ceramic_base * top_lighting;
+        if effective_light > 0.5 {
+            // Apple Porcelain Ceramic Glass (Light / White mode)
+            let light_density = mix(0.90, 0.84, (local_px.y / half_size.y) * 0.5 + 0.5);
+            let ceramic_base = mix(vibrant_col * light_density, vec3<f32>(0.92, 0.94, 0.98), 0.18);
+            col = ceramic_base;
         } else {
-            // Apple Smoked Acrylic Satin Glass (Dark mode)
-            // Deep transmission + 18% translucent white satin lift (never muddy gray sludge!)
-            let satin_lift = vec3<f32>(1.0, 1.0, 1.0) * 0.18;
-            let glass_base = mix(vibrant_col * 1.15, satin_lift, 0.26);
-            col = glass_base * top_lighting;
+            // Apple Smoked Acrylic Satin Glass (Dark / Vibrant mode)
+            // Vibrant colors transmit cleanly, topped with delicate directional ambient sheen
+            let top_ambient = mix(0.006, 0.001, (local_px.y / half_size.y) * 0.5 + 0.5);
+            col = (vibrant_col * 1.05) + vec3<f32>(top_ambient * clamp(1.0 - f_luma * 4.0, 0.0, 1.0));
         }
     } else {
         // ── 0.0: OBSIDIAN / CLEAN BACKGROUND ──
@@ -1483,50 +1505,50 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     if style_mode < 0.5 {
         // ── 0.0: SOLID CLEAN BACKGROUND (Pure White on light, Pure Black on dark) ──
-        if is_light > 0.5 {
+        if effective_light > 0.5 {
             let edge_subtle = smoothstep(1.5, 0.0, depth) * 0.06;
             base_surface = vec3<f32>(1.0, 1.0, 1.0) - vec3<f32>(edge_subtle);
         } else {
             base_surface = vec3<f32>(0.0, 0.0, 0.0);
         }
-    } else if style_mode < 1.5 {
-        // ── 1.0: LUXURIOUS FROSTED GLASSMORPHISM ──
-        // Crisp 1.0px specular rim reflection + soft 2.5px inner bevel glow
-        let rim_reflection = (rim_1px * 0.95 + inner_highlight * 0.35) * dir_weight;
-        let rim_tint = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.50, 0.55, 0.65), is_light);
-        base_surface = col + rim_tint * rim_reflection;
+    } else if effective_light > 0.5 {
+        // ── LIGHT / WHITE BACKDROP: PHYSICAL DARK-FIELD MENISCUS OCCLUSION ──
+        // On white, light is refracted away at the curved rim, creating a crisp 1.5px dark outline
+        // that defines the physical glass contour against white surfaces!
+        let edge_contour = smoothstep(1.8, 0.0, depth) * 0.16;
+        let inner_bevel = smoothstep(4.0, 1.2, depth) * 0.03 * dir_weight;
+        base_surface = (col - vec3<f32>(edge_contour)) + vec3<f32>(inner_bevel);
     } else {
-        // ── 2.0: LIQUID GLASS ──
-        // Seamless optical refraction band + crisp directional diamond-cut specular hairline
+        // ── DARK / VIBRANT BACKDROP: DIAMOND-CUT SPECULAR HAIRLINE ──
         let rim_reflection = (rim_1px * 0.95 + inner_highlight * 0.40) * dir_weight;
-        let rim_tint = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.65, 0.70, 0.80), is_light);
+        let rim_tint = vec3<f32>(1.0, 1.0, 1.0);
         base_surface = col + rim_tint * rim_reflection;
     }
 
-    let app = render_element_appearance(local_px, half_size, params.padding, params.tint.y, params.time, params.tint, is_light);
+    let app = render_element_appearance(local_px, half_size, params.padding, params.tint.y, params.time, params.tint, effective_light);
     let side_bevel_flare = 0.0;
     let side_rim_flare = 0.0;
 
     var fin = base_surface;
 
-    let flare_mag = (side_bevel_flare + side_rim_flare) * mix(1.0, 0.25, is_light);
+    let flare_mag = (side_bevel_flare + side_rim_flare) * mix(1.0, 0.25, effective_light);
     let flare_rgb = vec3<f32>(flare_mag * 1.02, flare_mag * 0.99, flare_mag * 1.04);
     fin += flare_rgb;
 
-    fin += app.fluid_color * (app.fluid_glow * mix(1.0, 0.35, is_light));
+    fin += app.fluid_color * (app.fluid_glow * mix(1.0, 0.35, effective_light));
     
     // Dedicated high-contrast selected pill fill (85-90% opacity pure white / light ceramic)
     let pill_fill_target = vec3<f32>(0.96, 0.97, 1.0);
     fin = mix(fin, pill_fill_target, app.pill_mask * 0.88);
 
     // Low-alpha neutral fill and hairline: white lift on dark, black dip on light (preserves pure backdrop hue)
-    let fill_target = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.0, 0.0, 0.0), is_light);
-    let fill_strength = mix(0.12, 0.06, is_light);
+    let fill_target = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.0, 0.0, 0.0), effective_light);
+    let fill_strength = mix(0.12, 0.06, effective_light);
     fin = mix(fin, fill_target, app.fill_mask * fill_strength);
 
     // 1px subtle hairline rim highlight
-    let rim_target = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.45, 0.48, 0.55), is_light);
-    fin = mix(fin, rim_target, app.rim_mask * mix(0.20, 0.14, is_light));
+    let rim_target = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.45, 0.48, 0.55), effective_light);
+    fin = mix(fin, rim_target, app.rim_mask * mix(0.20, 0.14, effective_light));
 
     fin = mix(fin, app.glyph_color, app.glyph_mask);
 
