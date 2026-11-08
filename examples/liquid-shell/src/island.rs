@@ -1329,7 +1329,7 @@ impl IslandWidget {
             Tokens::TEXT_PRIMARY
         };
         let col_dim = if is_light {
-            [28, 34, 46, 255]
+            [14, 18, 26, 255]
         } else {
             Tokens::TEXT_SECONDARY
         };
@@ -2446,16 +2446,12 @@ impl IslandWidget {
                 .bounds(x_norm, y_norm, w_norm, h_norm)
                 .curvature(0.04)
                 .bevel(14.0)
-                .refraction(16.0)
-                .dispersion(0.28)
-                .blur(3.0)
+                .refraction(20.0)
+                .dispersion(0.12)
+                .blur(2.0)
                 .specular(1.10)
                 .fresnel(0.60)
-                .style_mode(if self.is_window_overlapping {
-                    0.0
-                } else {
-                    self.style_mode
-                })
+                .style_mode(self.style_mode)
                 .tint(
                     if self.music.is_playing { 1.0 } else { 0.0 },
                     if self.is_pressed { 1.0 } else { 0.0 },

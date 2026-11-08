@@ -1419,17 +1419,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(r_disp, mag, b_disp, 1.0);
     }
 
-    // Chromatic Cauchy dispersion (scaled by params.dispersion, default 0.28):
-    // Separation is 4-6px bands across the wide bezel!
-    let disp = select(0.28, params.dispersion, params.dispersion >= 0.05);
-    let uv_r = clamp(uv + off_uv * (1.0 - disp), vec2<f32>(0.001), vec2<f32>(0.999));
-    let uv_g = clamp(uv + off_uv * 1.00, vec2<f32>(0.001), vec2<f32>(0.999));
-    let uv_b = clamp(uv + off_uv * (1.0 + disp), vec2<f32>(0.001), vec2<f32>(0.999));
-
-    let sharp_r = textureSampleLevel(background_texture, background_sampler, uv_r, 0.0).r;
-    let sharp_g = textureSampleLevel(background_texture, background_sampler, uv_g, 0.0).g;
-    let sharp_b = textureSampleLevel(background_texture, background_sampler, uv_b, 0.0).b;
-    let sharp_col = vec3<f32>(sharp_r, sharp_g, sharp_b);
+    // Smooth 7-tap spectral Cauchy dispersion (mostly cyan/magenta fringes, no discrete RGB stripes)
+    let disp = clamp(select(0.12, params.dispersion, params.dispersion >= 0.01), 0.08, 0.16);
+    var sharp_col = vec3<f32>(0.0);
+    var wsum = vec3<f32>(0.0);
+    for (var i = 0; i < 7; i += 1) {
+        let f = f32(i) / 6.0; // 0 = red end, 1 = blue end
+        let w = vec3<f32>(1.0 - f, 1.0 - abs(2.0 * f - 1.0), f);
+        let sample_uv = clamp(uv + off_uv * (1.0 + (f - 0.5) * 2.0 * disp), vec2<f32>(0.001), vec2<f32>(0.999));
+        sharp_col += w * textureSampleLevel(background_texture, background_sampler, sample_uv, 0.0).rgb;
+        wsum += w;
+    }
+    sharp_col = sharp_col / wsum;
 
     // Dynamic local background luminance adaptation:
     // Respects the surface is_light uniform, while seamlessly responding to local background luminance
@@ -1440,31 +1441,25 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     if style_mode >= 1.5 {
         // ── 2.0: LIQUID GLASS ──
-        // For island notifications and capsules (el_type == 27.0), blend blur & backing for stellar legibility
-        let is_island = (params.padding >= 26.9 && params.padding <= 27.1);
-        let base_blur = select(0.0, 5.0, is_island);
-        let cur_radius = max(base_blur, 2.0 * t);
+        // Liquid glass maintains a clear, pristine optical interior with backdrop detail fully preserved!
+        // Gentle edge blur (<= 2.5px) confined strictly to the curved meniscus rim:
+        let cur_radius = clamp(params.blur_radius, 0.0, 2.5) * (1.0 - t);
         let frosted_col = sample_frost_blur(uv, cur_radius);
-        let base_crystal = mix(sharp_col, frosted_col, select(0.20 * t, 0.60, is_island));
-
-        let local_crystal_luma = dot(base_crystal, vec3<f32>(0.2126, 0.7152, 0.0722));
+        let base_crystal = mix(sharp_col, frosted_col, 0.04 * (1.0 - t));
 
         if effective_light > 0.5 {
-            // Pristine optical glass over light backdrops (linear light space)
-            let light_density = mix(0.92, 0.86, (local_px.y / half_size.y) * 0.5 + 0.5);
-            let porcelain_tint = vec3<f32>(0.96, 0.97, 0.99);
-            col = mix(base_crystal * light_density, porcelain_tint, select(0.0, 0.25, is_island));
+            // Pristine optical glass over light backdrops: <= 3% subtle density shift
+            let light_density = mix(0.99, 0.96, (local_px.y / half_size.y) * 0.5 + 0.5);
+            col = base_crystal * light_density;
         } else {
-            // Luminous smoked crystal over dark backdrops:
-            let top_sheen = mix(0.003, 0.0005, (local_px.y / half_size.y) * 0.5 + 0.5);
-            let smoked_tint = vec3<f32>(0.07, 0.08, 0.11);
-            let crystal_base = mix(base_crystal * 1.04, smoked_tint, select(0.0, 0.35, is_island));
-            col = crystal_base + vec3<f32>(top_sheen) * clamp(1.0 - local_crystal_luma * 4.0, 0.0, 1.0);
+            // Luminous clear crystal over dark backdrops: preserves 100% of backdrop dynamic range & stars
+            let top_sheen = mix(0.002, 0.0005, (local_px.y / half_size.y) * 0.5 + 0.5);
+            col = base_crystal * 1.01 + vec3<f32>(top_sheen);
         }
 
-        // Faint diagonal gradient across interior (top-left lighter 3-5%) for physical glass depth
+        // Faint diagonal gradient across interior (top-left lighter 1.5%) for physical depth
         let diag_t = clamp((local_px.x + local_px.y) / (half_size.x + half_size.y) * 0.5 + 0.5, 0.0, 1.0);
-        col *= mix(1.03, 0.97, diag_t);
+        col *= mix(1.015, 0.985, diag_t);
     } else if style_mode >= 0.5 {
         // ── 1.0: LUXURIOUS APPLE / VISIONOS FROSTED GLASSMORPHISM ──
         // Deep 32-tap multi-scale backdrop diffusion (24px radius)

@@ -149,7 +149,7 @@ impl ClockWidget {
             battery_level: 100.0,
             last_battery_check: Instant::now() - std::time::Duration::from_secs(60),
             last_minute: 99,
-            style_mode: 0.0,
+            style_mode: 2.0,
             theme_mode: 0,
         }
     }
@@ -501,17 +501,14 @@ impl ClockWidget {
                 .shape(Shape::RoundedRectangle { radius: 28.0 })
                 .bounds(x_norm, y_norm, w_norm, h_norm)
                 .curvature(0.04)
-                .bevel(14.0)
-                .refraction(0.40)
-                .dispersion(0.015)
-                .blur(8.0)
+                .bevel(22.0)
+                .refraction(24.0)
+                .dispersion(0.12)
+                .blur(2.0)
                 .specular(1.10)
                 .fresnel(0.60)
                 .style_mode(self.style_mode)
-                .tint(0.0, 0.0, 0.0, is_light_f32)
-                .roughness(self.battery_level)
-                .specular(0.85)
-                .fresnel(0.65)
+                .tint(0.0, 0.0, 1.0, is_light_f32)
                 .element_type(25.0)
                 .deformation(date_val)
                 .pointer_pos(px, py);
