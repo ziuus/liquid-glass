@@ -1355,21 +1355,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let shadow_px = local_px - vec2<f32>(0.0, 3.0);
             let shadow_sdf = rr_sdf(shadow_px, half_size, r);
 
-            if shadow_sdf <= 18.0 {
+            if shadow_sdf <= 22.0 {
                 let bg_under_shadow = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
                 let shadow_luma = dot(bg_under_shadow, vec3<f32>(0.2126, 0.7152, 0.0722));
                 let is_shadow_light = (is_light > 0.5 || shadow_luma > 0.50);
 
-                // Subtle tight contact shadow (0-3px, max 0.08 alpha)
-                let contact = exp(-sdf * 0.55) * 0.08;
-                // Soft directional ambient pool (max 0.08 on dark, 0.12 on light)
-                let ambient_weight = select(0.08, 0.12, is_shadow_light);
-                let ambient = exp(-shadow_sdf * 0.18) * ambient_weight;
-                let shadow_alpha = (contact + ambient) * (1.0 - smoothstep(14.0, 18.0, shadow_sdf));
+                // Subtle tight contact shadow (0-3px)
+                let contact = exp(-sdf * 0.70) * 0.08;
+                // Soft directional ambient pool smoothly decaying to zero
+                let ambient_weight = select(0.06, 0.10, is_shadow_light);
+                let ambient = exp(-shadow_sdf * 0.14) * ambient_weight;
+                let shadow_alpha = (contact + ambient) * (1.0 - smoothstep(12.0, 22.0, shadow_sdf));
 
-                // Elegant slate-tinted shadow (never harsh ink-black smudge)
-                let shadow_rgb = vec3<f32>(0.03, 0.04, 0.07);
-                return vec4<f32>(shadow_rgb, shadow_alpha);
+                // In Wayland premultiplied alpha: color must be 0.0 so the compositor
+                // attenuates the background [bg * (1 - alpha)] without adding emissive color.
+                return vec4<f32>(0.0, 0.0, 0.0, shadow_alpha);
             }
         }
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
