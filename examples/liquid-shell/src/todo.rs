@@ -1212,7 +1212,7 @@ impl TodoWidget {
                 // Regional luminance adaptation: sample the actual text's bounding box width
                 let text_w = (self.font.measure_text(&task.text, 15.5, FontWeight::Bold) as u32)
                     .clamp(40, 240);
-                let (mean_lum, spread, _) = if let Some(crop) = &self.wallpaper_crop {
+                let (_mean_lum, _spread, _) = if let Some(crop) = &self.wallpaper_crop {
                     sample_subcrop_stats(
                         crop,
                         self.width,
@@ -1226,26 +1226,20 @@ impl TodoWidget {
                     (0.5, 0.0, self.is_wallpaper_light)
                 };
 
-                // In clean solid mode, follow effective theme; in glass modes, require true light mode
-                let row_is_light = if self.style_mode < 0.5 {
-                    is_light
-                } else {
-                    is_light && mean_lum > 0.55
-                };
+                // Unified coherent typography across the entire card
+                let row_is_light = is_light;
 
-                // Never apply light shadow under dark text in light mode (prevents bleaching)
+                // Subtle scrim under light text in glass mode for 100% legibility
                 let text_shadow_col = if row_is_light {
                     [0, 0, 0, 0]
-                } else if spread > 0.05 || self.style_mode >= 0.5 {
-                    [10, 14, 22, 180] // Dark scrim under light text only
                 } else {
-                    [0, 0, 0, 0]
+                    [10, 14, 22, 160]
                 };
 
                 let (row_primary, row_dimmed) = if row_is_light {
-                    ([8, 12, 20, 255], [18, 24, 34, 255])
+                    ([12, 16, 24, 255], [100, 110, 125, 230])
                 } else {
-                    ([255, 255, 255, 255], [235, 240, 252, 255])
+                    ([255, 255, 255, 255], [180, 190, 205, 230])
                 };
 
                 let (text_col, weight) = if task.done {
@@ -1337,37 +1331,48 @@ impl TodoWidget {
                         slide_rim,
                     );
                 } else {
-                    let row_fill = if row_is_light {
-                        Tokens::INNER_TILE_BG_LIGHT
-                    } else {
-                        Tokens::INNER_TILE_BG_ROW
-                    };
-                    UIFont::draw_rounded_rect_fill(
-                        buf,
-                        content_w,
-                        content_h,
-                        180.0 + slide_x + tasks_offset_x,
-                        cy,
-                        156.0,
-                        18.0,
-                        Tokens::RADIUS_INNER_TILE,
-                        row_fill,
-                    );
-                    // Soft 16% white top highlight bevel for physical glass shelf depth (inset from corners)
-                    let row_hl = if row_is_light {
-                        [0, 0, 0, 24]
-                    } else {
-                        [255, 255, 255, 42]
-                    };
-                    UIFont::draw_segment(
-                        buf,
-                        content_w,
-                        content_h,
-                        (180.0 + slide_x + tasks_offset_x - 120.0, cy - 17.0),
-                        (180.0 + slide_x + tasks_offset_x + 120.0, cy - 17.0),
-                        1.0,
-                        row_hl,
-                    );
+                    let cur_lx = self.cursor_pos[0] * (self.width as f32);
+                    let cur_ly = self.cursor_pos[1] * (self.height as f32);
+                    let is_row_hover = self.is_hovered
+                        && (cur_lx - (180.0 + slide_x + tasks_offset_x)).abs() <= 156.0
+                        && (cur_ly - cy).abs() <= 18.0;
+
+                    if is_row_hover {
+                        let hover_fill = if row_is_light {
+                            [0, 0, 0, 14]
+                        } else {
+                            [255, 255, 255, 20]
+                        };
+                        UIFont::draw_rounded_rect_fill(
+                            buf,
+                            content_w,
+                            content_h,
+                            180.0 + slide_x + tasks_offset_x,
+                            cy,
+                            156.0,
+                            18.0,
+                            Tokens::RADIUS_INNER_TILE,
+                            hover_fill,
+                        );
+                    }
+
+                    // Delicate hairline divider between rows (clean Apple Reminders / Linear list design)
+                    if row_idx < visible_indices.len().min(6) - 1 {
+                        let div_col = if row_is_light {
+                            [0, 0, 0, 14]
+                        } else {
+                            [255, 255, 255, 14]
+                        };
+                        UIFont::draw_segment(
+                            buf,
+                            content_w,
+                            content_h,
+                            (180.0 + slide_x + tasks_offset_x - 145.0, cy + 22.0),
+                            (180.0 + slide_x + tasks_offset_x + 145.0, cy + 22.0),
+                            1.0,
+                            div_col,
+                        );
+                    }
                 }
 
                 // Precision anti-aliased vector checkbox

@@ -1533,13 +1533,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let base_crystal = mix(sharp_col, frosted_col, blur_mix);
 
         if effective_light > 0.5 {
-            // Pristine optical glass over light backdrops: <= 3% subtle density shift
-            let light_density = mix(0.99, 0.96, (local_px.y / half_size.y) * 0.5 + 0.5);
-            col = base_crystal * light_density;
+            // Apple Porcelain Ceramic Glass: optical transmission backing (guarantees readability on bright backdrops)
+            col = mix(base_crystal, vec3<f32>(0.95, 0.97, 0.99), 0.38);
         } else {
-            // Luminous clear crystal over dark backdrops: preserves 100% of backdrop dynamic range & stars
-            let top_sheen = mix(0.002, 0.0005, (local_px.y / half_size.y) * 0.5 + 0.5);
-            col = base_crystal * 1.01 + vec3<f32>(top_sheen);
+            // Apple Obsidian Liquid Glass: optical transmission backing (guarantees readability on split/light backdrops)
+            col = mix(base_crystal, vec3<f32>(0.07, 0.09, 0.14), 0.38);
         }
 
         // Faint diagonal gradient across interior (top-left lighter 1.5%) for physical depth
