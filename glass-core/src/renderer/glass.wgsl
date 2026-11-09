@@ -1433,40 +1433,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let style_mode = params._pad.x; // 0.0 = Obsidian (Clean), 1.0 = Glassmorphism (Frosted), 2.0 = Liquid Glass
     let is_light = params.is_light;
     
-    // Outside the shape: refined tight physical ambient contact shadow or transparent
+    // Outside the shape: completely transparent (no dirty dark shadow puddles)
     if sdf > 0.0 {
-        // Only floating elements receive shadow (attached island docked against top bezel is flush with zero shadow)
-        if (!is_island || !is_attached) && style_mode >= 0.5 {
-            // Soft physical ambient drop shadow: 0 8px 24px @ 20-24% alpha
-            let shadow_px = local_px - vec2<f32>(0.0, 8.0);
-            let d_shadow = max(rr_sdf(shadow_px, half_size, r), 0.0);
-
-            if d_shadow <= 32.0 {
-                let bg_under_shadow = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
-                let shadow_luma = dot(bg_under_shadow, vec3<f32>(0.2126, 0.7152, 0.0722));
-                let is_shadow_light = (is_light > 0.5 || shadow_luma > 0.45);
-
-                // Wide Gaussian decay (sigma = 10.0px, falls smoothly to zero by 28px)
-                let amb_sigma = 10.0;
-                let ambient = exp(-(d_shadow * d_shadow) / (2.0 * amb_sigma * amb_sigma));
-
-                // Directional weight: top receives subtle ambient (10%), bottom receives full shadow (100%)
-                let norm_y = clamp(local_px.y / half_size.y, -1.0, 1.0);
-                let dir_weight = clamp(norm_y * 0.55 + 0.45, 0.10, 1.0);
-
-                // Smooth outer cutoff reaching 0 at 28px
-                let cutoff = 1.0 - smoothstep(14.0, 28.0, d_shadow);
-
-                // High-end physical alpha: 24% on dark wallpapers, 20% on light wallpapers
-                let max_alpha = select(0.24, 0.20, is_shadow_light);
-                let shadow_alpha = ambient * dir_weight * cutoff * max_alpha;
-
-                // Seamless edge blend to eliminate hard perimeter stroke
-                let edge_blend = clamp(sdf * 0.5, 0.0, 1.0);
-
-                return vec4<f32>(0.0, 0.0, 0.0, shadow_alpha * edge_blend);
-            }
-        }
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
     
