@@ -1023,44 +1023,59 @@ impl IslandWidget {
         let conf_path = format!("{}/.config/liquid-glass/config.json", home);
         if let Ok(content) = std::fs::read_to_string(&conf_path) {
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
-                let dock_mode = val
-                    .get("edge_style")
+                let island_val = val.get("island");
+                let dock_mode = island_val
+                    .and_then(|i| i.get("edge_style").or_else(|| i.get("dock")))
+                    .or_else(|| val.get("edge_style"))
                     .and_then(|s| s.as_str())
                     .map(IslandDockMode::from_str)
                     .unwrap_or(IslandDockMode::AttachedCurved);
-                let fillet_compact = val
-                    .get("fillet_radius_compact")
+                let fillet_compact = island_val
+                    .and_then(|i| {
+                        i.get("fillet_radius_compact")
+                            .or_else(|| i.get("fillet_compact"))
+                    })
+                    .or_else(|| val.get("fillet_radius_compact"))
                     .or_else(|| val.get("fillet_compact"))
                     .and_then(|f| f.as_f64())
                     .map(|f| f as f32)
                     .unwrap_or(10.0);
-                let fillet_expanded = val
-                    .get("fillet_radius_expanded")
+                let fillet_expanded = island_val
+                    .and_then(|i| {
+                        i.get("fillet_radius_expanded")
+                            .or_else(|| i.get("fillet_radius"))
+                            .or_else(|| i.get("fillet_expanded"))
+                    })
+                    .or_else(|| val.get("fillet_radius_expanded"))
                     .or_else(|| val.get("fillet_radius"))
                     .or_else(|| val.get("fillet_expanded"))
                     .and_then(|f| f.as_f64())
                     .map(|f| f as f32)
                     .unwrap_or(24.0);
-                let quick_access = val
-                    .get("quick_access")
+                let quick_access = island_val
+                    .and_then(|i| i.get("quick_access"))
+                    .or_else(|| val.get("quick_access"))
                     .and_then(|q| serde_json::from_value::<Vec<QuickAccessApp>>(q.clone()).ok())
                     .unwrap_or_else(QuickAccessApp::defaults);
-                let style_mode = val
-                    .get("style_mode")
+                let style_mode = island_val
+                    .and_then(|i| i.get("style_mode"))
+                    .or_else(|| val.get("style_mode"))
                     .and_then(|s| s.as_f64())
                     .map(|s| s as f32)
                     .unwrap_or(2.0);
-                let theme_mode = val
-                    .get("theme_mode")
+                let theme_mode = island_val
+                    .and_then(|i| i.get("theme_mode"))
+                    .or_else(|| val.get("theme_mode"))
                     .and_then(|t| t.as_u64())
                     .map(|t| t as u32)
                     .unwrap_or(0);
-                let blur_radius = val
-                    .get("blur_radius")
+                let blur_radius = island_val
+                    .and_then(|i| i.get("blur_radius").or_else(|| i.get("blur")))
+                    .or_else(|| val.get("blur_radius"))
                     .or_else(|| val.get("blur"))
                     .and_then(|b| b.as_f64())
                     .map(|b| b as f32)
-                    .unwrap_or(6.0);
+                    .unwrap_or(8.0);
                 return (
                     dock_mode,
                     fillet_compact,
@@ -1085,7 +1100,7 @@ impl IslandWidget {
             QuickAccessApp::defaults(),
             2.0,
             0,
-            6.0,
+            8.0,
         )
     }
 
@@ -1093,17 +1108,22 @@ impl IslandWidget {
         let home = std::env::var("HOME").unwrap_or_default();
         let dir = format!("{}/.config/liquid-glass", home);
         let _ = std::fs::create_dir_all(&dir);
-        let json = serde_json::json!({
-            "edge_style": self.dock_mode.as_str(),
-            "fillet_radius_compact": self.fillet_radius_compact,
-            "fillet_radius_expanded": self.fillet_radius_expanded,
-            "theme_mode": self.theme_mode,
-            "style_mode": self.style_mode,
-            "blur_radius": self.blur_radius,
-            "quick_access": self.quick_access,
-        });
-        if let Ok(formatted) = serde_json::to_string_pretty(&json) {
-            let _ = std::fs::write(format!("{dir}/config.json"), formatted);
+        let conf_path = format!("{dir}/config.json");
+        let mut root_val = std::fs::read_to_string(&conf_path)
+            .ok()
+            .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        root_val["edge_style"] = serde_json::json!(self.dock_mode.as_str());
+        root_val["fillet_radius_compact"] = serde_json::json!(self.fillet_radius_compact);
+        root_val["fillet_radius_expanded"] = serde_json::json!(self.fillet_radius_expanded);
+        root_val["theme_mode"] = serde_json::json!(self.theme_mode);
+        root_val["style_mode"] = serde_json::json!(self.style_mode);
+        root_val["blur_radius"] = serde_json::json!(self.blur_radius);
+        root_val["quick_access"] = serde_json::json!(self.quick_access);
+
+        if let Ok(formatted) = serde_json::to_string_pretty(&root_val) {
+            let _ = std::fs::write(&conf_path, formatted);
         }
         let _ = std::fs::write(format!("{dir}/island_dock.txt"), self.dock_mode.as_str());
     }
@@ -3009,6 +3029,18 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>, wakeup_fd: Option<i32>) {
                         || trimmed == "theme cycle"
                     {
                         send_evt(IslandIpcEvent::CycleTheme);
+                    } else if trimmed.starts_with("set_dock ")
+                        || trimmed.starts_with("set_dock:")
+                        || trimmed.starts_with("set_edge ")
+                        || trimmed.starts_with("set_edge:")
+                    {
+                        let mode_part = trimmed
+                            .trim_start_matches("set_dock ")
+                            .trim_start_matches("set_dock:")
+                            .trim_start_matches("set_edge ")
+                            .trim_start_matches("set_edge:")
+                            .trim();
+                        send_evt(IslandIpcEvent::SetDock(IslandDockMode::from_str(mode_part)));
                     } else if trimmed == "edge curved"
                         || trimmed == "edge:curved"
                         || trimmed == "curved"
@@ -3032,6 +3064,10 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>, wakeup_fd: Option<i32>) {
                         || trimmed == "float"
                         || trimmed == "dock floating"
                         || trimmed == "dock:floating"
+                        || trimmed == "not attached"
+                        || trimmed == "not_attached"
+                        || trimmed == "unattached"
+                        || trimmed == "detached"
                     {
                         send_evt(IslandIpcEvent::SetDock(IslandDockMode::Floating));
                     } else if trimmed == "edge toggle"

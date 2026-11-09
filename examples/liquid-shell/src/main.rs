@@ -359,6 +359,44 @@ fn main() {
     todo.theme_mode = island.theme_mode;
     todo.blur_radius = island.blur_radius;
 
+    // Load per-component overrides from config.json if present
+    let home = std::env::var("HOME").unwrap_or_default();
+    let conf_path = format!("{}/.config/liquid-glass/config.json", home);
+    if let Ok(content) = std::fs::read_to_string(&conf_path) {
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+            if let Some(clk) = val.get("clock") {
+                if let Some(s) = clk.get("style_mode").and_then(|v| v.as_f64()) {
+                    clock.style_mode = s as f32;
+                }
+                if let Some(t) = clk.get("theme_mode").and_then(|v| v.as_u64()) {
+                    clock.theme_mode = t as u32;
+                }
+                if let Some(b) = clk
+                    .get("blur_radius")
+                    .or_else(|| clk.get("blur"))
+                    .and_then(|v| v.as_f64())
+                {
+                    clock.blur_radius = b as f32;
+                }
+            }
+            if let Some(td) = val.get("todo") {
+                if let Some(s) = td.get("style_mode").and_then(|v| v.as_f64()) {
+                    todo.style_mode = s as f32;
+                }
+                if let Some(t) = td.get("theme_mode").and_then(|v| v.as_u64()) {
+                    todo.theme_mode = t as u32;
+                }
+                if let Some(b) = td
+                    .get("blur_radius")
+                    .or_else(|| td.get("blur"))
+                    .and_then(|v| v.as_f64())
+                {
+                    todo.blur_radius = b as f32;
+                }
+            }
+        }
+    }
+
     if let Some(cache) = wallpaper_mgr.cached_buffer() {
         let clock_crop = WallpaperManager::get_wallpaper_crop(
             cache,
