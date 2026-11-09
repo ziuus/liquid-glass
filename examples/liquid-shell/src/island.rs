@@ -1022,7 +1022,16 @@ impl IslandWidget {
         format!("{}/.config/liquid-glass/config.json", home)
     }
 
-    pub fn load_config_values() -> (IslandDockMode, f32, f32, Vec<QuickAccessApp>, f32, u32, f32, f32) {
+    pub fn load_config_values() -> (
+        IslandDockMode,
+        f32,
+        f32,
+        Vec<QuickAccessApp>,
+        f32,
+        u32,
+        f32,
+        f32,
+    ) {
         let home = std::env::var("HOME").unwrap_or_default();
         let conf_path = format!("{}/.config/liquid-glass/config.json", home);
         if let Ok(content) = std::fs::read_to_string(&conf_path) {
@@ -1312,13 +1321,17 @@ impl IslandWidget {
         let squash_h = -self.vel_w * 0.16 * (self.current_h / self.current_w.max(20.0));
         let squash_w = -self.vel_h * 0.16 * (self.current_w / self.current_h.max(20.0));
 
-        let force_w = -spring_k * (self.current_w - self.target_w) - damping * self.vel_w + squash_w;
+        let force_w =
+            -spring_k * (self.current_w - self.target_w) - damping * self.vel_w + squash_w;
         self.vel_w += force_w * effective_dt;
-        self.current_w = (self.current_w + self.vel_w * effective_dt).max(Tokens::ISLAND_COMPACT_W * 0.6);
+        self.current_w =
+            (self.current_w + self.vel_w * effective_dt).max(Tokens::ISLAND_COMPACT_W * 0.6);
 
-        let force_h = -spring_k * (self.current_h - self.target_h) - damping * self.vel_h + squash_h;
+        let force_h =
+            -spring_k * (self.current_h - self.target_h) - damping * self.vel_h + squash_h;
         self.vel_h += force_h * effective_dt;
-        self.current_h = (self.current_h + self.vel_h * effective_dt).max(Tokens::ISLAND_COMPACT_H * 0.6);
+        self.current_h =
+            (self.current_h + self.vel_h * effective_dt).max(Tokens::ISLAND_COMPACT_H * 0.6);
 
         let force_y = -spring_k * (self.current_y - self.target_y) - damping * self.vel_y;
         self.vel_y += force_y * effective_dt;

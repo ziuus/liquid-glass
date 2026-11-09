@@ -1,6 +1,7 @@
 use glass_core::font::{FontWeight, QuicksandFont, UIFont};
 use glass_core::geometry::Shape;
 use glass_core::{GlassRenderer, GlassSurface, Material, SharedGpu, Spring, SpringParams, Tokens};
+use glass_platform::WallpaperManager;
 use raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle,
     RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle, WindowHandle,
@@ -292,7 +293,8 @@ impl TodoWidget {
     }
 
     pub fn update_wallpaper(&mut self, crop: Vec<u8>) {
-        self.is_wallpaper_light = is_buffer_light(&crop);
+        self.is_wallpaper_light =
+            WallpaperManager::is_buffer_light_hysteresis(&crop, self.is_wallpaper_light);
         if let Some(renderer) = &mut self.renderer {
             renderer.update_background(self.width, self.height, &crop);
         }
@@ -825,7 +827,8 @@ impl TodoWidget {
                     self.width,
                     self.height,
                 );
-                self.is_wallpaper_light = is_buffer_light(&crop);
+                self.is_wallpaper_light =
+                    WallpaperManager::is_buffer_light_hysteresis(&crop, self.is_wallpaper_light);
                 if let Some(renderer) = &mut self.renderer {
                     renderer.update_background(self.width, self.height, &crop);
                 }
@@ -1189,11 +1192,11 @@ impl TodoWidget {
                     (0.5, 0.0, self.is_wallpaper_light)
                 };
 
-                // In clean solid mode, follow effective theme; in glass modes, follow local wallpaper luminance
+                // In clean solid mode, follow effective theme; in glass modes, require true light mode
                 let row_is_light = if self.style_mode < 0.5 {
                     is_light
                 } else {
-                    is_light || mean_lum > 0.40
+                    is_light && mean_lum > 0.55
                 };
 
                 // Never apply light shadow under dark text in light mode (prevents bleaching)
@@ -1410,7 +1413,7 @@ impl TodoWidget {
                 is_light
             } else {
                 is_light
-                    || self.wallpaper_crop.as_ref().is_some_and(|crop| {
+                    && self.wallpaper_crop.as_ref().is_some_and(|crop| {
                         sample_subcrop_is_light(
                             crop,
                             self.width,
@@ -1973,6 +1976,7 @@ fn sample_subcrop_is_light(
     sample_subcrop_stats(crop, crop_w, crop_h, lx, ly, lw, lh).2
 }
 
+#[allow(dead_code)]
 fn is_buffer_light(buf: &[u8]) -> bool {
     buffer_lum_stats(buf).2
 }
