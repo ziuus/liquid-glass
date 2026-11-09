@@ -345,6 +345,7 @@ pub enum IslandIpcEvent {
     SetFilletCompact(f32),
     SetFilletExpanded(f32),
     SetBlur(f32),
+    SetSpeed(f32),
     ReloadConfig,
 }
 
@@ -450,6 +451,7 @@ pub struct IslandWidget {
     pub style_mode: f32,
     pub theme_mode: u32,
     pub blur_radius: f32,
+    pub anim_speed: f32,
     pub hot_edge_dwell_start: Option<Instant>,
     pub needs_input_region_update: bool,
 }
@@ -545,6 +547,7 @@ impl IslandWidget {
             style_mode,
             theme_mode,
             blur_radius,
+            anim_speed,
         ) = Self::load_config_values();
         let init_y = dock_mode.dock_y();
 
@@ -634,6 +637,7 @@ impl IslandWidget {
             style_mode,
             theme_mode,
             blur_radius,
+            anim_speed,
             hot_edge_dwell_start: None,
             needs_input_region_update: true,
         }
@@ -1018,7 +1022,7 @@ impl IslandWidget {
         format!("{}/.config/liquid-glass/config.json", home)
     }
 
-    pub fn load_config_values() -> (IslandDockMode, f32, f32, Vec<QuickAccessApp>, f32, u32, f32) {
+    pub fn load_config_values() -> (IslandDockMode, f32, f32, Vec<QuickAccessApp>, f32, u32, f32, f32) {
         let home = std::env::var("HOME").unwrap_or_default();
         let conf_path = format!("{}/.config/liquid-glass/config.json", home);
         if let Ok(content) = std::fs::read_to_string(&conf_path) {
@@ -1076,6 +1080,13 @@ impl IslandWidget {
                     .and_then(|b| b.as_f64())
                     .map(|b| b as f32)
                     .unwrap_or(0.0);
+                let anim_speed = island_val
+                    .and_then(|i| i.get("animation_speed").or_else(|| i.get("speed")))
+                    .or_else(|| val.get("animation_speed"))
+                    .or_else(|| val.get("speed"))
+                    .and_then(|s| s.as_f64())
+                    .map(|s| s as f32)
+                    .unwrap_or(1.0);
                 return (
                     dock_mode,
                     fillet_compact,
@@ -1084,6 +1095,7 @@ impl IslandWidget {
                     style_mode,
                     theme_mode,
                     blur_radius,
+                    anim_speed,
                 );
             }
         }
@@ -1100,7 +1112,8 @@ impl IslandWidget {
             QuickAccessApp::defaults(),
             2.0,
             0,
-            8.0,
+            0.0,
+            1.0,
         )
     }
 
@@ -1126,6 +1139,7 @@ impl IslandWidget {
         root_val["theme_mode"] = serde_json::json!(self.theme_mode);
         root_val["style_mode"] = serde_json::json!(self.style_mode);
         root_val["blur_radius"] = serde_json::json!(self.blur_radius);
+        root_val["animation_speed"] = serde_json::json!(self.anim_speed);
 
         // Island component section
         let mut island_obj = root_val
@@ -1137,6 +1151,7 @@ impl IslandWidget {
         island_obj["fillet_radius_expanded"] = serde_json::json!(self.fillet_radius_expanded);
         island_obj["blur_radius"] = serde_json::json!(self.blur_radius);
         island_obj["style_mode"] = serde_json::json!(self.style_mode);
+        island_obj["animation_speed"] = serde_json::json!(self.anim_speed);
         island_obj["quick_access"] = serde_json::json!(self.quick_access);
         root_val["island"] = island_obj;
 
@@ -1146,6 +1161,7 @@ impl IslandWidget {
                 "enabled": true,
                 "style_mode": self.style_mode,
                 "blur_radius": self.blur_radius,
+                "animation_speed": 1.0,
             });
         }
 
@@ -1155,6 +1171,7 @@ impl IslandWidget {
                 "enabled": true,
                 "style_mode": self.style_mode,
                 "blur_radius": self.blur_radius,
+                "animation_speed": 1.0,
             });
         }
 
@@ -1203,13 +1220,14 @@ impl IslandWidget {
     }
 
     pub fn reload_config(&mut self) {
-        let (mode, r_c, r_e, apps, style, theme, blur) = Self::load_config_values();
+        let (mode, r_c, r_e, apps, style, theme, blur, speed) = Self::load_config_values();
         self.fillet_radius_compact = r_c;
         self.fillet_radius_expanded = r_e;
         self.quick_access = apps;
         self.style_mode = style;
         self.theme_mode = theme;
         self.blur_radius = blur;
+        self.anim_speed = speed;
         self.set_dock_mode(mode);
     }
 
@@ -1269,6 +1287,11 @@ impl IslandWidget {
                     blur_changed = Some(self.blur_radius);
                     self.save_config();
                 }
+                IslandIpcEvent::SetSpeed(s) => {
+                    self.anim_speed = s.clamp(0.1, 5.0);
+                    self.needs_redraw = true;
+                    self.save_config();
+                }
                 IslandIpcEvent::ReloadConfig => self.reload_config(),
             }
         }
@@ -1277,6 +1300,8 @@ impl IslandWidget {
 
     pub fn update_physics(&mut self, dt: f32) -> bool {
         self.check_window_overlap();
+
+        let effective_dt = (dt * self.anim_speed).clamp(0.0, 0.05);
 
         // Apple Liquid Motion: fluid volume preservation (coupled squash & stretch)
         // Spring tuning: stiffness 320.0, damping 21.5 (damping ratio ~0.60) for fluid bounce
@@ -1288,21 +1313,21 @@ impl IslandWidget {
         let squash_w = -self.vel_h * 0.16 * (self.current_w / self.current_h.max(20.0));
 
         let force_w = -spring_k * (self.current_w - self.target_w) - damping * self.vel_w + squash_w;
-        self.vel_w += force_w * dt;
-        self.current_w = (self.current_w + self.vel_w * dt).max(Tokens::ISLAND_COMPACT_W * 0.6);
+        self.vel_w += force_w * effective_dt;
+        self.current_w = (self.current_w + self.vel_w * effective_dt).max(Tokens::ISLAND_COMPACT_W * 0.6);
 
         let force_h = -spring_k * (self.current_h - self.target_h) - damping * self.vel_h + squash_h;
-        self.vel_h += force_h * dt;
-        self.current_h = (self.current_h + self.vel_h * dt).max(Tokens::ISLAND_COMPACT_H * 0.6);
+        self.vel_h += force_h * effective_dt;
+        self.current_h = (self.current_h + self.vel_h * effective_dt).max(Tokens::ISLAND_COMPACT_H * 0.6);
 
         let force_y = -spring_k * (self.current_y - self.target_y) - damping * self.vel_y;
-        self.vel_y += force_y * dt;
-        self.current_y += self.vel_y * dt;
+        self.vel_y += force_y * effective_dt;
+        self.current_y += self.vel_y * effective_dt;
 
         let force_a =
             -spring_k * (self.current_alpha - self.target_alpha) - damping * self.vel_alpha;
-        self.vel_alpha += force_a * dt;
-        self.current_alpha = (self.current_alpha + self.vel_alpha * dt).clamp(0.0, 1.0);
+        self.vel_alpha += force_a * effective_dt;
+        self.current_alpha = (self.current_alpha + self.vel_alpha * effective_dt).clamp(0.0, 1.0);
 
         let settling = (self.current_w - self.target_w).abs() < 0.5
             && (self.current_h - self.target_h).abs() < 0.5
@@ -1315,8 +1340,8 @@ impl IslandWidget {
         let mut slide_settling = true;
         if self.transition_from_mode.is_some() {
             let force_slide = -380.0 * self.slide_offset - 32.0 * self.slide_vel;
-            self.slide_vel += force_slide * dt;
-            self.slide_offset += self.slide_vel * dt;
+            self.slide_vel += force_slide * effective_dt;
+            self.slide_offset += self.slide_vel * effective_dt;
 
             if self.slide_offset.abs() < 0.5 && self.slide_vel.abs() < 1.0 {
                 self.slide_offset = 0.0;
@@ -3177,6 +3202,24 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>, wakeup_fd: Option<i32>) {
                             .trim();
                         if let Ok(b) = num_part.parse::<f32>() {
                             send_evt(IslandIpcEvent::SetBlur(b));
+                        }
+                    } else if trimmed.starts_with("set_speed ")
+                        || trimmed.starts_with("set_speed:")
+                        || trimmed.starts_with("speed ")
+                        || trimmed.starts_with("speed:")
+                        || trimmed.starts_with("anim_speed ")
+                        || trimmed.starts_with("anim_speed:")
+                    {
+                        let num_part = trimmed
+                            .trim_start_matches("set_speed ")
+                            .trim_start_matches("set_speed:")
+                            .trim_start_matches("speed ")
+                            .trim_start_matches("speed:")
+                            .trim_start_matches("anim_speed ")
+                            .trim_start_matches("anim_speed:")
+                            .trim();
+                        if let Ok(s) = num_part.parse::<f32>() {
+                            send_evt(IslandIpcEvent::SetSpeed(s));
                         }
                     } else if trimmed == "reload"
                         || trimmed == "reload config"

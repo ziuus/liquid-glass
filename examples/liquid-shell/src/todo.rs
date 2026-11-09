@@ -134,6 +134,7 @@ pub struct TodoWidget {
     pub style_mode: f32,
     pub theme_mode: u32,
     pub blur_radius: f32,
+    pub anim_speed: f32,
 }
 
 impl TodoWidget {
@@ -256,6 +257,7 @@ impl TodoWidget {
             style_mode: 2.0,
             theme_mode: 0,
             blur_radius: 6.0,
+            anim_speed: 1.0,
         }
     }
 
@@ -834,14 +836,15 @@ impl TodoWidget {
     }
 
     pub fn update_physics(&mut self, dt: f32) -> bool {
-        self.tab_spring.update(dt);
-        self.filter_spring.update(dt);
+        let eff_dt = dt * self.anim_speed;
+        self.tab_spring.update(eff_dt);
+        self.filter_spring.update(eff_dt);
 
         let mut slide_animating = false;
         if !self.is_sliding {
             for off in &mut self.slide_offsets {
                 if *off != 0.0 {
-                    *off += (0.0 - *off) * (20.0 * dt).min(1.0);
+                    *off += (0.0 - *off) * (20.0 * eff_dt).min(1.0);
                     if off.abs() < 0.5 {
                         *off = 0.0;
                     } else {

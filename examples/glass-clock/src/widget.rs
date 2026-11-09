@@ -78,6 +78,7 @@ pub struct ClockWidget {
     pub style_mode: f32,
     pub theme_mode: u32,
     pub blur_radius: f32,
+    pub anim_speed: f32,
 }
 
 impl ClockWidget {
@@ -153,6 +154,7 @@ impl ClockWidget {
             style_mode: 2.0,
             theme_mode: 0,
             blur_radius: 6.0,
+            anim_speed: 1.0,
         }
     }
 

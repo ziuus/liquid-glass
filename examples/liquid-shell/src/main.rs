@@ -378,6 +378,13 @@ fn main() {
                 {
                     clock.blur_radius = b as f32;
                 }
+                if let Some(spd) = clk
+                    .get("animation_speed")
+                    .or_else(|| clk.get("speed"))
+                    .and_then(|v| v.as_f64())
+                {
+                    clock.anim_speed = spd as f32;
+                }
             }
             if let Some(td) = val.get("todo") {
                 if let Some(s) = td.get("style_mode").and_then(|v| v.as_f64()) {
@@ -392,6 +399,13 @@ fn main() {
                     .and_then(|v| v.as_f64())
                 {
                     todo.blur_radius = b as f32;
+                }
+                if let Some(spd) = td
+                    .get("animation_speed")
+                    .or_else(|| td.get("speed"))
+                    .and_then(|v| v.as_f64())
+                {
+                    todo.anim_speed = spd as f32;
                 }
             }
         }
