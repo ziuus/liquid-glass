@@ -495,7 +495,12 @@ impl IslandWidget {
         }
         let island_cx = (self.width as f32) * 0.5;
         let island_top = self.current_y;
-        let half_w = self.current_w * 0.5;
+        let flare = if self.dock_mode == IslandDockMode::Attached && ly <= 18.0 {
+            18.0
+        } else {
+            0.0
+        };
+        let half_w = self.current_w * 0.5 + flare;
         let h = self.current_h;
 
         // Cover from very top screen edge (ly >= 0.0) down through the pill
@@ -511,17 +516,22 @@ impl IslandWidget {
     {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
+        let flare = if self.dock_mode == IslandDockMode::Attached {
+            20
+        } else {
+            0
+        };
         if self.mode != IslandMode::Hidden && self.current_alpha > 0.01 {
             match self.mode {
                 IslandMode::CompactPill => {
-                    let pill_w = self.target_w as i32;
+                    let pill_w = self.target_w as i32 + flare * 2;
                     let pill_h = (self.target_y + self.target_h + 6.0) as i32;
                     let pill_x = (self.width as i32 - pill_w) / 2;
                     // Intercept from top edge y=0 down to bottom of pill
                     region.add(pill_x, 0, pill_w, pill_h);
                 }
                 _ => {
-                    let card_w = self.target_w as i32;
+                    let card_w = self.target_w as i32 + flare * 2;
                     let card_h = (self.target_y + self.target_h + 10.0) as i32;
                     let card_x = (self.width as i32 - card_w) / 2;
                     region.add(card_x, 0, card_w, card_h);
@@ -2585,9 +2595,14 @@ impl IslandWidget {
         let island_w = self.current_w;
         let island_h = self.current_h;
 
-        // Check if click was inside current island capsule or top edge
-        if lx < island_cx - island_w * 0.5
-            || lx > island_cx + island_w * 0.5
+        // Check if click was inside current island capsule, flared wings, or top edge
+        let flare = if self.dock_mode == IslandDockMode::Attached && ly <= 18.0 {
+            18.0
+        } else {
+            0.0
+        };
+        if lx < island_cx - (island_w * 0.5 + flare)
+            || lx > island_cx + (island_w * 0.5 + flare)
             || ly < 0.0
             || ly > island_top + island_h + 6.0
         {
