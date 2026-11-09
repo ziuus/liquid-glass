@@ -1583,12 +1583,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             base_surface = vec3<f32>(0.0, 0.0, 0.0);
         }
     } else if effective_light > 0.5 {
-        // ── LIGHT / WHITE BACKDROP: PHYSICAL DARK-FIELD MENISCUS OCCLUSION ──
-        // On white, light is refracted away at the curved rim, creating a crisp 1.5px dark outline
-        // that defines the physical glass contour against white surfaces!
-        let edge_contour = smoothstep(1.8, 0.0, depth) * 0.16 * top_flush;
-        let inner_bevel = smoothstep(4.0, 1.2, depth) * 0.03 * dir_weight * top_flush;
-        base_surface = (col - vec3<f32>(edge_contour)) + vec3<f32>(inner_bevel);
+        // ── LIGHT / WHITE BACKDROP: PHYSICAL MENISCUS WITH SPECULAR GLINT ──
+        // Dark-field absorption on trailing edges, bright crystalline glint on top-left facing meniscus
+        let edge_contour = smoothstep(1.8, 0.0, depth) * 0.16 * (1.0 - light_facing * 0.70) * top_flush;
+        let specular_glint = (rim_1px * 0.85 + inner_highlight * 0.40) * light_facing * top_flush;
+        base_surface = (col - vec3<f32>(edge_contour)) + vec3<f32>(specular_glint);
     } else {
         // ── DARK / VIBRANT BACKDROP: DIAMOND-CUT SPECULAR HAIRLINE ──
         let rim_reflection = (rim_1px * 0.95 + inner_highlight * 0.40) * dir_weight * top_flush;
