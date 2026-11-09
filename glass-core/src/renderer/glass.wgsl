@@ -1537,11 +1537,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     if style_mode >= 1.5 {
         // ── 2.0: LIQUID GLASS ──
-        // Liquid glass maintains a clear, pristine optical interior with backdrop detail fully preserved!
-        // Gentle edge blur (<= 2.5px) confined strictly to the curved meniscus rim:
-        let cur_radius = clamp(params.blur_radius, 0.0, 2.5) * (1.0 - t);
-        let frosted_col = sample_frost_blur(uv, cur_radius);
-        let base_crystal = mix(sharp_col, frosted_col, 0.04 * (1.0 - t));
+        // Optical Snell refraction with configurable background diffusion blur
+        let cur_radius = clamp(params.blur_radius, 0.0, 48.0);
+        let frosted_col = sample_frost_blur(uv + off_uv, cur_radius);
+        let rim_disp_factor = (1.0 - t) * 0.25;
+        let blur_mix = clamp(cur_radius / 2.0, 0.0, 1.0 - rim_disp_factor);
+        let base_crystal = mix(sharp_col, frosted_col, blur_mix);
 
         if effective_light > 0.5 {
             // Pristine optical glass over light backdrops: <= 3% subtle density shift

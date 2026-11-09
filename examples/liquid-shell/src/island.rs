@@ -344,6 +344,7 @@ pub enum IslandIpcEvent {
     SetFillet(f32),
     SetFilletCompact(f32),
     SetFilletExpanded(f32),
+    SetBlur(f32),
     ReloadConfig,
 }
 
@@ -448,6 +449,7 @@ pub struct IslandWidget {
     pub start_time: Instant,
     pub style_mode: f32,
     pub theme_mode: u32,
+    pub blur_radius: f32,
     pub hot_edge_dwell_start: Option<Instant>,
     pub needs_input_region_update: bool,
 }
@@ -535,8 +537,15 @@ impl IslandWidget {
 
         let font = UIFont::new();
 
-        let (dock_mode, fillet_compact, fillet_expanded, quick_access, style_mode, theme_mode) =
-            Self::load_config_values();
+        let (
+            dock_mode,
+            fillet_compact,
+            fillet_expanded,
+            quick_access,
+            style_mode,
+            theme_mode,
+            blur_radius,
+        ) = Self::load_config_values();
         let init_y = dock_mode.dock_y();
 
         Self {
@@ -624,6 +633,7 @@ impl IslandWidget {
             start_time: Instant::now(),
             style_mode,
             theme_mode,
+            blur_radius,
             hot_edge_dwell_start: None,
             needs_input_region_update: true,
         }
@@ -1008,7 +1018,7 @@ impl IslandWidget {
         format!("{}/.config/liquid-glass/config.json", home)
     }
 
-    pub fn load_config_values() -> (IslandDockMode, f32, f32, Vec<QuickAccessApp>, f32, u32) {
+    pub fn load_config_values() -> (IslandDockMode, f32, f32, Vec<QuickAccessApp>, f32, u32, f32) {
         let home = std::env::var("HOME").unwrap_or_default();
         let conf_path = format!("{}/.config/liquid-glass/config.json", home);
         if let Ok(content) = std::fs::read_to_string(&conf_path) {
@@ -1045,6 +1055,12 @@ impl IslandWidget {
                     .and_then(|t| t.as_u64())
                     .map(|t| t as u32)
                     .unwrap_or(0);
+                let blur_radius = val
+                    .get("blur_radius")
+                    .or_else(|| val.get("blur"))
+                    .and_then(|b| b.as_f64())
+                    .map(|b| b as f32)
+                    .unwrap_or(6.0);
                 return (
                     dock_mode,
                     fillet_compact,
@@ -1052,6 +1068,7 @@ impl IslandWidget {
                     quick_access,
                     style_mode,
                     theme_mode,
+                    blur_radius,
                 );
             }
         }
@@ -1061,7 +1078,15 @@ impl IslandWidget {
         } else {
             IslandDockMode::AttachedCurved
         };
-        (dock_mode, 10.0, 24.0, QuickAccessApp::defaults(), 2.0, 0)
+        (
+            dock_mode,
+            10.0,
+            24.0,
+            QuickAccessApp::defaults(),
+            2.0,
+            0,
+            6.0,
+        )
     }
 
     pub fn save_config(&self) {
@@ -1074,6 +1099,7 @@ impl IslandWidget {
             "fillet_radius_expanded": self.fillet_radius_expanded,
             "theme_mode": self.theme_mode,
             "style_mode": self.style_mode,
+            "blur_radius": self.blur_radius,
             "quick_access": self.quick_access,
         });
         if let Ok(formatted) = serde_json::to_string_pretty(&json) {
@@ -1121,12 +1147,13 @@ impl IslandWidget {
     }
 
     pub fn reload_config(&mut self) {
-        let (mode, r_c, r_e, apps, style, theme) = Self::load_config_values();
+        let (mode, r_c, r_e, apps, style, theme, blur) = Self::load_config_values();
         self.fillet_radius_compact = r_c;
         self.fillet_radius_expanded = r_e;
         self.quick_access = apps;
         self.style_mode = style;
         self.theme_mode = theme;
+        self.blur_radius = blur;
         self.set_dock_mode(mode);
     }
 
@@ -1137,9 +1164,10 @@ impl IslandWidget {
         }
     }
 
-    pub fn check_ipc(&mut self) -> (Option<f32>, Option<u32>) {
+    pub fn check_ipc(&mut self) -> (Option<f32>, Option<u32>, Option<f32>) {
         let mut style_changed = None;
         let mut theme_changed = None;
+        let mut blur_changed = None;
         while let Ok(evt) = self.ipc_rx.try_recv() {
             match evt {
                 IslandIpcEvent::Toggle => self.toggle(),
@@ -1179,10 +1207,16 @@ impl IslandWidget {
                 IslandIpcEvent::SetFillet(r) => self.set_fillet_radius(r),
                 IslandIpcEvent::SetFilletCompact(r) => self.set_fillet_radius_compact(r),
                 IslandIpcEvent::SetFilletExpanded(r) => self.set_fillet_radius_expanded(r),
+                IslandIpcEvent::SetBlur(b) => {
+                    self.blur_radius = b.clamp(0.0, 48.0);
+                    self.needs_redraw = true;
+                    blur_changed = Some(self.blur_radius);
+                    self.save_config();
+                }
                 IslandIpcEvent::ReloadConfig => self.reload_config(),
             }
         }
-        (style_changed, theme_changed)
+        (style_changed, theme_changed, blur_changed)
     }
 
     pub fn update_physics(&mut self, dt: f32) -> bool {
@@ -2689,7 +2723,7 @@ impl IslandWidget {
                 .bevel(14.0)
                 .refraction(14.0)
                 .dispersion(0.12)
-                .blur(2.0)
+                .blur(self.blur_radius)
                 .specular(1.10)
                 .fresnel(0.60)
                 .style_mode(self.style_mode)
@@ -3047,6 +3081,20 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>, wakeup_fd: Option<i32>) {
                             .trim();
                         if let Ok(r) = num_part.parse::<f32>() {
                             send_evt(IslandIpcEvent::SetFillet(r));
+                        }
+                    } else if trimmed.starts_with("set_blur ")
+                        || trimmed.starts_with("set_blur:")
+                        || trimmed.starts_with("blur ")
+                        || trimmed.starts_with("blur:")
+                    {
+                        let num_part = trimmed
+                            .trim_start_matches("set_blur ")
+                            .trim_start_matches("set_blur:")
+                            .trim_start_matches("blur ")
+                            .trim_start_matches("blur:")
+                            .trim();
+                        if let Ok(b) = num_part.parse::<f32>() {
+                            send_evt(IslandIpcEvent::SetBlur(b));
                         }
                     } else if trimmed == "reload"
                         || trimmed == "reload config"

@@ -133,6 +133,7 @@ pub struct TodoWidget {
     pub filter_spring: Spring,
     pub style_mode: f32,
     pub theme_mode: u32,
+    pub blur_radius: f32,
 }
 
 impl TodoWidget {
@@ -254,6 +255,7 @@ impl TodoWidget {
             filter_spring: Spring::with_params(0.0, spring_params),
             style_mode: 2.0,
             theme_mode: 0,
+            blur_radius: 6.0,
         }
     }
 
@@ -1876,7 +1878,7 @@ impl TodoWidget {
                 .bevel(22.0)
                 .refraction(15.0)
                 .dispersion(0.12)
-                .blur(2.0)
+                .blur(self.blur_radius)
                 .tint(0.0, progress_packed, 0.0, is_light_f32)
                 .roughness(-1.0)
                 .specular(1.10)

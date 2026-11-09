@@ -35,6 +35,7 @@ if [ ! -f "$CONFIG_DIR/config.json" ]; then
   "fillet_radius_expanded": 24.0,
   "style_mode": 2.0,
   "theme_mode": 0,
+  "blur_radius": 8.0,
   "quick_access": [
     { "name": "Terminal", "command": "foot", "icon": "terminal" },
     { "name": "Browser", "command": "brave", "icon": "browser" },

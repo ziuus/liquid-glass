@@ -354,8 +354,10 @@ fn main() {
     let mut todo = TodoWidget::new(&qh, &compositor_state, &layer_shell, display_ptr);
     clock.style_mode = island.style_mode;
     clock.theme_mode = island.theme_mode;
+    clock.blur_radius = island.blur_radius;
     todo.style_mode = island.style_mode;
     todo.theme_mode = island.theme_mode;
+    todo.blur_radius = island.blur_radius;
 
     if let Some(cache) = wallpaper_mgr.cached_buffer() {
         let clock_crop = WallpaperManager::get_wallpaper_crop(
@@ -431,7 +433,7 @@ fn main() {
         let dt = (now - last_frame).as_secs_f32().clamp(0.001, 0.05);
         last_frame = now;
 
-        let (new_style, new_theme) = app.island.check_ipc();
+        let (new_style, new_theme, new_blur) = app.island.check_ipc();
         if let Some(s) = new_style {
             app.clock.style_mode = s;
             app.todo.style_mode = s;
@@ -442,6 +444,13 @@ fn main() {
         if let Some(t) = new_theme {
             app.clock.theme_mode = t;
             app.todo.theme_mode = t;
+            app.clock.draw();
+            app.todo.draw();
+            app.island.draw();
+        }
+        if let Some(b) = new_blur {
+            app.clock.blur_radius = b;
+            app.todo.blur_radius = b;
             app.clock.draw();
             app.todo.draw();
             app.island.draw();
@@ -457,6 +466,13 @@ fn main() {
             let t = app.island.theme_mode;
             app.clock.theme_mode = t;
             app.todo.theme_mode = t;
+            app.clock.draw();
+            app.todo.draw();
+        }
+        if app.clock.blur_radius != app.island.blur_radius {
+            let b = app.island.blur_radius;
+            app.clock.blur_radius = b;
+            app.todo.blur_radius = b;
             app.clock.draw();
             app.todo.draw();
         }

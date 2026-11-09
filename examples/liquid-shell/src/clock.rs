@@ -69,6 +69,7 @@ pub struct ClockWidget {
     pub last_minute: u32,
     pub style_mode: f32,
     pub theme_mode: u32,
+    pub blur_radius: f32,
 }
 
 impl ClockWidget {
@@ -138,6 +139,7 @@ impl ClockWidget {
             last_minute: 99,
             style_mode: 2.0,
             theme_mode: 0,
+            blur_radius: 6.0,
         }
     }
 
@@ -479,7 +481,7 @@ impl ClockWidget {
                 .bevel(22.0)
                 .refraction(15.0)
                 .dispersion(0.12)
-                .blur(2.0)
+                .blur(self.blur_radius)
                 .specular(1.10)
                 .fresnel(0.60)
                 .style_mode(self.style_mode)
