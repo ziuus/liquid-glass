@@ -1114,13 +1114,49 @@ impl IslandWidget {
             .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
             .unwrap_or_else(|| serde_json::json!({}));
 
-        root_val["edge_style"] = serde_json::json!(self.dock_mode.as_str());
-        root_val["fillet_radius_compact"] = serde_json::json!(self.fillet_radius_compact);
-        root_val["fillet_radius_expanded"] = serde_json::json!(self.fillet_radius_expanded);
+        // Remove legacy flat keys to keep the file cleanly organized by component
+        if let Some(obj) = root_val.as_object_mut() {
+            obj.remove("edge_style");
+            obj.remove("fillet_radius_compact");
+            obj.remove("fillet_radius_expanded");
+            obj.remove("quick_access");
+        }
+
+        // Global defaults
         root_val["theme_mode"] = serde_json::json!(self.theme_mode);
         root_val["style_mode"] = serde_json::json!(self.style_mode);
         root_val["blur_radius"] = serde_json::json!(self.blur_radius);
-        root_val["quick_access"] = serde_json::json!(self.quick_access);
+
+        // Island component section
+        let mut island_obj = root_val
+            .get("island")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+        island_obj["edge_style"] = serde_json::json!(self.dock_mode.as_str());
+        island_obj["fillet_radius_compact"] = serde_json::json!(self.fillet_radius_compact);
+        island_obj["fillet_radius_expanded"] = serde_json::json!(self.fillet_radius_expanded);
+        island_obj["blur_radius"] = serde_json::json!(self.blur_radius);
+        island_obj["style_mode"] = serde_json::json!(self.style_mode);
+        island_obj["quick_access"] = serde_json::json!(self.quick_access);
+        root_val["island"] = island_obj;
+
+        // Clock component section
+        if root_val.get("clock").is_none() {
+            root_val["clock"] = serde_json::json!({
+                "enabled": true,
+                "style_mode": self.style_mode,
+                "blur_radius": self.blur_radius,
+            });
+        }
+
+        // Todo component section
+        if root_val.get("todo").is_none() {
+            root_val["todo"] = serde_json::json!({
+                "enabled": true,
+                "style_mode": self.style_mode,
+                "blur_radius": self.blur_radius,
+            });
+        }
 
         if let Ok(formatted) = serde_json::to_string_pretty(&root_val) {
             let _ = std::fs::write(&conf_path, formatted);
