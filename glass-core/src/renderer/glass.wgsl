@@ -80,10 +80,23 @@ fn rr_sdf(p: vec2<f32>, b: vec2<f32>, r: f32) -> f32 {
     return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - r;
 }
 
+fn rr_sdf_docked(p: vec2<f32>, b: vec2<f32>, r_top: f32, r_bottom: f32) -> f32 {
+    let cur_r = select(r_bottom, r_top, p.y < 0.0);
+    let q = vec2<f32>(abs(p.x) - b.x + cur_r, abs(p.y) - b.y + cur_r);
+    return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - cur_r;
+}
+
 fn rr_normal_fd(p: vec2<f32>, b: vec2<f32>, r: f32) -> vec2<f32> {
     let e = 0.5;
     let dx = rr_sdf(p + vec2<f32>(e, 0.0), b, r) - rr_sdf(p - vec2<f32>(e, 0.0), b, r);
     let dy = rr_sdf(p + vec2<f32>(0.0, e), b, r) - rr_sdf(p - vec2<f32>(0.0, e), b, r);
+    return normalize(vec2<f32>(dx, dy) + vec2<f32>(1e-6, 1e-6));
+}
+
+fn rr_normal_fd_docked(p: vec2<f32>, b: vec2<f32>, r_top: f32, r_bottom: f32) -> vec2<f32> {
+    let e = 0.5;
+    let dx = rr_sdf_docked(p + vec2<f32>(e, 0.0), b, r_top, r_bottom) - rr_sdf_docked(p - vec2<f32>(e, 0.0), b, r_top, r_bottom);
+    let dy = rr_sdf_docked(p + vec2<f32>(0.0, e), b, r_top, r_bottom) - rr_sdf_docked(p - vec2<f32>(0.0, e), b, r_top, r_bottom);
     return normalize(vec2<f32>(dx, dy) + vec2<f32>(1e-6, 1e-6));
 }
 
@@ -1339,8 +1352,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let local_px = uv * params.surface_size - center;
     let r = min(params.corner_radius, min(half_size.x, half_size.y));
     
+    // Dynamic Island attached notch mode (deformation >= 0.9): flush top against screen bezel
+    let is_island = (params.padding >= 26.9 && params.padding <= 27.1);
+    let is_attached = (is_island && params.deformation >= 0.9);
+    let r_top = select(r, 0.0, is_attached);
+    let r_bottom = r;
+
     // Crisp, stable rounded-rectangle SDF
-    let sdf = rr_sdf(local_px, half_size, r);
+    let sdf = select(rr_sdf(local_px, half_size, r), rr_sdf_docked(local_px, half_size, r_top, r_bottom), is_attached);
 
     let style_mode = params._pad.x; // 0.0 = Obsidian (Clean), 1.0 = Glassmorphism (Frosted), 2.0 = Liquid Glass
     let is_light = params.is_light;
@@ -1348,30 +1367,29 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Outside the rounded rectangle: soft physical ambient drop shadow or transparent
     if sdf > 0.0 {
         // Dynamic Island (el_type 27.0) is a floating status pill with zero drop shadow
-        let is_island = (params.padding >= 26.9 && params.padding <= 27.1);
         if !is_island && style_mode >= 0.5 {
-            // Physical soft drop shadow: 0 8px 24px at 20-25% alpha
+            // Physical soft drop shadow: 0 8px 24px at 16-20% alpha (softer, wider blur)
             let shadow_px = local_px - vec2<f32>(0.0, 8.0);
             let d_shadow = max(rr_sdf(shadow_px, half_size, r), 0.0);
 
-            if d_shadow <= 28.0 {
+            if d_shadow <= 32.0 {
                 let bg_under_shadow = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
                 let shadow_luma = dot(bg_under_shadow, vec3<f32>(0.2126, 0.7152, 0.0722));
                 let is_shadow_light = (is_light > 0.5 || shadow_luma > 0.50);
 
-                // Soft Gaussian decay (sigma = 10.0px, decays smoothly to 24-26px)
-                let amb_sigma = 10.0;
+                // Soft Gaussian decay (sigma = 14.0px, decays smoothly to 28-32px)
+                let amb_sigma = 14.0;
                 let ambient = exp(-(d_shadow * d_shadow) / (2.0 * amb_sigma * amb_sigma));
 
                 // Directional weight: top receives 0%, bottom receives full shadow
                 let norm_y = clamp(local_px.y / half_size.y, -1.0, 1.0);
                 let dir_weight = clamp(norm_y * 0.75 + 0.25, 0.0, 1.0);
 
-                // Smooth outer cutoff between 16px and 26px
-                let cutoff = 1.0 - smoothstep(16.0, 26.0, d_shadow);
+                // Smooth outer cutoff between 20px and 30px
+                let cutoff = 1.0 - smoothstep(20.0, 30.0, d_shadow);
 
-                // 20-25% alpha (0.24 on light, 0.20 on dark)
-                let max_alpha = select(0.20, 0.24, is_shadow_light);
+                // Lower to ~20% alpha max (0.20 on light, 0.16 on dark)
+                let max_alpha = select(0.16, 0.20, is_shadow_light);
                 let shadow_alpha = ambient * dir_weight * cutoff * max_alpha;
 
                 // Seamless edge blend to eliminate hard perimeter stroke
@@ -1391,7 +1409,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let t = clamp(depth / bezel, 0.0, 1.0);       // 0.0 at outer edge, 1.0 where bezel ends
 
     // Exact analytical 2D outward unit normal of rounded rectangle
-    let grad_2d = rr_normal(local_px, half_size, r);
+    let grad_2d = select(rr_normal(local_px, half_size, r), rr_normal_fd_docked(local_px, half_size, r_top, r_bottom), is_attached);
     let corner_factor = clamp(abs(grad_2d.x * grad_2d.y) * 4.0, 0.0, 1.0);
 
     // ════════════════════════════════════════════
@@ -1407,14 +1425,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let raw_slope = (u * u * u) / denom;
     let se_slope = clamp(raw_slope, 0.0, 6.0) / 6.0;
 
-    // Smooth cosine spread across full bezel depth (ensures wide 14-22px visible optical bend)
-    let wide_spread = cos(t * 1.5707963);
+    // Smooth cosine spread across full bezel depth with zero slope at t=1 (eliminates slope jump / kinks)
+    let wide_spread = pow(cos(t * 1.5707963), 2.0);
 
     // Blended gentler profile: maintains high rim tilt while staying elevated across the entire bezel
     let lens_profile = mix(wide_spread, se_slope, 0.35);
 
+    let top_flush = select(1.0, smoothstep(-half_size.y, -half_size.y + 4.0, local_px.y), is_attached);
     let thickness = select(15.0, params.refraction_strength, params.refraction_strength >= 1.0);
-    let off_px = refract_dir * (thickness * lens_profile);
+    let off_px = refract_dir * (thickness * lens_profile * top_flush);
     let off_uv = off_px / params.surface_size;
 
     let debug_mode = params._pad.y;
@@ -1513,7 +1532,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Soft 2.0 - 4.0px inner highlight
     let inner_highlight = smoothstep(4.0, 0.8, depth) * 0.20;
 
-    let spec_rim = (rim_1px * dir_weight + inner_highlight * dir_weight) * params.specular_strength;
+    let spec_rim = (rim_1px * dir_weight + inner_highlight * dir_weight) * params.specular_strength * top_flush;
 
     // ════════════════════════════════════════════
     // 5. MASTER COMPOSITE (OBSIDIAN, GLASSMORPHISM, LIQUID GLASS)
@@ -1523,7 +1542,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if style_mode < 0.5 {
         // ── 0.0: SOLID CLEAN BACKGROUND (Pure White on light, Pure Black on dark) ──
         if effective_light > 0.5 {
-            let edge_subtle = smoothstep(1.5, 0.0, depth) * 0.06;
+            let edge_subtle = smoothstep(1.5, 0.0, depth) * 0.06 * top_flush;
             base_surface = vec3<f32>(1.0, 1.0, 1.0) - vec3<f32>(edge_subtle);
         } else {
             base_surface = vec3<f32>(0.0, 0.0, 0.0);
@@ -1532,12 +1551,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         // ── LIGHT / WHITE BACKDROP: PHYSICAL DARK-FIELD MENISCUS OCCLUSION ──
         // On white, light is refracted away at the curved rim, creating a crisp 1.5px dark outline
         // that defines the physical glass contour against white surfaces!
-        let edge_contour = smoothstep(1.8, 0.0, depth) * 0.16;
-        let inner_bevel = smoothstep(4.0, 1.2, depth) * 0.03 * dir_weight;
+        let edge_contour = smoothstep(1.8, 0.0, depth) * 0.16 * top_flush;
+        let inner_bevel = smoothstep(4.0, 1.2, depth) * 0.03 * dir_weight * top_flush;
         base_surface = (col - vec3<f32>(edge_contour)) + vec3<f32>(inner_bevel);
     } else {
         // ── DARK / VIBRANT BACKDROP: DIAMOND-CUT SPECULAR HAIRLINE ──
-        let rim_reflection = (rim_1px * 0.95 + inner_highlight * 0.40) * dir_weight;
+        let rim_reflection = (rim_1px * 0.95 + inner_highlight * 0.40) * dir_weight * top_flush;
         let rim_tint = vec3<f32>(1.0, 1.0, 1.0);
         base_surface = col + rim_tint * rim_reflection;
     }

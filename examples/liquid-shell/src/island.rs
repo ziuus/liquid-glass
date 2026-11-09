@@ -34,6 +34,12 @@ pub fn safe_truncate(s: &str, max_chars: usize) -> String {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IslandDockMode {
+    Floating,
+    Attached,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IslandMode {
     Hidden,
     CompactPill,
@@ -192,6 +198,8 @@ pub enum IslandIpcEvent {
     CycleStyle,
     SetTheme(u32),
     CycleTheme,
+    SetDock(IslandDockMode),
+    ToggleDock,
 }
 
 pub struct WaylandWindow {
@@ -244,6 +252,8 @@ pub struct IslandWidget {
     pub current_y: f32,
     pub target_y: f32,
     pub vel_y: f32,
+
+    pub dock_mode: IslandDockMode,
 
     pub mode: IslandMode,
     pub prev_mode: IslandMode,
@@ -370,6 +380,24 @@ impl IslandWidget {
 
         let font = UIFont::new();
 
+        let dock_mode = {
+            let home = std::env::var("HOME").unwrap_or_default();
+            let dock_path = format!("{}/.config/liquid-glass/island_dock.txt", home);
+            if let Ok(content) = std::fs::read_to_string(&dock_path) {
+                if content.trim().eq_ignore_ascii_case("attached") {
+                    IslandDockMode::Attached
+                } else {
+                    IslandDockMode::Floating
+                }
+            } else {
+                IslandDockMode::Floating
+            }
+        };
+        let init_y = match dock_mode {
+            IslandDockMode::Attached => 0.0,
+            IslandDockMode::Floating => 8.0,
+        };
+
         Self {
             layer_surface: Some(layer_surface),
             surface,
@@ -392,9 +420,11 @@ impl IslandWidget {
             target_alpha: 1.0,
             vel_alpha: 0.0,
 
-            current_y: 8.0,
-            target_y: 8.0,
+            current_y: init_y,
+            target_y: init_y,
             vel_y: 0.0,
+
+            dock_mode,
 
             mode: IslandMode::CompactPill,
             prev_mode: IslandMode::CompactPill,
@@ -669,8 +699,11 @@ impl IslandWidget {
                     && self.press_time.elapsed() < Duration::from_millis(600)
                     && self.last_mode_cycle.elapsed() >= Duration::from_millis(400)
                 {
-                    if button == 273 || button == 274 {
-                        // Secondary click or middle click cycles desktop style mode
+                    if button == 273 {
+                        // Right-click toggles between Attached (docked to top edge) and Floating styles
+                        self.toggle_dock_mode();
+                    } else if button == 274 {
+                        // Middle click cycles desktop glass style mode
                         self.style_mode = (self.style_mode + 1.0) % 3.0;
                         self.needs_redraw = true;
                     } else {
@@ -755,6 +788,11 @@ impl IslandWidget {
             }
         }
 
+        let dock_y = match self.dock_mode {
+            IslandDockMode::Attached => 0.0,
+            IslandDockMode::Floating => 8.0,
+        };
+
         match new_mode {
             IslandMode::Hidden => {
                 self.target_w = 160.0;
@@ -765,7 +803,7 @@ impl IslandWidget {
             IslandMode::CompactPill => {
                 self.target_w = Tokens::ISLAND_COMPACT_W;
                 self.target_h = Tokens::ISLAND_COMPACT_H;
-                self.target_y = 8.0;
+                self.target_y = dock_y;
                 self.target_alpha = 1.0;
             }
             IslandMode::MusicExpanded
@@ -776,7 +814,7 @@ impl IslandWidget {
                 // Unified standard geometry: all expanded pages have identical 460x120px footprint
                 self.target_w = Tokens::ISLAND_EXPANDED_W;
                 self.target_h = Tokens::ISLAND_EXPANDED_H;
-                self.target_y = 8.0;
+                self.target_y = dock_y;
                 self.target_alpha = 1.0;
             }
         }
@@ -810,6 +848,39 @@ impl IslandWidget {
             IslandMode::Notification => IslandMode::QuickAccess,
         };
         self.set_mode(prev);
+    }
+
+    pub fn save_dock_mode(&self) {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let dir = format!("{}/.config/liquid-glass", home);
+        let _ = std::fs::create_dir_all(&dir);
+        let val = match self.dock_mode {
+            IslandDockMode::Attached => "attached",
+            IslandDockMode::Floating => "floating",
+        };
+        let _ = std::fs::write(format!("{dir}/island_dock.txt"), val);
+    }
+
+    pub fn set_dock_mode(&mut self, mode: IslandDockMode) {
+        self.dock_mode = mode;
+        if self.mode != IslandMode::Hidden {
+            self.target_y = match mode {
+                IslandDockMode::Attached => 0.0,
+                IslandDockMode::Floating => 8.0,
+            };
+            self.animating = true;
+            self.needs_redraw = true;
+            self.needs_input_region_update = true;
+        }
+        self.save_dock_mode();
+    }
+
+    pub fn toggle_dock_mode(&mut self) {
+        let next = match self.dock_mode {
+            IslandDockMode::Floating => IslandDockMode::Attached,
+            IslandDockMode::Attached => IslandDockMode::Floating,
+        };
+        self.set_dock_mode(next);
     }
 
     fn toggle(&mut self) {
@@ -852,6 +923,8 @@ impl IslandWidget {
                     self.active_notif = Some(notif);
                     self.set_mode(IslandMode::Notification);
                 }
+                IslandIpcEvent::SetDock(d) => self.set_dock_mode(d),
+                IslandIpcEvent::ToggleDock => self.toggle_dock_mode(),
             }
         }
         (style_changed, theme_changed)
@@ -2043,7 +2116,7 @@ impl IslandWidget {
                     FontWeight::Bold,
                 );
 
-                // Interactive Style / Theme Switcher Badge
+                // Interactive Style / Theme Switcher Badge & Dock Switcher Badge
                 let theme_cx = cx + island_w * 0.5 - 130.0;
                 let theme_cy = island_top + 22.0;
                 let style_lbl = match self.style_mode as u32 {
@@ -2072,6 +2145,40 @@ impl IslandWidget {
                     self.height,
                     &format!("{} ⟳", style_lbl),
                     theme_cx,
+                    theme_cy,
+                    10.5,
+                    col_ink,
+                    col_shadow,
+                    FontWeight::Medium,
+                );
+
+                // Dock Mode Switcher Badge (Attached vs Floating)
+                let dock_cx = theme_cx - 86.0;
+                let dock_lbl = match self.dock_mode {
+                    IslandDockMode::Attached => "Dock: Top",
+                    IslandDockMode::Floating => "Dock: Float",
+                };
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    dock_cx,
+                    theme_cy,
+                    36.0,
+                    9.5,
+                    5.0,
+                    if is_light {
+                        [225, 230, 240, 180]
+                    } else {
+                        [40, 48, 64, 180]
+                    },
+                );
+                self.font.draw_text_centered(
+                    buf,
+                    self.width,
+                    self.height,
+                    dock_lbl,
+                    dock_cx,
                     theme_cy,
                     10.5,
                     col_ink,
@@ -2453,6 +2560,11 @@ impl IslandWidget {
                     is_light,
                 )
                 .element_type(27.0)
+                .deformation(if self.dock_mode == IslandDockMode::Attached {
+                    1.0
+                } else {
+                    0.0
+                })
                 .pointer_pos(self.cursor_pos[0], self.cursor_pos[1]);
 
             let _ = renderer.render(&[island]);
@@ -2595,7 +2707,10 @@ impl IslandWidget {
             IslandMode::SystemOverview => {
                 let theme_cx = island_cx + island_w * 0.5 - 130.0;
                 let theme_cy = island_top + 22.0;
-                if (lx - theme_cx).abs() <= 45.0 && (ly - theme_cy).abs() <= 12.0 {
+                let dock_cx = theme_cx - 86.0;
+                if (lx - dock_cx).abs() <= 38.0 && (ly - theme_cy).abs() <= 12.0 {
+                    self.toggle_dock_mode();
+                } else if (lx - theme_cx).abs() <= 45.0 && (ly - theme_cy).abs() <= 12.0 {
                     self.style_mode = (self.style_mode + 1.0) % 3.0;
                     self.needs_redraw = true;
                 }
@@ -2734,6 +2849,27 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>, wakeup_fd: Option<i32>) {
                         || trimmed == "theme cycle"
                     {
                         send_evt(IslandIpcEvent::CycleTheme);
+                    } else if trimmed == "dock attached"
+                        || trimmed == "dock:attached"
+                        || trimmed == "dock top"
+                        || trimmed == "dock:top"
+                        || trimmed == "attached"
+                        || trimmed == "notch"
+                    {
+                        send_evt(IslandIpcEvent::SetDock(IslandDockMode::Attached));
+                    } else if trimmed == "dock floating"
+                        || trimmed == "dock:floating"
+                        || trimmed == "floating"
+                        || trimmed == "island"
+                    {
+                        send_evt(IslandIpcEvent::SetDock(IslandDockMode::Floating));
+                    } else if trimmed == "dock"
+                        || trimmed == "dock toggle"
+                        || trimmed == "dock:toggle"
+                        || trimmed == "toggle dock"
+                        || trimmed == "toggle_dock"
+                    {
+                        send_evt(IslandIpcEvent::ToggleDock);
                     } else if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
                         if val.get("type").and_then(|t| t.as_str()) == Some("notification") {
                             let app = val
