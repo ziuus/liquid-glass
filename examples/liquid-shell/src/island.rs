@@ -36,7 +36,69 @@ pub fn safe_truncate(s: &str, max_chars: usize) -> String {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IslandDockMode {
     Floating,
-    Attached,
+    AttachedStraight,
+    AttachedCurved,
+}
+
+impl IslandDockMode {
+    #[allow(dead_code)]
+    pub fn is_attached(&self) -> bool {
+        matches!(
+            self,
+            IslandDockMode::AttachedStraight | IslandDockMode::AttachedCurved
+        )
+    }
+
+    pub fn is_curved(&self) -> bool {
+        matches!(self, IslandDockMode::AttachedCurved)
+    }
+
+    pub fn deformation(&self) -> f32 {
+        match self {
+            IslandDockMode::Floating => 0.0,
+            IslandDockMode::AttachedStraight => 1.0,
+            IslandDockMode::AttachedCurved => 2.0,
+        }
+    }
+
+    pub fn dock_y(&self) -> f32 {
+        match self {
+            IslandDockMode::Floating => 8.0,
+            IslandDockMode::AttachedStraight | IslandDockMode::AttachedCurved => 0.0,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            IslandDockMode::Floating => "floating",
+            IslandDockMode::AttachedStraight => "straight",
+            IslandDockMode::AttachedCurved => "curved",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        let trimmed = s.trim().to_ascii_lowercase();
+        if trimmed == "straight" || trimmed == "flush" || trimmed == "attached_straight" {
+            IslandDockMode::AttachedStraight
+        } else if trimmed == "curved"
+            || trimmed == "notch"
+            || trimmed == "fillet"
+            || trimmed == "attached"
+            || trimmed == "attached_curved"
+        {
+            IslandDockMode::AttachedCurved
+        } else {
+            IslandDockMode::Floating
+        }
+    }
+
+    pub fn next(&self) -> Self {
+        match self {
+            IslandDockMode::AttachedCurved => IslandDockMode::AttachedStraight,
+            IslandDockMode::AttachedStraight => IslandDockMode::Floating,
+            IslandDockMode::Floating => IslandDockMode::AttachedCurved,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -200,6 +262,8 @@ pub enum IslandIpcEvent {
     CycleTheme,
     SetDock(IslandDockMode),
     ToggleDock,
+    SetFillet(f32),
+    ReloadConfig,
 }
 
 pub struct WaylandWindow {
@@ -254,6 +318,7 @@ pub struct IslandWidget {
     pub vel_y: f32,
 
     pub dock_mode: IslandDockMode,
+    pub fillet_radius: f32,
 
     pub mode: IslandMode,
     pub prev_mode: IslandMode,
@@ -380,23 +445,8 @@ impl IslandWidget {
 
         let font = UIFont::new();
 
-        let dock_mode = {
-            let home = std::env::var("HOME").unwrap_or_default();
-            let dock_path = format!("{}/.config/liquid-glass/island_dock.txt", home);
-            if let Ok(content) = std::fs::read_to_string(&dock_path) {
-                if content.trim().eq_ignore_ascii_case("attached") {
-                    IslandDockMode::Attached
-                } else {
-                    IslandDockMode::Floating
-                }
-            } else {
-                IslandDockMode::Floating
-            }
-        };
-        let init_y = match dock_mode {
-            IslandDockMode::Attached => 0.0,
-            IslandDockMode::Floating => 8.0,
-        };
+        let (dock_mode, fillet_radius) = Self::load_config_values();
+        let init_y = dock_mode.dock_y();
 
         Self {
             layer_surface: Some(layer_surface),
@@ -425,6 +475,7 @@ impl IslandWidget {
             vel_y: 0.0,
 
             dock_mode,
+            fillet_radius,
 
             mode: IslandMode::CompactPill,
             prev_mode: IslandMode::CompactPill,
@@ -495,8 +546,8 @@ impl IslandWidget {
         }
         let island_cx = (self.width as f32) * 0.5;
         let island_top = self.current_y;
-        let flare = if self.dock_mode == IslandDockMode::Attached && ly <= 24.0 {
-            24.0
+        let flare = if self.dock_mode.is_curved() && ly <= self.fillet_radius {
+            self.fillet_radius
         } else {
             0.0
         };
@@ -516,8 +567,8 @@ impl IslandWidget {
     {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
-        let flare = if self.dock_mode == IslandDockMode::Attached {
-            24
+        let flare = if self.dock_mode.is_curved() {
+            self.fillet_radius as i32
         } else {
             0
         };
@@ -798,10 +849,7 @@ impl IslandWidget {
             }
         }
 
-        let dock_y = match self.dock_mode {
-            IslandDockMode::Attached => 0.0,
-            IslandDockMode::Floating => 8.0,
-        };
+        let dock_y = self.dock_mode.dock_y();
 
         match new_mode {
             IslandMode::Hidden => {
@@ -860,37 +908,81 @@ impl IslandWidget {
         self.set_mode(prev);
     }
 
-    pub fn save_dock_mode(&self) {
+    #[allow(dead_code)]
+    pub fn config_path() -> String {
+        let home = std::env::var("HOME").unwrap_or_default();
+        format!("{}/.config/liquid-glass/config.json", home)
+    }
+
+    pub fn load_config_values() -> (IslandDockMode, f32) {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let conf_path = format!("{}/.config/liquid-glass/config.json", home);
+        if let Ok(content) = std::fs::read_to_string(&conf_path) {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                let dock_mode = val
+                    .get("edge_style")
+                    .and_then(|s| s.as_str())
+                    .map(IslandDockMode::from_str)
+                    .unwrap_or(IslandDockMode::AttachedCurved);
+                let fillet_radius = val
+                    .get("fillet_radius")
+                    .and_then(|f| f.as_f64())
+                    .map(|f| f as f32)
+                    .unwrap_or(24.0);
+                return (dock_mode, fillet_radius);
+            }
+        }
+        let dock_path = format!("{}/.config/liquid-glass/island_dock.txt", home);
+        if let Ok(content) = std::fs::read_to_string(&dock_path) {
+            (IslandDockMode::from_str(&content), 24.0)
+        } else {
+            (IslandDockMode::AttachedCurved, 24.0)
+        }
+    }
+
+    pub fn save_config(&self) {
         let home = std::env::var("HOME").unwrap_or_default();
         let dir = format!("{}/.config/liquid-glass", home);
         let _ = std::fs::create_dir_all(&dir);
-        let val = match self.dock_mode {
-            IslandDockMode::Attached => "attached",
-            IslandDockMode::Floating => "floating",
-        };
-        let _ = std::fs::write(format!("{dir}/island_dock.txt"), val);
+        let json = serde_json::json!({
+            "edge_style": self.dock_mode.as_str(),
+            "fillet_radius": self.fillet_radius,
+            "theme_mode": self.theme_mode,
+            "style_mode": self.style_mode,
+        });
+        if let Ok(formatted) = serde_json::to_string_pretty(&json) {
+            let _ = std::fs::write(format!("{dir}/config.json"), formatted);
+        }
+        let _ = std::fs::write(format!("{dir}/island_dock.txt"), self.dock_mode.as_str());
     }
 
     pub fn set_dock_mode(&mut self, mode: IslandDockMode) {
         self.dock_mode = mode;
         if self.mode != IslandMode::Hidden {
-            self.target_y = match mode {
-                IslandDockMode::Attached => 0.0,
-                IslandDockMode::Floating => 8.0,
-            };
+            self.target_y = mode.dock_y();
             self.animating = true;
             self.needs_redraw = true;
             self.needs_input_region_update = true;
         }
-        self.save_dock_mode();
+        self.save_config();
     }
 
     pub fn toggle_dock_mode(&mut self) {
-        let next = match self.dock_mode {
-            IslandDockMode::Floating => IslandDockMode::Attached,
-            IslandDockMode::Attached => IslandDockMode::Floating,
-        };
+        let next = self.dock_mode.next();
         self.set_dock_mode(next);
+    }
+
+    pub fn set_fillet_radius(&mut self, r: f32) {
+        self.fillet_radius = r.clamp(8.0, 48.0);
+        self.needs_redraw = true;
+        self.needs_input_region_update = true;
+        self.save_config();
+    }
+
+    pub fn reload_config(&mut self) {
+        let (mode, r) = Self::load_config_values();
+        self.fillet_radius = r;
+        self.set_dock_mode(mode);
     }
 
     fn toggle(&mut self) {
@@ -913,21 +1005,25 @@ impl IslandWidget {
                     self.style_mode = s;
                     self.needs_redraw = true;
                     style_changed = Some(s);
+                    self.save_config();
                 }
                 IslandIpcEvent::CycleStyle => {
                     self.style_mode = (self.style_mode + 1.0) % 3.0;
                     self.needs_redraw = true;
                     style_changed = Some(self.style_mode);
+                    self.save_config();
                 }
                 IslandIpcEvent::SetTheme(t) => {
                     self.theme_mode = t;
                     self.needs_redraw = true;
                     theme_changed = Some(t);
+                    self.save_config();
                 }
                 IslandIpcEvent::CycleTheme => {
                     self.theme_mode = (self.theme_mode + 1) % 3;
                     self.needs_redraw = true;
                     theme_changed = Some(self.theme_mode);
+                    self.save_config();
                 }
                 IslandIpcEvent::Notification(notif) => {
                     self.active_notif = Some(notif);
@@ -935,6 +1031,8 @@ impl IslandWidget {
                 }
                 IslandIpcEvent::SetDock(d) => self.set_dock_mode(d),
                 IslandIpcEvent::ToggleDock => self.toggle_dock_mode(),
+                IslandIpcEvent::SetFillet(r) => self.set_fillet_radius(r),
+                IslandIpcEvent::ReloadConfig => self.reload_config(),
             }
         }
         (style_changed, theme_changed)
@@ -2165,8 +2263,9 @@ impl IslandWidget {
                 // Dock Mode Switcher Badge (Attached vs Floating)
                 let dock_cx = theme_cx - 86.0;
                 let dock_lbl = match self.dock_mode {
-                    IslandDockMode::Attached => "Dock: Top",
-                    IslandDockMode::Floating => "Dock: Float",
+                    IslandDockMode::AttachedCurved => "Edge: Notch",
+                    IslandDockMode::AttachedStraight => "Edge: Flush",
+                    IslandDockMode::Floating => "Edge: Float",
                 };
                 UIFont::draw_rounded_rect_fill(
                     buf,
@@ -2555,7 +2654,7 @@ impl IslandWidget {
                 .material(Material::LiquidGlass)
                 .shape(island_shape)
                 .bounds(x_norm, y_norm, w_norm, h_norm)
-                .curvature(0.04)
+                .curvature(self.fillet_radius)
                 .bevel(14.0)
                 .refraction(14.0)
                 .dispersion(0.12)
@@ -2570,11 +2669,7 @@ impl IslandWidget {
                     is_light,
                 )
                 .element_type(27.0)
-                .deformation(if self.dock_mode == IslandDockMode::Attached {
-                    1.0
-                } else {
-                    0.0
-                })
+                .deformation(self.dock_mode.deformation())
                 .pointer_pos(self.cursor_pos[0], self.cursor_pos[1]);
 
             let _ = renderer.render(&[island]);
@@ -2596,8 +2691,8 @@ impl IslandWidget {
         let island_h = self.current_h;
 
         // Check if click was inside current island capsule, flared wings, or top edge
-        let flare = if self.dock_mode == IslandDockMode::Attached && ly <= 24.0 {
-            24.0
+        let flare = if self.dock_mode.is_curved() && ly <= self.fillet_radius {
+            self.fillet_radius
         } else {
             0.0
         };
@@ -2864,27 +2959,60 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>, wakeup_fd: Option<i32>) {
                         || trimmed == "theme cycle"
                     {
                         send_evt(IslandIpcEvent::CycleTheme);
-                    } else if trimmed == "dock attached"
-                        || trimmed == "dock:attached"
-                        || trimmed == "dock top"
-                        || trimmed == "dock:top"
-                        || trimmed == "attached"
+                    } else if trimmed == "edge curved"
+                        || trimmed == "edge:curved"
+                        || trimmed == "curved"
                         || trimmed == "notch"
+                        || trimmed == "fillet"
+                        || trimmed == "dock attached"
+                        || trimmed == "dock:attached"
+                        || trimmed == "attached"
                     {
-                        send_evt(IslandIpcEvent::SetDock(IslandDockMode::Attached));
-                    } else if trimmed == "dock floating"
-                        || trimmed == "dock:floating"
+                        send_evt(IslandIpcEvent::SetDock(IslandDockMode::AttachedCurved));
+                    } else if trimmed == "edge straight"
+                        || trimmed == "edge:straight"
+                        || trimmed == "straight"
+                        || trimmed == "flush"
+                        || trimmed == "attached_straight"
+                    {
+                        send_evt(IslandIpcEvent::SetDock(IslandDockMode::AttachedStraight));
+                    } else if trimmed == "edge floating"
+                        || trimmed == "edge:floating"
                         || trimmed == "floating"
-                        || trimmed == "island"
+                        || trimmed == "float"
+                        || trimmed == "dock floating"
+                        || trimmed == "dock:floating"
                     {
                         send_evt(IslandIpcEvent::SetDock(IslandDockMode::Floating));
-                    } else if trimmed == "dock"
+                    } else if trimmed == "edge toggle"
+                        || trimmed == "edge:toggle"
                         || trimmed == "dock toggle"
                         || trimmed == "dock:toggle"
+                        || trimmed == "toggle edge"
                         || trimmed == "toggle dock"
-                        || trimmed == "toggle_dock"
+                        || trimmed == "dock"
+                        || trimmed == "edge"
                     {
                         send_evt(IslandIpcEvent::ToggleDock);
+                    } else if trimmed.starts_with("fillet ")
+                        || trimmed.starts_with("fillet:")
+                        || trimmed.starts_with("radius ")
+                        || trimmed.starts_with("radius:")
+                    {
+                        let num_part = trimmed
+                            .trim_start_matches("fillet ")
+                            .trim_start_matches("fillet:")
+                            .trim_start_matches("radius ")
+                            .trim_start_matches("radius:")
+                            .trim();
+                        if let Ok(r) = num_part.parse::<f32>() {
+                            send_evt(IslandIpcEvent::SetFillet(r));
+                        }
+                    } else if trimmed == "reload"
+                        || trimmed == "reload config"
+                        || trimmed == "reload_config"
+                    {
+                        send_evt(IslandIpcEvent::ReloadConfig);
                     } else if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
                         if val.get("type").and_then(|t| t.as_str()) == Some("notification") {
                             let app = val
