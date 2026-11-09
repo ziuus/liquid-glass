@@ -1581,9 +1581,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let light_facing = max(dot(grad_2d, light_vec_2d), 0.0);
     let dir_weight = mix(0.35, 1.00, light_facing);
 
-    // 1. Crisp outer 1.0px Fresnel hairline
+    // 1. Crisp outer 1.0px Fresnel hairline with directional light modulation
     let corner_mult = 1.0 + 0.35 * corner_factor;
     let rim_outer = smoothstep(1.3, 0.2, depth) * corner_mult;
+    let outer_spec = rim_outer * mix(0.25, 1.00, light_facing);
 
     // 2. Secondary inner refraction bevel line (2.2px inside the boundary) - establishes solid glass thickness
     let rim_inner = smoothstep(0.75, 0.0, abs(depth - 2.2)) * 0.42 * corner_mult;
@@ -1594,7 +1595,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // 4. Dark refraction absorption boundary on trailing bottom-right edge
     let dark_absorption = smoothstep(0.0, 1.4, depth) * smoothstep(3.2, 1.4, depth) * (1.0 - light_facing * 0.80) * 0.18;
 
-    let spec_rim = (rim_outer * 0.85 + rim_inner * dir_weight + inner_highlight * dir_weight) * params.specular_strength * top_flush;
+    let spec_rim = (outer_spec * 0.90 + rim_inner * dir_weight + inner_highlight * dir_weight) * params.specular_strength * top_flush;
 
     // ════════════════════════════════════════════
     // 5. MASTER COMPOSITE (OBSIDIAN, GLASSMORPHISM, LIQUID GLASS)
@@ -1649,9 +1650,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     fin = mix(fin, app.glyph_color, app.glyph_mask);
 
-    // Composite dynamic interactive UI vector overlay
+    // Composite dynamic interactive UI vector overlay (premultiplied alpha from CPU buffer)
     let overlay = textureSampleLevel(overlay_texture, background_sampler, uv, 0.0);
-    fin = mix(fin, overlay.rgb, overlay.a);
+    fin = fin * (1.0 - overlay.a) + overlay.rgb;
 
     var fin_a = 1.0;
     if params.padding >= 26.9 && params.padding <= 27.1 {

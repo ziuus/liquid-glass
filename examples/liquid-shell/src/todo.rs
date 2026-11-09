@@ -994,7 +994,7 @@ impl TodoWidget {
         } else if is_light {
             [18, 24, 34, 255]
         } else {
-            [180, 190, 205, 210]
+            [210, 220, 235, 230]
         };
         self.font.draw_text_centered(
             buf,
@@ -1015,7 +1015,7 @@ impl TodoWidget {
         } else if is_light {
             [18, 24, 34, 255]
         } else {
-            [180, 190, 205, 210]
+            [210, 220, 235, 230]
         };
         self.font.draw_text_centered(
             buf,
@@ -1092,7 +1092,7 @@ impl TodoWidget {
             let filter_unselected = if is_light {
                 [80, 90, 105, 230]
             } else {
-                [175, 185, 200, 210]
+                [205, 215, 230, 230]
             };
 
             let f0_col = if self.active_filter == 0 {
