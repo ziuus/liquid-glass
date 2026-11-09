@@ -1437,28 +1437,28 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if sdf > 0.0 {
         // Only floating elements receive shadow (attached island docked against top bezel is flush with zero shadow)
         if (!is_island || !is_attached) && style_mode >= 0.5 {
-            // Tight physical contact shadow: 0 4px 12px
-            let shadow_px = local_px - vec2<f32>(0.0, 4.0);
+            // Soft physical ambient drop shadow: 0 8px 24px @ 20-24% alpha
+            let shadow_px = local_px - vec2<f32>(0.0, 8.0);
             let d_shadow = max(rr_sdf(shadow_px, half_size, r), 0.0);
 
-            if d_shadow <= 14.0 {
+            if d_shadow <= 32.0 {
                 let bg_under_shadow = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
                 let shadow_luma = dot(bg_under_shadow, vec3<f32>(0.2126, 0.7152, 0.0722));
                 let is_shadow_light = (is_light > 0.5 || shadow_luma > 0.45);
 
-                // Tight Gaussian decay (sigma = 4.8px, falls smoothly to zero by 12px)
-                let amb_sigma = 4.8;
+                // Wide Gaussian decay (sigma = 10.0px, falls smoothly to zero by 28px)
+                let amb_sigma = 10.0;
                 let ambient = exp(-(d_shadow * d_shadow) / (2.0 * amb_sigma * amb_sigma));
 
-                // Directional weight: top receives 0%, bottom receives full shadow
+                // Directional weight: top receives subtle ambient (10%), bottom receives full shadow (100%)
                 let norm_y = clamp(local_px.y / half_size.y, -1.0, 1.0);
-                let dir_weight = clamp(norm_y * 0.75 + 0.25, 0.0, 1.0);
+                let dir_weight = clamp(norm_y * 0.55 + 0.45, 0.10, 1.0);
 
-                // Smooth outer cutoff reaching 0 at 12px
-                let cutoff = 1.0 - smoothstep(5.0, 12.0, d_shadow);
+                // Smooth outer cutoff reaching 0 at 28px
+                let cutoff = 1.0 - smoothstep(14.0, 28.0, d_shadow);
 
-                // Subtle alpha: 18% on dark wallpapers (for depth separation in dark foliage), 12% on light
-                let max_alpha = select(0.18, 0.12, is_shadow_light);
+                // High-end physical alpha: 24% on dark wallpapers, 20% on light wallpapers
+                let max_alpha = select(0.24, 0.20, is_shadow_light);
                 let shadow_alpha = ambient * dir_weight * cutoff * max_alpha;
 
                 // Seamless edge blend to eliminate hard perimeter stroke
