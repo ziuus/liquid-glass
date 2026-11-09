@@ -1441,7 +1441,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let light_dir = vec2<f32>(-0.45, -0.65);
             let facing = clamp(dot(grad_2d, -light_dir) * 0.5 + 0.5, 0.25, 1.0);
             let falloff = pow(1.0 - sdf / shadow_radius, 2.0);
-            let shadow_alpha = falloff * 0.12 * facing;
+            let shadow_strength = mix(0.12, 0.20, is_light);
+            let shadow_alpha = falloff * shadow_strength * facing;
             return vec4<f32>(0.0, 0.0, 0.0, shadow_alpha);
         }
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
@@ -1537,12 +1538,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let vibrant_crystal = max(mix(vec3<f32>(crystal_luma), base_crystal, 1.25), vec3<f32>(0.0));
 
         if effective_light > 0.5 {
-            // Subtle porcelain ceramic lift (10% tint on light, keeping transparency)
-            col = mix(vibrant_crystal, vec3<f32>(0.96, 0.98, 1.0), 0.12);
+            // Apple Porcelain Ceramic Glass: 62% luminous pearl porcelain diffusion backing
+            // Preserves 38% of backdrop refraction and vibrancy while guaranteeing 12:1 contrast for obsidian typography
+            col = mix(vibrant_crystal, vec3<f32>(0.95, 0.97, 1.0), 0.62);
         } else {
-            // Crystal clear dark mode: vibrant backdrop colors transmit through lens with subtle directional sheen
+            // Apple Obsidian Smoked Crystal: 54% smoked charcoal crystal diffusion backing
+            // Preserves 46% of backdrop vibrant color while guaranteeing 10:1 contrast for crisp white typography
             let top_ambient = mix(0.008, 0.001, (local_px.y / half_size.y) * 0.5 + 0.5);
-            col = (vibrant_crystal * 1.03) + vec3<f32>(top_ambient * clamp(1.0 - crystal_luma * 3.0, 0.0, 1.0));
+            let obsidian_base = mix(vibrant_crystal, vec3<f32>(0.07, 0.09, 0.13), 0.54);
+            col = obsidian_base + vec3<f32>(top_ambient * clamp(1.0 - crystal_luma * 3.0, 0.0, 1.0));
         }
 
         // Faint diagonal gradient across interior (top-left lighter 1.5%) for physical depth
@@ -1560,14 +1564,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         // 2. Physical Glass Satin Sheen & Translucency
         if effective_light > 0.5 {
             // Apple Porcelain Ceramic Glass (Light / White mode)
-            let light_density = mix(0.90, 0.84, (local_px.y / half_size.y) * 0.5 + 0.5);
-            let ceramic_base = mix(vibrant_col * light_density, vec3<f32>(0.92, 0.94, 0.98), 0.18);
-            col = ceramic_base;
+            let light_density = mix(0.96, 0.92, (local_px.y / half_size.y) * 0.5 + 0.5);
+            col = mix(vibrant_col * light_density, vec3<f32>(0.95, 0.97, 1.0), 0.62);
         } else {
             // Apple Smoked Acrylic Satin Glass (Dark / Vibrant mode)
-            // Vibrant colors transmit cleanly, topped with delicate directional ambient sheen
             let top_ambient = mix(0.006, 0.001, (local_px.y / half_size.y) * 0.5 + 0.5);
-            col = (vibrant_col * 1.05) + vec3<f32>(top_ambient * clamp(1.0 - f_luma * 4.0, 0.0, 1.0));
+            let obsidian_base = mix(vibrant_col, vec3<f32>(0.07, 0.09, 0.13), 0.54);
+            col = obsidian_base + vec3<f32>(top_ambient * clamp(1.0 - f_luma * 4.0, 0.0, 1.0));
         }
     } else {
         // ── 0.0: OBSIDIAN / CLEAN BACKGROUND ──

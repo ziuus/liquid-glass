@@ -914,7 +914,7 @@ impl TodoWidget {
             16.0,
             10.0,
             if is_light {
-                [235, 240, 248, 220]
+                [0, 0, 0, 16]
             } else {
                 [255, 255, 255, 14]
             },
@@ -923,7 +923,7 @@ impl TodoWidget {
         // Sliding Active Tab Pill (Liquid Glass Lens with Crisp Double Bevel)
         let tab_pill_cx = 96.0 * (1.0 - tab_t) + 224.0 * tab_t;
         let pill_fill = if is_light {
-            [218, 226, 240, 255]
+            [255, 255, 255, 245]
         } else {
             [255, 255, 255, 45]
         };
@@ -950,7 +950,7 @@ impl TodoWidget {
             8.0,
             1.2,
             if is_light {
-                [255, 255, 255, 200]
+                [0, 0, 0, 22]
             } else {
                 [255, 255, 255, 90]
             },
@@ -1048,7 +1048,7 @@ impl TodoWidget {
                 13.0,
                 8.0,
                 if is_light {
-                    [235, 240, 248, 220]
+                    [0, 0, 0, 14]
                 } else {
                     [255, 255, 255, 14]
                 },
@@ -1056,7 +1056,7 @@ impl TodoWidget {
 
             // Sliding active filter pill (Liquid Glass Lens with Crisp Bevel Stroke)
             let filter_pill_fill = if is_light {
-                [218, 226, 240, 255]
+                [255, 255, 255, 245]
             } else {
                 [255, 255, 255, 45]
             };
@@ -1082,7 +1082,7 @@ impl TodoWidget {
                 7.0,
                 1.1,
                 if is_light {
-                    [255, 255, 255, 200]
+                    [0, 0, 0, 20]
                 } else {
                     [255, 255, 255, 85]
                 },
