@@ -1433,8 +1433,40 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let style_mode = params._pad.x; // 0.0 = Obsidian (Clean), 1.0 = Glassmorphism (Frosted), 2.0 = Liquid Glass
     let is_light = params.is_light;
     
-    // Outside the shape: transparent (clean physical liquid glass with zero dirty shadow smudges)
+    // Outside the shape: refined tight physical ambient contact shadow or transparent
     if sdf > 0.0 {
+        // Only floating elements receive shadow (attached island docked against top bezel is flush with zero shadow)
+        if (!is_island || !is_attached) && style_mode >= 0.5 {
+            // Tight physical contact shadow: 0 4px 12px
+            let shadow_px = local_px - vec2<f32>(0.0, 4.0);
+            let d_shadow = max(rr_sdf(shadow_px, half_size, r), 0.0);
+
+            if d_shadow <= 14.0 {
+                let bg_under_shadow = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
+                let shadow_luma = dot(bg_under_shadow, vec3<f32>(0.2126, 0.7152, 0.0722));
+                let is_shadow_light = (is_light > 0.5 || shadow_luma > 0.45);
+
+                // Tight Gaussian decay (sigma = 4.8px, falls smoothly to zero by 12px)
+                let amb_sigma = 4.8;
+                let ambient = exp(-(d_shadow * d_shadow) / (2.0 * amb_sigma * amb_sigma));
+
+                // Directional weight: top receives 0%, bottom receives full shadow
+                let norm_y = clamp(local_px.y / half_size.y, -1.0, 1.0);
+                let dir_weight = clamp(norm_y * 0.75 + 0.25, 0.0, 1.0);
+
+                // Smooth outer cutoff reaching 0 at 12px
+                let cutoff = 1.0 - smoothstep(5.0, 12.0, d_shadow);
+
+                // Subtle alpha: 18% on dark wallpapers (for depth separation in dark foliage), 12% on light
+                let max_alpha = select(0.18, 0.12, is_shadow_light);
+                let shadow_alpha = ambient * dir_weight * cutoff * max_alpha;
+
+                // Seamless edge blend to eliminate hard perimeter stroke
+                let edge_blend = clamp(sdf * 0.5, 0.0, 1.0);
+
+                return vec4<f32>(0.0, 0.0, 0.0, shadow_alpha * edge_blend);
+            }
+        }
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
     

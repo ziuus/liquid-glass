@@ -342,6 +342,8 @@ pub enum IslandIpcEvent {
     SetDock(IslandDockMode),
     ToggleDock,
     SetFillet(f32),
+    SetFilletCompact(f32),
+    SetFilletExpanded(f32),
     ReloadConfig,
 }
 
@@ -397,7 +399,8 @@ pub struct IslandWidget {
     pub vel_y: f32,
 
     pub dock_mode: IslandDockMode,
-    pub fillet_radius: f32,
+    pub fillet_radius_compact: f32,
+    pub fillet_radius_expanded: f32,
     pub quick_access: Vec<QuickAccessApp>,
 
     pub mode: IslandMode,
@@ -450,6 +453,13 @@ pub struct IslandWidget {
 }
 
 impl IslandWidget {
+    pub fn current_fillet_radius(&self) -> f32 {
+        let h_span = (Tokens::ISLAND_EXPANDED_H - Tokens::ISLAND_COMPACT_H).max(1.0);
+        let h_t = ((self.current_h - Tokens::ISLAND_COMPACT_H) / h_span).clamp(0.0, 1.0);
+        self.fillet_radius_compact
+            + (self.fillet_radius_expanded - self.fillet_radius_compact) * h_t
+    }
+
     pub fn sample_island_is_light(&self) -> bool {
         if let Some(crop) = &self.wallpaper_crop {
             let tw = self.target_w.max(Tokens::ISLAND_COMPACT_W);
@@ -525,7 +535,7 @@ impl IslandWidget {
 
         let font = UIFont::new();
 
-        let (dock_mode, fillet_radius, quick_access) = Self::load_config_values();
+        let (dock_mode, fillet_compact, fillet_expanded, quick_access) = Self::load_config_values();
         let init_y = dock_mode.dock_y();
 
         Self {
@@ -555,7 +565,8 @@ impl IslandWidget {
             vel_y: 0.0,
 
             dock_mode,
-            fillet_radius,
+            fillet_radius_compact: fillet_compact,
+            fillet_radius_expanded: fillet_expanded,
             quick_access,
 
             mode: IslandMode::CompactPill,
@@ -627,8 +638,9 @@ impl IslandWidget {
         }
         let island_cx = (self.width as f32) * 0.5;
         let island_top = self.current_y;
-        let flare = if self.dock_mode.is_curved() && ly <= self.fillet_radius {
-            self.fillet_radius
+        let active_fillet = self.current_fillet_radius();
+        let flare = if self.dock_mode.is_curved() && ly <= active_fillet {
+            active_fillet
         } else {
             0.0
         };
@@ -649,7 +661,7 @@ impl IslandWidget {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
         let flare = if self.dock_mode.is_curved() {
-            self.fillet_radius as i32
+            self.current_fillet_radius() as i32
         } else {
             0
         };
@@ -995,7 +1007,7 @@ impl IslandWidget {
         format!("{}/.config/liquid-glass/config.json", home)
     }
 
-    pub fn load_config_values() -> (IslandDockMode, f32, Vec<QuickAccessApp>) {
+    pub fn load_config_values() -> (IslandDockMode, f32, f32, Vec<QuickAccessApp>) {
         let home = std::env::var("HOME").unwrap_or_default();
         let conf_path = format!("{}/.config/liquid-glass/config.json", home);
         if let Ok(content) = std::fs::read_to_string(&conf_path) {
@@ -1005,8 +1017,16 @@ impl IslandWidget {
                     .and_then(|s| s.as_str())
                     .map(IslandDockMode::from_str)
                     .unwrap_or(IslandDockMode::AttachedCurved);
-                let fillet_radius = val
-                    .get("fillet_radius")
+                let fillet_compact = val
+                    .get("fillet_radius_compact")
+                    .or_else(|| val.get("fillet_compact"))
+                    .and_then(|f| f.as_f64())
+                    .map(|f| f as f32)
+                    .unwrap_or(10.0);
+                let fillet_expanded = val
+                    .get("fillet_radius_expanded")
+                    .or_else(|| val.get("fillet_radius"))
+                    .or_else(|| val.get("fillet_expanded"))
                     .and_then(|f| f.as_f64())
                     .map(|f| f as f32)
                     .unwrap_or(24.0);
@@ -1014,7 +1034,7 @@ impl IslandWidget {
                     .get("quick_access")
                     .and_then(|q| serde_json::from_value::<Vec<QuickAccessApp>>(q.clone()).ok())
                     .unwrap_or_else(QuickAccessApp::defaults);
-                return (dock_mode, fillet_radius, quick_access);
+                return (dock_mode, fillet_compact, fillet_expanded, quick_access);
             }
         }
         let dock_path = format!("{}/.config/liquid-glass/island_dock.txt", home);
@@ -1023,7 +1043,7 @@ impl IslandWidget {
         } else {
             IslandDockMode::AttachedCurved
         };
-        (dock_mode, 24.0, QuickAccessApp::defaults())
+        (dock_mode, 10.0, 24.0, QuickAccessApp::defaults())
     }
 
     pub fn save_config(&self) {
@@ -1032,7 +1052,8 @@ impl IslandWidget {
         let _ = std::fs::create_dir_all(&dir);
         let json = serde_json::json!({
             "edge_style": self.dock_mode.as_str(),
-            "fillet_radius": self.fillet_radius,
+            "fillet_radius_compact": self.fillet_radius_compact,
+            "fillet_radius_expanded": self.fillet_radius_expanded,
             "theme_mode": self.theme_mode,
             "style_mode": self.style_mode,
             "quick_access": self.quick_access,
@@ -1060,15 +1081,31 @@ impl IslandWidget {
     }
 
     pub fn set_fillet_radius(&mut self, r: f32) {
-        self.fillet_radius = r.clamp(8.0, 48.0);
+        self.fillet_radius_compact = r.clamp(4.0, 32.0);
+        self.fillet_radius_expanded = (r * 2.2).clamp(8.0, 48.0);
+        self.needs_redraw = true;
+        self.needs_input_region_update = true;
+        self.save_config();
+    }
+
+    pub fn set_fillet_radius_compact(&mut self, r: f32) {
+        self.fillet_radius_compact = r.clamp(4.0, 32.0);
+        self.needs_redraw = true;
+        self.needs_input_region_update = true;
+        self.save_config();
+    }
+
+    pub fn set_fillet_radius_expanded(&mut self, r: f32) {
+        self.fillet_radius_expanded = r.clamp(4.0, 48.0);
         self.needs_redraw = true;
         self.needs_input_region_update = true;
         self.save_config();
     }
 
     pub fn reload_config(&mut self) {
-        let (mode, r, apps) = Self::load_config_values();
-        self.fillet_radius = r;
+        let (mode, r_c, r_e, apps) = Self::load_config_values();
+        self.fillet_radius_compact = r_c;
+        self.fillet_radius_expanded = r_e;
         self.quick_access = apps;
         self.set_dock_mode(mode);
     }
@@ -1120,6 +1157,8 @@ impl IslandWidget {
                 IslandIpcEvent::SetDock(d) => self.set_dock_mode(d),
                 IslandIpcEvent::ToggleDock => self.toggle_dock_mode(),
                 IslandIpcEvent::SetFillet(r) => self.set_fillet_radius(r),
+                IslandIpcEvent::SetFilletCompact(r) => self.set_fillet_radius_compact(r),
+                IslandIpcEvent::SetFilletExpanded(r) => self.set_fillet_radius_expanded(r),
                 IslandIpcEvent::ReloadConfig => self.reload_config(),
             }
         }
@@ -2599,6 +2638,7 @@ impl IslandWidget {
         self.render_ui_overlay();
 
         let is_light = if self.effective_is_light() { 1.0 } else { 0.0 };
+        let current_fillet = self.current_fillet_radius();
 
         if let Some(renderer) = &mut self.renderer {
             if self.current_alpha <= 0.01 {
@@ -2625,7 +2665,7 @@ impl IslandWidget {
                 .material(Material::LiquidGlass)
                 .shape(island_shape)
                 .bounds(x_norm, y_norm, w_norm, h_norm)
-                .curvature(self.fillet_radius)
+                .curvature(current_fillet)
                 .bevel(14.0)
                 .refraction(14.0)
                 .dispersion(0.12)
@@ -2662,8 +2702,9 @@ impl IslandWidget {
         let island_h = self.current_h;
 
         // Check if click was inside current island capsule, flared wings, or top edge
-        let flare = if self.dock_mode.is_curved() && ly <= self.fillet_radius {
-            self.fillet_radius
+        let active_fillet = self.current_fillet_radius();
+        let flare = if self.dock_mode.is_curved() && ly <= active_fillet {
+            active_fillet
         } else {
             0.0
         };
@@ -2949,6 +2990,30 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>, wakeup_fd: Option<i32>) {
                         || trimmed == "edge"
                     {
                         send_evt(IslandIpcEvent::ToggleDock);
+                    } else if trimmed.starts_with("fillet_compact:")
+                        || trimmed.starts_with("fillet_compact ")
+                        || trimmed.starts_with("fillet compact ")
+                    {
+                        let num_part = trimmed
+                            .trim_start_matches("fillet_compact:")
+                            .trim_start_matches("fillet_compact ")
+                            .trim_start_matches("fillet compact ")
+                            .trim();
+                        if let Ok(r) = num_part.parse::<f32>() {
+                            send_evt(IslandIpcEvent::SetFilletCompact(r));
+                        }
+                    } else if trimmed.starts_with("fillet_expanded:")
+                        || trimmed.starts_with("fillet_expanded ")
+                        || trimmed.starts_with("fillet expanded ")
+                    {
+                        let num_part = trimmed
+                            .trim_start_matches("fillet_expanded:")
+                            .trim_start_matches("fillet_expanded ")
+                            .trim_start_matches("fillet expanded ")
+                            .trim();
+                        if let Ok(r) = num_part.parse::<f32>() {
+                            send_evt(IslandIpcEvent::SetFilletExpanded(r));
+                        }
                     } else if trimmed.starts_with("fillet ")
                         || trimmed.starts_with("fillet:")
                         || trimmed.starts_with("radius ")
