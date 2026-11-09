@@ -101,6 +101,85 @@ impl IslandDockMode {
     }
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct QuickAccessApp {
+    pub name: String,
+    pub command: String,
+    pub icon: String,
+}
+
+impl QuickAccessApp {
+    pub fn defaults() -> Vec<Self> {
+        vec![
+            QuickAccessApp {
+                name: "Terminal".to_string(),
+                command: "foot".to_string(),
+                icon: "terminal".to_string(),
+            },
+            QuickAccessApp {
+                name: "Browser".to_string(),
+                command: "brave".to_string(),
+                icon: "browser".to_string(),
+            },
+            QuickAccessApp {
+                name: "Editor".to_string(),
+                command: "code".to_string(),
+                icon: "editor".to_string(),
+            },
+            QuickAccessApp {
+                name: "Files".to_string(),
+                command: "thunar".to_string(),
+                icon: "files".to_string(),
+            },
+            QuickAccessApp {
+                name: "Music".to_string(),
+                command: "spotify".to_string(),
+                icon: "music".to_string(),
+            },
+        ]
+    }
+}
+
+fn draw_app_icon(
+    buf: &mut [u8],
+    width: u32,
+    height: u32,
+    icon: &str,
+    cx: f32,
+    cy: f32,
+    col: [u8; 4],
+) {
+    match icon.to_ascii_lowercase().as_str() {
+        "terminal" | "term" | "console" | "shell" => {
+            UIFont::draw_terminal_icon(buf, width, height, cx, cy, col);
+        }
+        "browser" | "web" | "internet" | "globe" => {
+            UIFont::draw_browser_icon(buf, width, height, cx, cy, col);
+        }
+        "editor" | "code" | "dev" | "text" => {
+            UIFont::draw_editor_icon(buf, width, height, cx, cy, col);
+        }
+        "folder" | "files" | "file" | "explorer" => {
+            UIFont::draw_folder_icon(buf, width, height, cx, cy, col);
+        }
+        "music" | "audio" | "sound" | "player" => {
+            UIFont::draw_music_icon(buf, width, height, cx, cy, col);
+        }
+        "settings" | "config" | "gear" => {
+            UIFont::draw_settings_icon(buf, width, height, cx, cy, col);
+        }
+        "calendar" | "date" => {
+            UIFont::draw_calendar_icon(buf, width, height, cx, cy, col);
+        }
+        "clock" | "time" => {
+            UIFont::draw_clock_icon(buf, width, height, cx, cy, col);
+        }
+        _ => {
+            UIFont::draw_terminal_icon(buf, width, height, cx, cy, col);
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IslandMode {
     Hidden,
@@ -319,6 +398,7 @@ pub struct IslandWidget {
 
     pub dock_mode: IslandDockMode,
     pub fillet_radius: f32,
+    pub quick_access: Vec<QuickAccessApp>,
 
     pub mode: IslandMode,
     pub prev_mode: IslandMode,
@@ -445,7 +525,7 @@ impl IslandWidget {
 
         let font = UIFont::new();
 
-        let (dock_mode, fillet_radius) = Self::load_config_values();
+        let (dock_mode, fillet_radius, quick_access) = Self::load_config_values();
         let init_y = dock_mode.dock_y();
 
         Self {
@@ -476,6 +556,7 @@ impl IslandWidget {
 
             dock_mode,
             fillet_radius,
+            quick_access,
 
             mode: IslandMode::CompactPill,
             prev_mode: IslandMode::CompactPill,
@@ -914,7 +995,7 @@ impl IslandWidget {
         format!("{}/.config/liquid-glass/config.json", home)
     }
 
-    pub fn load_config_values() -> (IslandDockMode, f32) {
+    pub fn load_config_values() -> (IslandDockMode, f32, Vec<QuickAccessApp>) {
         let home = std::env::var("HOME").unwrap_or_default();
         let conf_path = format!("{}/.config/liquid-glass/config.json", home);
         if let Ok(content) = std::fs::read_to_string(&conf_path) {
@@ -929,15 +1010,20 @@ impl IslandWidget {
                     .and_then(|f| f.as_f64())
                     .map(|f| f as f32)
                     .unwrap_or(24.0);
-                return (dock_mode, fillet_radius);
+                let quick_access = val
+                    .get("quick_access")
+                    .and_then(|q| serde_json::from_value::<Vec<QuickAccessApp>>(q.clone()).ok())
+                    .unwrap_or_else(QuickAccessApp::defaults);
+                return (dock_mode, fillet_radius, quick_access);
             }
         }
         let dock_path = format!("{}/.config/liquid-glass/island_dock.txt", home);
-        if let Ok(content) = std::fs::read_to_string(&dock_path) {
-            (IslandDockMode::from_str(&content), 24.0)
+        let dock_mode = if let Ok(content) = std::fs::read_to_string(&dock_path) {
+            IslandDockMode::from_str(&content)
         } else {
-            (IslandDockMode::AttachedCurved, 24.0)
-        }
+            IslandDockMode::AttachedCurved
+        };
+        (dock_mode, 24.0, QuickAccessApp::defaults())
     }
 
     pub fn save_config(&self) {
@@ -949,6 +1035,7 @@ impl IslandWidget {
             "fillet_radius": self.fillet_radius,
             "theme_mode": self.theme_mode,
             "style_mode": self.style_mode,
+            "quick_access": self.quick_access,
         });
         if let Ok(formatted) = serde_json::to_string_pretty(&json) {
             let _ = std::fs::write(format!("{dir}/config.json"), formatted);
@@ -980,8 +1067,9 @@ impl IslandWidget {
     }
 
     pub fn reload_config(&mut self) {
-        let (mode, r) = Self::load_config_values();
+        let (mode, r, apps) = Self::load_config_values();
         self.fillet_radius = r;
+        self.quick_access = apps;
         self.set_dock_mode(mode);
     }
 
@@ -2096,15 +2184,14 @@ impl IslandWidget {
                     FontWeight::Bold,
                 );
 
-                let apps = ["Terminal", "Browser", "Editor", "Files", "Music"];
-
-                let item_w = (island_w - 50.0) / (apps.len() as f32);
+                let app_count = self.quick_access.len().max(1);
+                let item_w = (island_w - 50.0) / (app_count as f32);
                 let start_x = cx - island_w * 0.5 + 25.0 + item_w * 0.5;
 
                 let cur_lx = self.cursor_pos[0] * (self.width as f32);
                 let cur_ly = self.cursor_pos[1] * (self.height as f32);
 
-                for (idx, name) in apps.iter().enumerate() {
+                for (idx, app) in self.quick_access.iter().enumerate() {
                     let cx = start_x + (idx as f32) * item_w;
                     let cy = island_top + 65.0;
 
@@ -2124,7 +2211,7 @@ impl IslandWidget {
                         Tokens::INNER_TILE_BG_DARK
                     };
 
-                    // Subtle inner fill (NO wireframe outline!)
+                    // Clean, modern inner tile (NO top line segment, NO wireframe outline)
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
@@ -2137,70 +2224,22 @@ impl IslandWidget {
                         tile_bg,
                     );
 
-                    // Top highlight bevel only (inset 10px from tile radius)
-                    UIFont::draw_segment(
+                    let icon_cy = cy - 7.0;
+                    draw_app_icon(
                         buf,
                         self.width,
                         self.height,
-                        (cx - (item_w - 10.0) * 0.5 + 10.0, cy - 27.0),
-                        (cx + (item_w - 10.0) * 0.5 - 10.0, cy - 27.0),
-                        1.0,
-                        if is_light {
-                            Tokens::INNER_TOP_HIGHLIGHT_LIGHT
-                        } else {
-                            Tokens::INNER_TOP_HIGHLIGHT_DARK
-                        },
+                        &app.icon,
+                        cx,
+                        icon_cy,
+                        col_ink,
                     );
-
-                    let icon_cy = cy - 7.0;
-                    match idx {
-                        0 => UIFont::draw_terminal_icon(
-                            buf,
-                            self.width,
-                            self.height,
-                            cx,
-                            icon_cy,
-                            col_ink,
-                        ),
-                        1 => UIFont::draw_browser_icon(
-                            buf,
-                            self.width,
-                            self.height,
-                            cx,
-                            icon_cy,
-                            col_ink,
-                        ),
-                        2 => UIFont::draw_editor_icon(
-                            buf,
-                            self.width,
-                            self.height,
-                            cx,
-                            icon_cy,
-                            col_ink,
-                        ),
-                        3 => UIFont::draw_folder_icon(
-                            buf,
-                            self.width,
-                            self.height,
-                            cx,
-                            icon_cy,
-                            col_ink,
-                        ),
-                        _ => UIFont::draw_music_icon(
-                            buf,
-                            self.width,
-                            self.height,
-                            cx,
-                            icon_cy,
-                            col_ink,
-                        ),
-                    }
 
                     self.font.draw_text_centered(
                         buf,
                         self.width,
                         self.height,
-                        name,
+                        &app.name,
                         cx,
                         cy + 13.0,
                         Tokens::TYPE_CAPTION,
@@ -2222,77 +2261,6 @@ impl IslandWidget {
                     Tokens::TYPE_CAPTION,
                     col_dim,
                     FontWeight::Bold,
-                );
-
-                // Interactive Style / Theme Switcher Badge & Dock Switcher Badge
-                let theme_cx = cx + island_w * 0.5 - 130.0;
-                let theme_cy = island_top + 22.0;
-                let style_lbl = match self.style_mode as u32 {
-                    0 => "Obsidian",
-                    1 => "Frosted",
-                    _ => "Liquid",
-                };
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    theme_cx,
-                    theme_cy,
-                    42.0,
-                    9.5,
-                    5.0,
-                    if is_light {
-                        [225, 230, 240, 180]
-                    } else {
-                        [40, 48, 64, 180]
-                    },
-                );
-                self.font.draw_text_centered(
-                    buf,
-                    self.width,
-                    self.height,
-                    &format!("{} ⟳", style_lbl),
-                    theme_cx,
-                    theme_cy,
-                    10.5,
-                    col_ink,
-                    col_shadow,
-                    FontWeight::Medium,
-                );
-
-                // Dock Mode Switcher Badge (Attached vs Floating)
-                let dock_cx = theme_cx - 86.0;
-                let dock_lbl = match self.dock_mode {
-                    IslandDockMode::AttachedCurved => "Edge: Notch",
-                    IslandDockMode::AttachedStraight => "Edge: Flush",
-                    IslandDockMode::Floating => "Edge: Float",
-                };
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    dock_cx,
-                    theme_cy,
-                    36.0,
-                    9.5,
-                    5.0,
-                    if is_light {
-                        [225, 230, 240, 180]
-                    } else {
-                        [40, 48, 64, 180]
-                    },
-                );
-                self.font.draw_text_centered(
-                    buf,
-                    self.width,
-                    self.height,
-                    dock_lbl,
-                    dock_cx,
-                    theme_cy,
-                    10.5,
-                    col_ink,
-                    col_shadow,
-                    FontWeight::Medium,
                 );
 
                 // 4 Metric cards: CPU, RAM, Battery, Uptime
@@ -2355,21 +2323,6 @@ impl IslandWidget {
                         28.0,
                         Tokens::RADIUS_INNER_TILE,
                         tile_bg,
-                    );
-
-                    // Top highlight bevel only (inset 10px from tile radius)
-                    UIFont::draw_segment(
-                        buf,
-                        self.width,
-                        self.height,
-                        (cx - (item_w - 10.0) * 0.5 + 10.0, cy - 27.0),
-                        (cx + (item_w - 10.0) * 0.5 - 10.0, cy - 27.0),
-                        1.0,
-                        if is_light {
-                            Tokens::INNER_TOP_HIGHLIGHT_LIGHT
-                        } else {
-                            Tokens::INNER_TOP_HIGHLIGHT_DARK
-                        },
                     );
 
                     // Lucide Vector Icon (clean monochrome B&W)
@@ -2462,11 +2415,11 @@ impl IslandWidget {
                 );
 
                 // 4 Action buttons: Lock, Suspend, Restart, Shut Down
-                let actions = [
-                    ("Lock", Tokens::ACCENT),
-                    ("Suspend", Tokens::ACCENT),
-                    ("Restart", Tokens::STATUS_AMBER),
-                    ("Power Off", Tokens::STATUS_RED),
+                let actions: [(&str, [u8; 4]); 4] = [
+                    ("Lock", [99, 102, 241, 255]),     // Modern Indigo
+                    ("Suspend", [168, 85, 247, 255]),  // Modern Violet
+                    ("Restart", [251, 146, 60, 255]),  // Vibrant Radiant Amber
+                    ("Power Off", [244, 63, 94, 255]), // Modern Electric Coral Rose
                 ];
 
                 let item_w = (island_w - 52.0) / 4.0;
@@ -2476,7 +2429,7 @@ impl IslandWidget {
                 let cur_lx = self.cursor_pos[0] * (self.width as f32);
                 let cur_ly = self.cursor_pos[1] * (self.height as f32);
 
-                for (idx, (name, _accent_col)) in actions.iter().enumerate() {
+                for (idx, (name, accent_col)) in actions.iter().enumerate() {
                     let cx = start_x + (idx as f32) * item_w;
 
                     let is_tile_hover = self.is_hovered
@@ -2494,12 +2447,13 @@ impl IslandWidget {
                         0.0
                     };
 
-                    let tile_bg = if is_tile_pressed {
-                        if is_light {
-                            [255, 200, 200, 245]
+                    let tile_bg = if is_tile_pressed && (idx == 2 || idx == 3) {
+                        let glow_a = if is_light {
+                            (30.0 + hold_progress * 130.0) as u8
                         } else {
-                            [120, 35, 45, 230]
-                        }
+                            (25.0 + hold_progress * 140.0) as u8
+                        };
+                        [accent_col[0], accent_col[1], accent_col[2], glow_a]
                     } else if is_tile_hover {
                         if is_light {
                             Tokens::INNER_TILE_BG_HOVER_LIGHT
@@ -2512,7 +2466,7 @@ impl IslandWidget {
                         Tokens::INNER_TILE_BG_DARK
                     };
 
-                    // Subtle inner fill (NO wireframe outline!)
+                    // Clean, modern inner tile (NO top line segment, NO wireframe outline)
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
@@ -2525,37 +2479,50 @@ impl IslandWidget {
                         tile_bg,
                     );
 
-                    // Top highlight bevel only (inset 10px from tile radius)
-                    UIFont::draw_segment(
-                        buf,
-                        self.width,
-                        self.height,
-                        (cx - (item_w - 10.0) * 0.5 + 10.0, cy - 27.0),
-                        (cx + (item_w - 10.0) * 0.5 - 10.0, cy - 27.0),
-                        1.0,
-                        if is_light {
-                            Tokens::INNER_TOP_HIGHLIGHT_LIGHT
-                        } else {
-                            Tokens::INNER_TOP_HIGHLIGHT_DARK
-                        },
-                    );
-
-                    // Red hold-to-confirm progress bar fill
-                    if hold_progress > 0.01 {
-                        let max_fill_w = (item_w - 16.0) * 0.5;
-                        let fill_w = max_fill_w * hold_progress;
+                    // Modernized hold-to-confirm progress pill bar
+                    if hold_progress > 0.01 && (idx == 2 || idx == 3) {
+                        let bar_y = cy + 22.0;
+                        let max_bar_w = (item_w - 24.0) * 0.5;
+                        // Sleek track
                         UIFont::draw_rounded_rect_fill(
                             buf,
                             self.width,
                             self.height,
                             cx,
-                            cy + 24.0,
-                            fill_w,
-                            1.8,
+                            bar_y,
+                            max_bar_w,
                             1.5,
-                            Tokens::STATUS_RED,
+                            1.0,
+                            if is_light {
+                                [0, 0, 0, 25]
+                            } else {
+                                [255, 255, 255, 30]
+                            },
+                        );
+                        // Radiant expanding fill with smooth rounded ends
+                        let fill_w = max_bar_w * hold_progress;
+                        UIFont::draw_rounded_rect_fill(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            bar_y,
+                            fill_w,
+                            1.5,
+                            1.0,
+                            [accent_col[0], accent_col[1], accent_col[2], 240],
                         );
                     }
+
+                    let icon_ink = if is_tile_pressed && (idx == 2 || idx == 3) {
+                        if is_light {
+                            [accent_col[0] / 2, accent_col[1] / 2, accent_col[2] / 2, 255]
+                        } else {
+                            [255, 255, 255, 255]
+                        }
+                    } else {
+                        col_ink
+                    };
 
                     // Precision Lucide Vector Icon (clean monochrome B&W)
                     match idx {
@@ -2565,7 +2532,7 @@ impl IslandWidget {
                             self.height,
                             cx,
                             cy - 10.0,
-                            col_ink,
+                            icon_ink,
                         ),
                         1 => UIFont::draw_moon_icon(
                             buf,
@@ -2573,7 +2540,7 @@ impl IslandWidget {
                             self.height,
                             cx,
                             cy - 10.0,
-                            col_ink,
+                            icon_ink,
                         ),
                         2 => UIFont::draw_restart_icon(
                             buf,
@@ -2581,7 +2548,7 @@ impl IslandWidget {
                             self.height,
                             cx,
                             cy - 10.0,
-                            col_ink,
+                            icon_ink,
                         ),
                         _ => UIFont::draw_power_icon(
                             buf,
@@ -2589,13 +2556,17 @@ impl IslandWidget {
                             self.height,
                             cx,
                             cy - 10.0,
-                            col_ink,
+                            icon_ink,
                         ),
                     }
 
-                    // Text (pure white / hold hint)
+                    // Text (hold hint / action name)
                     let display_text = if is_tile_pressed && (idx == 2 || idx == 3) {
-                        "Hold..."
+                        if hold_progress < 0.85 {
+                            "Hold..."
+                        } else {
+                            "Release!"
+                        }
                     } else {
                         name
                     };
@@ -2607,7 +2578,7 @@ impl IslandWidget {
                         cx,
                         cy + 12.0,
                         Tokens::TYPE_CAPTION,
-                        col_ink,
+                        icon_ink,
                         col_shadow,
                         FontWeight::SemiBold,
                     );
@@ -2794,37 +2765,21 @@ impl IslandWidget {
                 self.set_mode(IslandMode::CompactPill);
             }
             IslandMode::QuickAccess => {
-                let apps = [
-                    ("foot", "Terminal"),
-                    ("brave", "Browser"),
-                    ("code", "Editor"),
-                    ("thunar", "Files"),
-                    ("spotify", "Music"),
-                ];
-                let item_w = (island_w - 50.0) / (apps.len() as f32);
+                let app_count = self.quick_access.len().max(1);
+                let item_w = (island_w - 50.0) / (app_count as f32);
                 let start_x = island_cx - island_w * 0.5 + 25.0 + item_w * 0.5;
 
-                for (idx, (cmd, _name)) in apps.iter().enumerate() {
+                for (idx, app) in self.quick_access.iter().enumerate() {
                     let cx = start_x + (idx as f32) * item_w;
-                    let cy = island_top + 62.0;
-                    if (lx - cx).abs() <= item_w * 0.45 && (ly - cy).abs() <= 25.0 {
-                        let _ = Command::new(cmd).spawn();
+                    let cy = island_top + 65.0;
+                    if (lx - cx).abs() <= item_w * 0.45 && (ly - cy).abs() <= 28.0 {
+                        let _ = Command::new("sh").args(["-c", &app.command]).spawn();
                         self.set_mode(IslandMode::CompactPill);
                         break;
                     }
                 }
             }
-            IslandMode::SystemOverview => {
-                let theme_cx = island_cx + island_w * 0.5 - 130.0;
-                let theme_cy = island_top + 22.0;
-                let dock_cx = theme_cx - 86.0;
-                if (lx - dock_cx).abs() <= 38.0 && (ly - theme_cy).abs() <= 12.0 {
-                    self.toggle_dock_mode();
-                } else if (lx - theme_cx).abs() <= 45.0 && (ly - theme_cy).abs() <= 12.0 {
-                    self.style_mode = (self.style_mode + 1.0) % 3.0;
-                    self.needs_redraw = true;
-                }
-            }
+            IslandMode::SystemOverview => {}
             IslandMode::PowerMenu => {
                 let item_w = (island_w - 52.0) / 4.0;
                 let start_x = island_cx - island_w * 0.5 + 26.0 + item_w * 0.5;
