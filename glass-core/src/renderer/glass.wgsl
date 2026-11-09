@@ -1504,8 +1504,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(r_disp, mag, b_disp, 1.0);
     }
 
-    // Smooth 7-tap spectral Cauchy dispersion (mostly cyan/magenta fringes, no discrete RGB stripes)
-    let disp = clamp(select(0.12, params.dispersion, params.dispersion >= 0.01), 0.08, 0.16);
+    // Smooth 7-tap spectral Cauchy dispersion: active along the refractive bevel rim
+    let rim_factor = smoothstep(bezel * 1.2, 0.0, depth);
+    let disp = clamp(select(0.12, params.dispersion, params.dispersion >= 0.01), 0.08, 0.16) * rim_factor;
     var sharp_col = vec3<f32>(0.0);
     var wsum = vec3<f32>(0.0);
     for (var i = 0; i < 7; i += 1) {
@@ -1525,7 +1526,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var col: vec3<f32>;
 
     if style_mode >= 1.5 {
-        // ── 2.0: LIQUID GLASS ──
+        // ── 2.0: TRUE COLOR LIQUID GLASS ──
         // Optical Snell refraction with configurable background diffusion blur
         let cur_radius = clamp(params.blur_radius, 0.0, 48.0);
         let frosted_col = sample_frost_blur(uv + off_uv, cur_radius);
@@ -1533,43 +1534,26 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let blur_mix = clamp(cur_radius / 2.0, 0.0, 1.0 - rim_disp_factor);
         let base_crystal = mix(sharp_col, frosted_col, blur_mix);
 
-        // 1. Apple Vibrancy: boost saturation of the refracted background so the glass feels alive and luminous
-        let crystal_luma = dot(base_crystal, vec3<f32>(0.2126, 0.7152, 0.0722));
-        let vibrant_crystal = max(mix(vec3<f32>(crystal_luma), base_crystal, 1.25), vec3<f32>(0.0));
+        // Delicate physical ambient light sheen across upper surface (neutral white light, zero color distortion)
+        let top_ambient = mix(0.012, 0.002, (local_px.y / half_size.y) * 0.5 + 0.5);
 
         if effective_light > 0.5 {
-            // Apple Liquid Glass (Light / White mode): pristine 20% satin lift, preserving 80% crystal clarity
-            let top_ambient = mix(0.008, 0.001, (local_px.y / half_size.y) * 0.5 + 0.5);
-            col = mix(vibrant_crystal, vec3<f32>(0.96, 0.98, 1.0), 0.20) + vec3<f32>(top_ambient);
+            // Clean neutral white lift in light mode (preserves 90% of backdrop true color)
+            col = mix(base_crystal, vec3<f32>(1.0, 1.0, 1.0), 0.10) + vec3<f32>(top_ambient);
         } else {
-            // Apple Liquid Glass (Dark / Vibrant mode): pristine 18% obsidian lift, preserving 82% crystal clarity
-            let top_ambient = mix(0.008, 0.001, (local_px.y / half_size.y) * 0.5 + 0.5);
-            let obsidian_base = mix(vibrant_crystal, vec3<f32>(0.07, 0.09, 0.13), 0.18);
-            col = obsidian_base + vec3<f32>(top_ambient * clamp(1.0 - crystal_luma * 3.0, 0.0, 1.0));
+            // Pure optical crystal in dark mode: 100% TRUE BACKDROP COLORS
+            col = base_crystal + vec3<f32>(top_ambient);
         }
-
-        // Faint diagonal gradient across interior (top-left lighter 1.5%) for physical depth
-        let diag_t = clamp((local_px.x + local_px.y) / (half_size.x + half_size.y) * 0.5 + 0.5, 0.0, 1.0);
-        col *= mix(1.015, 0.985, diag_t);
     } else if style_mode >= 0.5 {
-        // ── 1.0: LUXURIOUS APPLE / VISIONOS FROSTED GLASSMORPHISM ──
+        // ── 1.0: LUXURIOUS TRUE-COLOR FROSTED GLASSMORPHISM ──
         // Deep 32-tap multi-scale backdrop diffusion (24px radius)
         let frosted_col = sample_frost_blur(uv, 24.0);
-        
-        // 1. Color Vibrancy & Saturation Boost (Apple Vibrancy algorithm in linear space)
-        let f_luma = dot(frosted_col, vec3<f32>(0.2126, 0.7152, 0.0722));
-        let vibrant_col = max(mix(vec3<f32>(f_luma), frosted_col, 1.35), vec3<f32>(0.0));
+        let top_ambient = mix(0.010, 0.002, (local_px.y / half_size.y) * 0.5 + 0.5);
 
-        // 2. Physical Glass Satin Sheen & Translucency
         if effective_light > 0.5 {
-            // Apple Frosted Glass (Light mode)
-            let light_density = mix(0.98, 0.94, (local_px.y / half_size.y) * 0.5 + 0.5);
-            col = mix(vibrant_col * light_density, vec3<f32>(0.96, 0.98, 1.0), 0.22);
+            col = mix(frosted_col, vec3<f32>(1.0, 1.0, 1.0), 0.12) + vec3<f32>(top_ambient);
         } else {
-            // Apple Frosted Glass (Dark mode)
-            let top_ambient = mix(0.006, 0.001, (local_px.y / half_size.y) * 0.5 + 0.5);
-            let obsidian_base = mix(vibrant_col, vec3<f32>(0.07, 0.09, 0.13), 0.18);
-            col = obsidian_base + vec3<f32>(top_ambient * clamp(1.0 - f_luma * 4.0, 0.0, 1.0));
+            col = frosted_col + vec3<f32>(top_ambient);
         }
     } else {
         // ── 0.0: OBSIDIAN / CLEAN BACKGROUND ──
