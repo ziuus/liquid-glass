@@ -120,18 +120,57 @@ renderer.render(&surfaces)?;
 
 <br />
 
-## 🚀 Running the Demos
+## 🚀 Running & Installing
 
-### 1. Floating Desktop Media Island (Wayland)
-Spawns a floating desktop island on Hyprland, Sway, or any `wlr-layer-shell` compositor:
+### 1. Liquid Shell (Flagship Wayland Desktop Shell)
+Features the Dynamic Island, System Overview, Quick Access app launcher, Power Menu, and desktop widgets with real-time optical glass refraction:
+
+```bash
+# Build & install to ~/.local/bin/liquid-shell and set up ~/.config/liquid-glass/config.json
+./install.sh
+
+# Or run directly
+cargo run --release -p liquid-shell
+```
+
+**Hyprland Autostart** (`~/.config/hypr/hyprland.conf`):
+```ini
+exec-once = liquid-shell
+```
+
+**Configuration** (`~/.config/liquid-glass/config.json`):
+```json
+{
+  "edge_style": "curved",
+  "fillet_radius_compact": 10.0,
+  "fillet_radius_expanded": 24.0,
+  "style_mode": 2.0,
+  "theme_mode": 0,
+  "quick_access": [
+    { "name": "Terminal", "command": "foot", "icon": "terminal" },
+    { "name": "Browser", "command": "brave", "icon": "browser" },
+    { "name": "Editor", "command": "code", "icon": "editor" },
+    { "name": "Files", "command": "thunar", "icon": "files" },
+    { "name": "Music", "command": "spotify", "icon": "music" }
+  ]
+}
+```
+
+**IPC Control** (`/tmp/liquid_island.fifo`):
+```bash
+echo "next_slide" > /tmp/liquid_island.fifo
+echo "set_edge curved" > /tmp/liquid_island.fifo
+echo "set_fillet_compact 12.0" > /tmp/liquid_island.fifo
+```
+
+### 2. Floating Desktop Media Island
+Spawns a standalone floating island:
 
 ```bash
 cargo run --release -p glass-panel
 ```
 
-*Features rotating vinyl grooves, audio wave visualizers, interactive timeline scrubbing, play/pause toggles, and cursor-proximity edge flares.*
-
-### 2. Standalone Window Playground
+### 3. Standalone Window Playground
 Cross-platform desktop window running on standard WGPU:
 
 ```bash
