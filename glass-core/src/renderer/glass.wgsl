@@ -1432,9 +1432,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let style_mode = params._pad.x; // 0.0 = Obsidian (Clean), 1.0 = Glassmorphism (Frosted), 2.0 = Liquid Glass
     let is_light = params.is_light;
+    let top_flush = select(1.0, smoothstep(-half_size.y, -half_size.y + 4.0, local_px.y), is_attached);
     
-    // Outside the shape: completely transparent (no dirty dark shadow puddles)
+    // Outside the shape: render physical 3D ambient contact shadow (grounds the glass against backdrop)
     if sdf > 0.0 {
+        let shadow_radius = 12.0;
+        if sdf < shadow_radius && top_flush > 0.5 {
+            let light_dir = vec2<f32>(-0.45, -0.65);
+            let facing = clamp(dot(grad_2d, -light_dir) * 0.5 + 0.5, 0.25, 1.0);
+            let falloff = pow(1.0 - sdf / shadow_radius, 2.0);
+            let shadow_alpha = falloff * 0.12 * facing;
+            return vec4<f32>(0.0, 0.0, 0.0, shadow_alpha);
+        }
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
     
@@ -1465,7 +1474,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Blended gentler profile: maintains high rim tilt while staying elevated across the entire bezel
     let lens_profile = mix(wide_spread, se_slope, 0.35);
 
-    let top_flush = select(1.0, smoothstep(-half_size.y, -half_size.y + 4.0, local_px.y), is_attached);
     let thickness = select(15.0, params.refraction_strength, params.refraction_strength >= 1.0);
 
     // Continuous interior liquid dome magnification (active in Liquid Glass mode style_mode >= 1.5)
@@ -1473,10 +1481,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if style_mode >= 1.5 {
         let dome_norm = local_px / half_size;
         let r_sq = clamp(dot(dome_norm, dome_norm), 0.0, 1.0);
-        let dome_curve = clamp(params.curvature, 0.01, 0.15);
-        let dome_weight = smoothstep(0.0, bezel * 1.5, depth);
+        let dome_curve = clamp(params.curvature, 0.04, 0.25);
+        let dome_weight = smoothstep(0.0, bezel * 1.4, depth);
         // Optical lens magnification: pulling sample rays inward magnifies background elements
-        dome_disp_px = -dome_norm * (1.0 - r_sq * 0.40) * (min(half_size.x, half_size.y) * dome_curve * 1.4) * dome_weight;
+        dome_disp_px = -dome_norm * (1.0 - r_sq * 0.45) * (min(half_size.x, half_size.y) * dome_curve * 2.4) * dome_weight;
     }
 
     let off_px = (refract_dir * (thickness * lens_profile) + dome_disp_px) * top_flush;
@@ -1564,22 +1572,26 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // ════════════════════════════════════════════
-    // 4. DIRECTIONAL SPECULAR HAIRLINE & INNER HIGHLIGHT
+    // 4. PRECISION DOUBLE-RING GLASS BEVEL & REFRACTION LIP
     // ════════════════════════════════════════════
     let light_vec_2d = normalize(vec2<f32>(-0.45, -0.65)); // Top-left light source
     let light_facing = max(dot(grad_2d, light_vec_2d), 0.0);
+    let dir_weight = mix(0.35, 1.00, light_facing);
 
-    // Directional weight: ~100% at top-left and ~30% at bottom-right (gives glass tangible thickness)
-    let dir_weight = mix(0.30, 1.00, light_facing);
-
-    // Crisp 1.0 - 1.5px specular line right at the outer edge
+    // 1. Crisp outer 1.0px Fresnel hairline
     let corner_mult = 1.0 + 0.35 * corner_factor;
-    let rim_1px = smoothstep(1.5, 0.2, depth) * corner_mult;
+    let rim_outer = smoothstep(1.3, 0.2, depth) * corner_mult;
 
-    // Soft 2.0 - 4.0px inner highlight
-    let inner_highlight = smoothstep(4.0, 0.8, depth) * 0.20;
+    // 2. Secondary inner refraction bevel line (2.2px inside the boundary) - establishes solid glass thickness
+    let rim_inner = smoothstep(0.75, 0.0, abs(depth - 2.2)) * 0.42 * corner_mult;
 
-    let spec_rim = (rim_1px * dir_weight + inner_highlight * dir_weight) * params.specular_strength * top_flush;
+    // 3. Soft 2.5 - 4.5px volumetric lens highlight
+    let inner_highlight = smoothstep(4.5, 1.0, depth) * 0.22;
+
+    // 4. Dark refraction absorption boundary on trailing bottom-right edge
+    let dark_absorption = smoothstep(0.0, 1.4, depth) * smoothstep(3.2, 1.4, depth) * (1.0 - light_facing * 0.80) * 0.18;
+
+    let spec_rim = (rim_outer * 0.85 + rim_inner * dir_weight + inner_highlight * dir_weight) * params.specular_strength * top_flush;
 
     // ════════════════════════════════════════════
     // 5. MASTER COMPOSITE (OBSIDIAN, GLASSMORPHISM, LIQUID GLASS)
@@ -1598,13 +1610,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         // ── LIGHT / WHITE BACKDROP: PHYSICAL MENISCUS WITH SPECULAR GLINT ──
         // Dark-field absorption on trailing edges, bright crystalline glint on top-left facing meniscus
         let edge_contour = smoothstep(1.8, 0.0, depth) * 0.16 * (1.0 - light_facing * 0.70) * top_flush;
-        let specular_glint = (rim_1px * 0.85 + inner_highlight * 0.40) * light_facing * top_flush;
+        let specular_glint = (rim_outer * 0.85 + rim_inner * 0.40 + inner_highlight * 0.35) * light_facing * top_flush;
         base_surface = (col - vec3<f32>(edge_contour)) + vec3<f32>(specular_glint);
     } else {
         // ── DARK / VIBRANT BACKDROP: DIAMOND-CUT SPECULAR HAIRLINE ──
-        let rim_reflection = (rim_1px * 0.95 + inner_highlight * 0.40) * dir_weight * top_flush;
+        let rim_reflection = spec_rim;
         let rim_tint = vec3<f32>(1.0, 1.0, 1.0);
-        base_surface = col + rim_tint * rim_reflection;
+        base_surface = (col - vec3<f32>(dark_absorption * top_flush)) + rim_tint * rim_reflection;
     }
 
     let app = render_element_appearance(local_px, half_size, params.padding, params.tint.y, params.time, params.tint, effective_light);

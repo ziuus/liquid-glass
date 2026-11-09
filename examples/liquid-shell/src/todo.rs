@@ -895,10 +895,11 @@ impl TodoWidget {
         };
 
         // ── Top Segmented Tabs: "Tasks ({count})" & "Agenda" (cy = 32.5) ──
+        // Modern Apple Camera / VisionOS Active Ink: Cyber Acid-Lime #E4F953 on dark, Obsidian on light
         let selected_ink = if is_light {
             [12, 16, 24, 255]
         } else {
-            [8, 12, 20, 255]
+            [228, 249, 83, 255]
         };
         let tab_t = self.tab_spring.value.clamp(0.0, 1.0);
 
@@ -915,16 +916,16 @@ impl TodoWidget {
             if is_light {
                 [235, 240, 248, 220]
             } else {
-                Tokens::INNER_TILE_BG_DARK
+                [255, 255, 255, 14]
             },
         );
 
-        // Sliding Active Tab Pill
+        // Sliding Active Tab Pill (Liquid Glass Lens with Crisp Double Bevel)
         let tab_pill_cx = 96.0 * (1.0 - tab_t) + 224.0 * tab_t;
         let pill_fill = if is_light {
             [218, 226, 240, 255]
         } else {
-            [255, 255, 255, 220]
+            [255, 255, 255, 32]
         };
         UIFont::draw_rounded_rect_fill(
             buf,
@@ -936,6 +937,23 @@ impl TodoWidget {
             13.5,
             8.0,
             pill_fill,
+        );
+        // Bevel stroke on active pill
+        UIFont::draw_rounded_rect_stroke(
+            buf,
+            content_w,
+            content_h,
+            tab_pill_cx,
+            32.5,
+            64.0,
+            13.5,
+            8.0,
+            1.2,
+            if is_light {
+                [255, 255, 255, 200]
+            } else {
+                [255, 255, 255, 75]
+            },
         );
 
         // Top Right: Settings Icon Button
@@ -1032,15 +1050,15 @@ impl TodoWidget {
                 if is_light {
                     [235, 240, 248, 220]
                 } else {
-                    Tokens::INNER_TILE_BG_DARK
+                    [255, 255, 255, 14]
                 },
             );
 
-            // Sliding active filter pill (high-contrast near-white fill with dark ink)
+            // Sliding active filter pill (Liquid Glass Lens with Crisp Bevel Stroke)
             let filter_pill_fill = if is_light {
                 [218, 226, 240, 255]
             } else {
-                [255, 255, 255, 220]
+                [255, 255, 255, 32]
             };
             UIFont::draw_rounded_rect_fill(
                 buf,
@@ -1052,6 +1070,22 @@ impl TodoWidget {
                 11.0,
                 7.0,
                 filter_pill_fill,
+            );
+            UIFont::draw_rounded_rect_stroke(
+                buf,
+                content_w,
+                content_h,
+                filt_cx + tasks_offset_x,
+                79.5,
+                32.0,
+                11.0,
+                7.0,
+                1.1,
+                if is_light {
+                    [255, 255, 255, 200]
+                } else {
+                    [255, 255, 255, 75]
+                },
             );
 
             // Filter Bar Labels: "All" (cx = 84.0), "Active" (cx = 156.0), "Done" (cx = 228.0), cy = 79.5
@@ -1083,17 +1117,17 @@ impl TodoWidget {
             let f0_unselected = if f0_is_light {
                 [8, 12, 20, 255]
             } else {
-                [235, 240, 252, 255]
+                [185, 195, 210, 200]
             };
             let f1_unselected = if f1_is_light {
                 [8, 12, 20, 255]
             } else {
-                [235, 240, 252, 255]
+                [185, 195, 210, 200]
             };
             let f2_unselected = if f2_is_light {
                 [8, 12, 20, 255]
             } else {
-                [235, 240, 252, 255]
+                [185, 195, 210, 200]
             };
 
             let f0_col = if self.active_filter == 0 {
@@ -1880,9 +1914,9 @@ impl TodoWidget {
                     radius: Tokens::RADIUS_OUTER,
                 })
                 .bounds(x_norm, y_norm, w_norm, h_norm)
-                .curvature(0.04)
+                .curvature(0.08)
                 .bevel(22.0)
-                .refraction(15.0)
+                .refraction(18.0)
                 .dispersion(0.12)
                 .blur(self.blur_radius)
                 .tint(0.0, progress_packed, 0.0, is_light_f32)
