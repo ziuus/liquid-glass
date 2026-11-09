@@ -80,17 +80,15 @@ fn rr_sdf(p: vec2<f32>, b: vec2<f32>, r: f32) -> f32 {
     return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - r;
 }
 
+fn rr_normal_fd(p: vec2<f32>, b: vec2<f32>, r: f32) -> vec2<f32> {
+    let e = 0.5;
+    let dx = rr_sdf(p + vec2<f32>(e, 0.0), b, r) - rr_sdf(p - vec2<f32>(e, 0.0), b, r);
+    let dy = rr_sdf(p + vec2<f32>(0.0, e), b, r) - rr_sdf(p - vec2<f32>(0.0, e), b, r);
+    return normalize(vec2<f32>(dx, dy) + vec2<f32>(1e-6, 1e-6));
+}
+
 fn rr_normal(p: vec2<f32>, b: vec2<f32>, r: f32) -> vec2<f32> {
-    let b0 = max(b - vec2<f32>(r), vec2<f32>(0.0));
-    let p0 = clamp(p, -b0, b0);
-    let v = p - p0;
-    let d2 = dot(v, v);
-    if d2 > 0.000001 {
-        return v * inverseSqrt(d2);
-    }
-    let d = b0 - abs(p);
-    let s = select(sign(p), vec2<f32>(1.0, 1.0), p == vec2<f32>(0.0));
-    return select(vec2<f32>(0.0, s.y), vec2<f32>(s.x, 0.0), d.x < d.y);
+    return rr_normal_fd(p, b, r);
 }
 
 // ── Authentic Physical Planar Glass Lens with Perimeter Meniscus ──
@@ -1349,16 +1347,37 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     // Outside the rounded rectangle: soft physical ambient drop shadow or transparent
     if sdf > 0.0 {
-        // Dynamic Island (el_type 27.0) and Liquid Glass (style_mode >= 1.5) are pure optical elements with zero drop shadow
+        // Dynamic Island (el_type 27.0) is a floating status pill with zero drop shadow
         let is_island = (params.padding >= 26.9 && params.padding <= 27.1);
-        if !is_island && style_mode >= 0.5 && style_mode < 1.5 {
-            // Frosted Glassmorphism: delicate, symmetrical ambient shadow (no directional shelf)
-            if sdf <= 16.0 {
-                let amb_sigma = 8.0;
-                let ambient = exp(-(sdf * sdf) / (2.0 * amb_sigma * amb_sigma)) * 0.035;
+        if !is_island && style_mode >= 0.5 {
+            // Physical soft drop shadow: 0 8px 24px at 20-25% alpha
+            let shadow_px = local_px - vec2<f32>(0.0, 8.0);
+            let d_shadow = max(rr_sdf(shadow_px, half_size, r), 0.0);
+
+            if d_shadow <= 28.0 {
+                let bg_under_shadow = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
+                let shadow_luma = dot(bg_under_shadow, vec3<f32>(0.2126, 0.7152, 0.0722));
+                let is_shadow_light = (is_light > 0.5 || shadow_luma > 0.50);
+
+                // Soft Gaussian decay (sigma = 10.0px, decays smoothly to 24-26px)
+                let amb_sigma = 10.0;
+                let ambient = exp(-(d_shadow * d_shadow) / (2.0 * amb_sigma * amb_sigma));
+
+                // Directional weight: top receives 0%, bottom receives full shadow
+                let norm_y = clamp(local_px.y / half_size.y, -1.0, 1.0);
+                let dir_weight = clamp(norm_y * 0.75 + 0.25, 0.0, 1.0);
+
+                // Smooth outer cutoff between 16px and 26px
+                let cutoff = 1.0 - smoothstep(16.0, 26.0, d_shadow);
+
+                // 20-25% alpha (0.24 on light, 0.20 on dark)
+                let max_alpha = select(0.20, 0.24, is_shadow_light);
+                let shadow_alpha = ambient * dir_weight * cutoff * max_alpha;
+
+                // Seamless edge blend to eliminate hard perimeter stroke
                 let edge_blend = clamp(sdf * 0.5, 0.0, 1.0);
-                let shadow_alpha = ambient * edge_blend * (1.0 - smoothstep(10.0, 16.0, sdf));
-                return vec4<f32>(0.0, 0.0, 0.0, shadow_alpha);
+
+                return vec4<f32>(0.0, 0.0, 0.0, shadow_alpha * edge_blend);
             }
         }
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);

@@ -346,14 +346,26 @@ fn test_render_calibration_snapshots() {
             ..Default::default()
         });
 
-        let adapter = match instance
+        let adapter_opt = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::LowPower,
                 compatible_surface: None,
-                force_fallback_adapter: true,
+                force_fallback_adapter: false,
             })
-            .await
-        {
+            .await;
+        let adapter_opt = match adapter_opt {
+            Some(a) => Some(a),
+            None => {
+                instance
+                    .request_adapter(&wgpu::RequestAdapterOptions {
+                        power_preference: wgpu::PowerPreference::LowPower,
+                        compatible_surface: None,
+                        force_fallback_adapter: true,
+                    })
+                    .await
+            }
+        };
+        let adapter = match adapter_opt {
             Some(a) => a,
             None => {
                 eprintln!(

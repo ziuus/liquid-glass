@@ -1009,11 +1009,11 @@ impl AppData {
         let (col_primary, col_secondary, col_dimmed, _col_accent, col_shadow) =
             if self.is_wallpaper_light {
                 (
-                    [8, 12, 20, 255],     // Primary text: Deep Obsidian Ink
-                    [28, 36, 48, 250],    // Secondary text: Refined Slate
-                    [45, 55, 70, 245],    // Tertiary/Dimmed: Muted Slate
-                    [6, 10, 16, 255],     // Accent text
-                    [255, 255, 255, 110], // Subtle 1px ambient bottom lift
+                    [8, 12, 20, 255],  // Primary text: Deep Obsidian Ink (> 15:1)
+                    [18, 24, 34, 255], // Secondary text: Refined Near-Black Slate
+                    [28, 36, 50, 255], // Tertiary/Dimmed: Dark Slate
+                    [8, 12, 20, 255],  // Accent text
+                    [0, 0, 0, 0],      // Zero shadow in light mode (no bleaching)
                 )
             } else {
                 (

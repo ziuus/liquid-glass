@@ -870,11 +870,11 @@ impl TodoWidget {
         // Apple macOS Typography & Contrast
         let (col_primary, col_secondary, col_dimmed, _col_accent, col_shadow) = if is_light {
             (
-                [12, 16, 24, 255],    // Primary text: Deep Obsidian Ink
-                [36, 44, 56, 250],    // Secondary text: Refined Slate
-                [60, 72, 88, 245],    // Tertiary/Dimmed: Muted Slate
-                [8, 12, 18, 255],     // Accent text
-                [255, 255, 255, 110], // Subtle 1px ambient bottom lift
+                [8, 12, 20, 255],  // Primary text: Deep Obsidian Ink (> 15:1)
+                [18, 24, 34, 255], // Secondary text: Refined Near-Black Slate
+                [28, 36, 50, 255], // Tertiary/Dimmed: Dark Slate
+                [8, 12, 18, 255],  // Accent text
+                [0, 0, 0, 0],      // Zero shadow in light mode to prevent bleaching
             )
         } else {
             (
@@ -1178,26 +1178,20 @@ impl TodoWidget {
                     (0.5, 0.0, self.is_wallpaper_light)
                 };
 
-                // In clean solid mode, follow effective theme; in glass modes, follow local wallpaper luminance
-                let row_is_light = if self.style_mode < 0.5 {
-                    is_light
-                } else {
-                    mean_lum > 0.179
-                };
+                // In clean solid mode or light mode, follow effective theme; in glass modes, follow local wallpaper luminance
+                let row_is_light = is_light || self.style_mode < 0.5 || mean_lum > 0.179;
 
-                // If spread is high (row crosses diagonal edge), apply local scrim shadow
-                let text_shadow_col = if spread > 0.05 {
-                    if row_is_light {
-                        [255, 255, 255, 120] // Light halo under dark text
-                    } else {
-                        [10, 14, 22, 180] // Dark scrim under light text
-                    }
+                // Never apply light shadow under dark text in light mode (prevents bleaching)
+                let text_shadow_col = if row_is_light {
+                    [0, 0, 0, 0]
+                } else if spread > 0.05 {
+                    [10, 14, 22, 180] // Dark scrim under light text only
                 } else {
                     [0, 0, 0, 0]
                 };
 
                 let (row_primary, row_dimmed) = if row_is_light {
-                    ([8, 12, 20, 255], [24, 32, 44, 255])
+                    ([8, 12, 20, 255], [18, 24, 34, 255])
                 } else {
                     ([255, 255, 255, 255], [235, 240, 252, 255])
                 };
@@ -1397,8 +1391,9 @@ impl TodoWidget {
             }
 
             // 4. Bottom Add Task Bar (hug-content dynamic cy)
-            let add_is_light =
-                self.wallpaper_crop
+            let add_is_light = is_light
+                || self
+                    .wallpaper_crop
                     .as_ref()
                     .map_or(self.is_wallpaper_light, |crop| {
                         sample_subcrop_is_light(
@@ -1412,7 +1407,7 @@ impl TodoWidget {
                         )
                     });
             let (add_primary, add_dimmed, add_secondary) = if add_is_light {
-                ([8, 12, 20, 255], [24, 32, 44, 255], [18, 24, 34, 255])
+                ([8, 12, 20, 255], [28, 36, 50, 255], [18, 24, 34, 255])
             } else {
                 (
                     Tokens::TEXT_PRIMARY,

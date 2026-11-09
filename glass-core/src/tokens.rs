@@ -43,11 +43,11 @@ impl Tokens {
     pub const TEXT_TERTIARY: [u8; 4] = [140, 150, 168, 210];
     pub const TEXT_SHADOW: [u8; 4] = [0, 0, 0, 90];
 
-    // High-contrast Light Mode Text (WCAG AAA > 12:1 against light glass)
-    pub const TEXT_PRIMARY_LIGHT: [u8; 4] = [12, 16, 24, 255];
-    pub const TEXT_SECONDARY_LIGHT: [u8; 4] = [52, 64, 84, 255];
-    pub const TEXT_TERTIARY_LIGHT: [u8; 4] = [100, 116, 139, 230];
-    pub const TEXT_SHADOW_LIGHT: [u8; 4] = [255, 255, 255, 140];
+    // High-contrast Light Mode Text (WCAG AAA > 15:1 against light glass)
+    pub const TEXT_PRIMARY_LIGHT: [u8; 4] = [8, 12, 20, 255];
+    pub const TEXT_SECONDARY_LIGHT: [u8; 4] = [18, 24, 34, 255];
+    pub const TEXT_TERTIARY_LIGHT: [u8; 4] = [28, 36, 50, 255];
+    pub const TEXT_SHADOW_LIGHT: [u8; 4] = [0, 0, 0, 0];
 
     // Obsidian Glass (Apple Dynamic Island dark smoky glass backdrop)
     pub const OBSIDIAN_BACKDROP: [u8; 4] = [16, 18, 24, 230]; // 90% opacity

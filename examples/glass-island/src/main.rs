@@ -859,12 +859,12 @@ impl AppData {
             Tokens::TEXT_PRIMARY
         };
         let col_dim = if is_light {
-            [50, 60, 75, 255]
+            [18, 24, 34, 255]
         } else {
             Tokens::TEXT_SECONDARY
         };
         let col_shadow = if is_light {
-            [255, 255, 255, 120]
+            [0, 0, 0, 0]
         } else {
             [0, 0, 0, 180]
         };

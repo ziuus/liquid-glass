@@ -16,13 +16,13 @@ fn test_render_clock_and_todo_overlays() {
 
     for is_light in [false, true] {
         let (col_primary, col_secondary, col_dimmed, col_accent, col_shadow) = if is_light {
-            // Light wallpaper: crisp obsidian charcoal with subtle white specular highlight
+            // Light wallpaper: pure near-black ink with ZERO shadow (> 16:1 contrast)
             (
-                [24, 28, 38, 245],
-                [60, 68, 84, 225],
-                [135, 145, 165, 190],
-                [16, 20, 30, 255],
-                [255, 255, 255, 160],
+                [8, 12, 20, 255],
+                [18, 24, 34, 255],
+                [28, 36, 50, 255],
+                [8, 12, 20, 255],
+                [0, 0, 0, 0],
             )
         } else {
             // Dark/vibrant wallpaper: radiant pure white with ambient dark drop shadow
@@ -1522,7 +1522,7 @@ fn test_render_claude_review_remediations() {
             224.0,
             32.5,
             14.5,
-            Tokens::TEXT_SECONDARY,
+            Tokens::TEXT_SECONDARY_LIGHT,
             [0, 0, 0, 0],
             FontWeight::SemiBold,
         );
@@ -1539,7 +1539,7 @@ fn test_render_claude_review_remediations() {
             8.0,
             Tokens::INNER_TILE_BG_DARK,
         );
-        UIFont::draw_settings_icon(&mut buf, tw, th, 330.0, 32.5, Tokens::TEXT_PRIMARY);
+        UIFont::draw_settings_icon(&mut buf, tw, th, 330.0, 32.5, Tokens::TEXT_PRIMARY_LIGHT);
 
         // Filter Bar Track
         UIFont::draw_rounded_rect_fill(
@@ -1586,7 +1586,7 @@ fn test_render_claude_review_remediations() {
             156.0,
             79.5,
             14.0,
-            Tokens::TEXT_SECONDARY,
+            Tokens::TEXT_SECONDARY_LIGHT,
             [0, 0, 0, 0],
             FontWeight::Bold,
         );
@@ -1598,7 +1598,7 @@ fn test_render_claude_review_remediations() {
             228.0,
             79.5,
             14.0,
-            Tokens::TEXT_SECONDARY,
+            Tokens::TEXT_SECONDARY_LIGHT,
             [0, 0, 0, 0],
             FontWeight::Bold,
         );
@@ -1662,9 +1662,9 @@ fn test_render_claude_review_remediations() {
                 cy,
                 15.5,
                 if *done {
-                    Tokens::TEXT_SECONDARY
+                    Tokens::TEXT_SECONDARY_LIGHT
                 } else {
-                    Tokens::TEXT_PRIMARY
+                    Tokens::TEXT_PRIMARY_LIGHT
                 },
                 [0, 0, 0, 0],
                 FontWeight::Bold,
@@ -1679,7 +1679,7 @@ fn test_render_claude_review_remediations() {
                 304.0,
                 cy,
                 10.0,
-                Tokens::TEXT_SECONDARY,
+                Tokens::TEXT_SECONDARY_LIGHT,
                 [0, 0, 0, 0],
                 FontWeight::Bold,
             );
@@ -1715,7 +1715,7 @@ fn test_render_claude_review_remediations() {
             42.0,
             add_cy,
             14.5,
-            Tokens::TEXT_SECONDARY,
+            Tokens::TEXT_SECONDARY_LIGHT,
             [0, 0, 0, 0],
             FontWeight::Medium,
         );
@@ -1738,7 +1738,7 @@ fn test_render_claude_review_remediations() {
             315.0,
             add_cy,
             14.0,
-            Tokens::TEXT_PRIMARY,
+            Tokens::TEXT_PRIMARY_LIGHT,
             [0, 0, 0, 0],
             FontWeight::Bold,
         );
