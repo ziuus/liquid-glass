@@ -208,7 +208,7 @@ impl GlassRenderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: surface_format,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
             usage: wgpu::TextureUsages::COPY_SRC
                 | wgpu::TextureUsages::COPY_DST
                 | wgpu::TextureUsages::TEXTURE_BINDING,
@@ -221,7 +221,7 @@ impl GlassRenderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: surface_format,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
             usage: wgpu::TextureUsages::TEXTURE_BINDING
                 | wgpu::TextureUsages::COPY_DST
                 | wgpu::TextureUsages::COPY_SRC,
@@ -403,7 +403,7 @@ impl GlassRenderer {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: self.surface_config.format,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
                 usage: wgpu::TextureUsages::COPY_SRC
                     | wgpu::TextureUsages::COPY_DST
                     | wgpu::TextureUsages::TEXTURE_BINDING,
@@ -416,7 +416,7 @@ impl GlassRenderer {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: self.surface_config.format,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING
                     | wgpu::TextureUsages::COPY_DST
                     | wgpu::TextureUsages::COPY_SRC,
@@ -769,18 +769,6 @@ impl GlassRenderer {
             depth_or_array_layers: 1,
         };
 
-        let mut final_data = rgba_data.to_vec();
-        // If the surface format is BGRA, we must swap the R and B channels
-        // because the user provided RGBA data.
-        if matches!(
-            self.surface_config.format,
-            wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb
-        ) {
-            for chunk in final_data.as_chunks_mut::<4>().0 {
-                chunk.swap(0, 2);
-            }
-        }
-
         if self.base_bg_texture.width() != width || self.base_bg_texture.height() != height {
             self.base_bg_texture = self.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("Base Background Texture"),
@@ -788,7 +776,7 @@ impl GlassRenderer {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: self.surface_config.format,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
                 usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             });
@@ -799,13 +787,11 @@ impl GlassRenderer {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: self.surface_config.format,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             });
 
-            // Assuming we recreate the bind group layout... wait, we need the layout!
-            // Let's just create a new layout identical to the original one.
             let (_, bg_bind_group) = Self::make_bg_bind_group(
                 &self.device,
                 &self.bg_texture,
@@ -822,7 +808,7 @@ impl GlassRenderer {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            &final_data,
+            rgba_data,
             wgpu::ImageDataLayout {
                 offset: 0,
                 bytes_per_row: Some(4 * width),

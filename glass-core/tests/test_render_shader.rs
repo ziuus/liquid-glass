@@ -923,5 +923,54 @@ fn test_render_calibration_snapshots() {
             )
             .await;
         }
+
+        // 6. Fern Wallpaper Test (Verifies true natural chlorophyll green fidelity)
+        let fern_path = "/home/zius/Pictures/wallpaper/IMG_20220815_123133_260.jpg";
+        if let Ok(img) = image::open(fern_path) {
+            let rgba = img
+                .resize_exact(1920, 1080, image::imageops::FilterType::Triangle)
+                .to_rgba8();
+            let fc_w = 392u32;
+            let fc_h = 290u32;
+            let mut fc_crop = vec![0u8; (fc_w * fc_h * 4) as usize];
+            for dy in 0..fc_h {
+                for dx in 0..fc_w {
+                    let p = rgba.get_pixel(dx, 28 + dy);
+                    let idx = ((dy * fc_w + dx) * 4) as usize;
+                    fc_crop[idx..idx + 4].copy_from_slice(&p.0);
+                }
+            }
+            let fc_bounds = [
+                36.0 / fc_w as f32,
+                36.0 / fc_h as f32,
+                320.0 / fc_w as f32,
+                218.0 / fc_h as f32,
+            ];
+
+            let cfg_fc_liquid = RenderTestConfig {
+                width: fc_w,
+                height: fc_h,
+                bounds: fc_bounds,
+                thickness: 15.0,
+                bevel: 22.0,
+                dispersion: 0.12,
+                corner_radius: 28.0,
+                debug_mode: 0.0,
+                style_mode: 2.0,
+                is_light: 0.0,
+                out_path: &format!("{}/fern_clock_liquid.png", out_dir),
+            };
+            run_render(
+                &device,
+                &queue,
+                &render_pipeline,
+                &params_bind_group_layout,
+                &bg_bind_group_layout,
+                &sampler,
+                &fc_crop,
+                &cfg_fc_liquid,
+            )
+            .await;
+        }
     });
 }

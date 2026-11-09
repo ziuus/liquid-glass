@@ -294,3 +294,27 @@ fn dirs_cache_awww() -> Option<String> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_active_wallpaper() {
+        let path = WallpaperManager::get_active_wallpaper_path();
+        println!("DETECTED WALLPAPER PATH: {:?}", path);
+        let buf = WallpaperManager::load_wallpaper_1080p(path.as_deref());
+        assert!(buf.is_some());
+        let slice = buf.unwrap();
+        println!("BUFFER LEN: {}", slice.len());
+        // Sample at 100, 100
+        let idx = (100 * 1920 + 100) * 4;
+        println!(
+            "PIXEL AT (100, 100): R={} G={} B={} A={}",
+            slice[idx],
+            slice[idx + 1],
+            slice[idx + 2],
+            slice[idx + 3]
+        );
+    }
+}

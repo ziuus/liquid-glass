@@ -1527,11 +1527,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     if style_mode >= 1.5 {
         // ── 2.0: TRUE COLOR LIQUID GLASS ──
-        // Optical Snell refraction with configurable background diffusion blur
+        // Optical Snell refraction with crystalline optical clarity & natural backdrop transmission
         let cur_radius = clamp(params.blur_radius, 0.0, 48.0);
         let frosted_col = sample_frost_blur(uv + off_uv, cur_radius);
-        let rim_disp_factor = (1.0 - t) * 0.25;
-        let blur_mix = clamp(cur_radius / 2.0, 0.0, 1.0 - rim_disp_factor);
+        let blur_mix = clamp(cur_radius / 24.0, 0.0, 0.45);
         let base_crystal = mix(sharp_col, frosted_col, blur_mix);
 
         // Delicate physical ambient light sheen across upper surface (neutral white light, zero color distortion)
