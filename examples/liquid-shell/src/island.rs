@@ -2606,12 +2606,12 @@ impl IslandWidget {
                     FontWeight::Bold,
                 );
 
-                // 4 Action buttons: Lock, Suspend, Restart, Shut Down
+                // 4 Action buttons: Lock, Suspend, Restart, Shut Down (Apple HIG Color System)
                 let actions: [(&str, [u8; 4]); 4] = [
-                    ("Lock", [99, 102, 241, 255]),     // Modern Indigo
-                    ("Suspend", [168, 85, 247, 255]),  // Modern Violet
-                    ("Restart", [251, 146, 60, 255]),  // Vibrant Radiant Amber
-                    ("Power Off", [244, 63, 94, 255]), // Modern Electric Coral Rose
+                    ("Lock", [94, 92, 230, 255]),      // Apple System Indigo
+                    ("Suspend", [175, 82, 222, 255]),  // Apple System Purple
+                    ("Restart", [255, 149, 0, 255]),   // Apple System Amber Gold
+                    ("Power Off", [255, 69, 58, 255]), // Apple System Coral Red
                 ];
 
                 let item_w = (island_w - 52.0) / 4.0;
@@ -2640,12 +2640,18 @@ impl IslandWidget {
                     };
 
                     let tile_bg = if is_tile_pressed && (idx == 2 || idx == 3) {
-                        let glow_a = if is_light {
-                            (30.0 + hold_progress * 130.0) as u8
+                        if is_light {
+                            let glow_a = (22.0 + hold_progress * 55.0) as u8;
+                            [accent_col[0], accent_col[1], accent_col[2], glow_a]
                         } else {
-                            (25.0 + hold_progress * 140.0) as u8
-                        };
-                        [accent_col[0], accent_col[1], accent_col[2], glow_a]
+                            let glow_a = (30.0 + hold_progress * 65.0) as u8;
+                            [
+                                accent_col[0] / 3,
+                                accent_col[1] / 3,
+                                accent_col[2] / 3,
+                                glow_a,
+                            ]
+                        }
                     } else if is_tile_hover {
                         if is_light {
                             Tokens::INNER_TILE_BG_HOVER_LIGHT
@@ -2671,11 +2677,11 @@ impl IslandWidget {
                         tile_bg,
                     );
 
-                    // Modernized hold-to-confirm progress pill bar
+                    // Modernized Apple liquid hold-to-confirm progress pill capsule
                     if hold_progress > 0.01 && (idx == 2 || idx == 3) {
-                        let bar_y = cy + 22.0;
-                        let max_bar_w = (item_w - 24.0) * 0.5;
-                        // Sleek track
+                        let bar_y = cy + 21.0;
+                        let max_bar_w = (item_w - 20.0) * 0.5;
+                        // Precision translucent track tinted with accent tone
                         UIFont::draw_rounded_rect_fill(
                             buf,
                             self.width,
@@ -2683,32 +2689,44 @@ impl IslandWidget {
                             cx,
                             bar_y,
                             max_bar_w,
-                            1.5,
-                            1.0,
+                            1.75,
+                            1.25,
                             if is_light {
-                                [0, 0, 0, 25]
+                                [accent_col[0], accent_col[1], accent_col[2], 40]
                             } else {
-                                [255, 255, 255, 30]
+                                [accent_col[0], accent_col[1], accent_col[2], 55]
                             },
                         );
-                        // Radiant expanding fill with smooth rounded ends
-                        let fill_w = max_bar_w * hold_progress;
+                        // Radiant expanding fill from left to right
+                        let cur_half_w = (max_bar_w * hold_progress).max(1.5);
+                        let cur_cx = (cx - max_bar_w) + cur_half_w;
+                        let fill_alpha = if hold_progress > 0.85 {
+                            // Pulsing confirmation glow
+                            255
+                        } else {
+                            235
+                        };
                         UIFont::draw_rounded_rect_fill(
                             buf,
                             self.width,
                             self.height,
-                            cx,
+                            cur_cx,
                             bar_y,
-                            fill_w,
-                            1.5,
-                            1.0,
-                            [accent_col[0], accent_col[1], accent_col[2], 240],
+                            cur_half_w,
+                            1.75,
+                            1.25,
+                            [accent_col[0], accent_col[1], accent_col[2], fill_alpha],
                         );
                     }
 
                     let icon_ink = if is_tile_pressed && (idx == 2 || idx == 3) {
                         if is_light {
-                            [accent_col[0] / 2, accent_col[1] / 2, accent_col[2] / 2, 255]
+                            [
+                                accent_col[0] * 3 / 4,
+                                accent_col[1] * 3 / 4,
+                                accent_col[2] * 3 / 4,
+                                255,
+                            ]
                         } else {
                             [255, 255, 255, 255]
                         }
