@@ -5,6 +5,8 @@ PREFIX="${PREFIX:-$HOME/.local}"
 BIN_DIR="$PREFIX/bin"
 CONFIG_DIR="$HOME/.config/liquid-glass"
 AUTOSTART_DIR="$HOME/.config/autostart"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$REPO_DIR"
 
 if [ "$1" = "--uninstall" ] || [ "$1" = "uninstall" ]; then
     echo "==> Uninstalling liquid-shell..."

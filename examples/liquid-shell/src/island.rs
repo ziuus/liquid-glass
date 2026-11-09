@@ -535,7 +535,8 @@ impl IslandWidget {
 
         let font = UIFont::new();
 
-        let (dock_mode, fillet_compact, fillet_expanded, quick_access) = Self::load_config_values();
+        let (dock_mode, fillet_compact, fillet_expanded, quick_access, style_mode, theme_mode) =
+            Self::load_config_values();
         let init_y = dock_mode.dock_y();
 
         Self {
@@ -621,8 +622,8 @@ impl IslandWidget {
             is_wallpaper_light: false,
             wallpaper_crop: None,
             start_time: Instant::now(),
-            style_mode: 2.0,
-            theme_mode: 0,
+            style_mode,
+            theme_mode,
             hot_edge_dwell_start: None,
             needs_input_region_update: true,
         }
@@ -1007,7 +1008,7 @@ impl IslandWidget {
         format!("{}/.config/liquid-glass/config.json", home)
     }
 
-    pub fn load_config_values() -> (IslandDockMode, f32, f32, Vec<QuickAccessApp>) {
+    pub fn load_config_values() -> (IslandDockMode, f32, f32, Vec<QuickAccessApp>, f32, u32) {
         let home = std::env::var("HOME").unwrap_or_default();
         let conf_path = format!("{}/.config/liquid-glass/config.json", home);
         if let Ok(content) = std::fs::read_to_string(&conf_path) {
@@ -1034,7 +1035,24 @@ impl IslandWidget {
                     .get("quick_access")
                     .and_then(|q| serde_json::from_value::<Vec<QuickAccessApp>>(q.clone()).ok())
                     .unwrap_or_else(QuickAccessApp::defaults);
-                return (dock_mode, fillet_compact, fillet_expanded, quick_access);
+                let style_mode = val
+                    .get("style_mode")
+                    .and_then(|s| s.as_f64())
+                    .map(|s| s as f32)
+                    .unwrap_or(2.0);
+                let theme_mode = val
+                    .get("theme_mode")
+                    .and_then(|t| t.as_u64())
+                    .map(|t| t as u32)
+                    .unwrap_or(0);
+                return (
+                    dock_mode,
+                    fillet_compact,
+                    fillet_expanded,
+                    quick_access,
+                    style_mode,
+                    theme_mode,
+                );
             }
         }
         let dock_path = format!("{}/.config/liquid-glass/island_dock.txt", home);
@@ -1043,7 +1061,7 @@ impl IslandWidget {
         } else {
             IslandDockMode::AttachedCurved
         };
-        (dock_mode, 10.0, 24.0, QuickAccessApp::defaults())
+        (dock_mode, 10.0, 24.0, QuickAccessApp::defaults(), 2.0, 0)
     }
 
     pub fn save_config(&self) {
@@ -1103,10 +1121,12 @@ impl IslandWidget {
     }
 
     pub fn reload_config(&mut self) {
-        let (mode, r_c, r_e, apps) = Self::load_config_values();
+        let (mode, r_c, r_e, apps, style, theme) = Self::load_config_values();
         self.fillet_radius_compact = r_c;
         self.fillet_radius_expanded = r_e;
         self.quick_access = apps;
+        self.style_mode = style;
+        self.theme_mode = theme;
         self.set_dock_mode(mode);
     }
 

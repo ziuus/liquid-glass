@@ -954,7 +954,7 @@ impl TodoWidget {
             8.0,
             settings_bg,
         );
-        let settings_col = if self.is_wallpaper_light {
+        let settings_col = if is_light {
             [12, 16, 24, 255]
         } else {
             Tokens::TEXT_PRIMARY
@@ -965,7 +965,7 @@ impl TodoWidget {
         let tasks_label = format!("Tasks ({})", tasks_count);
         let tab1_col = if tab_t < 0.5 {
             selected_ink
-        } else if self.is_wallpaper_light {
+        } else if is_light {
             [18, 24, 34, 255]
         } else {
             [170, 178, 195, 230]
@@ -986,7 +986,7 @@ impl TodoWidget {
         let agenda_label = "Agenda";
         let tab2_col = if tab_t >= 0.5 {
             selected_ink
-        } else if self.is_wallpaper_light {
+        } else if is_light {
             [18, 24, 34, 255]
         } else {
             [170, 178, 195, 230]
@@ -1047,24 +1047,30 @@ impl TodoWidget {
             );
 
             // Filter Bar Labels: "All" (cx = 84.0), "Active" (cx = 156.0), "Done" (cx = 228.0), cy = 79.5
-            let f0_is_light = self
-                .wallpaper_crop
-                .as_ref()
-                .map_or(self.is_wallpaper_light, |crop| {
-                    sample_subcrop_is_light(crop, self.width, self.height, 60, 68, 50, 22)
-                });
-            let f1_is_light = self
-                .wallpaper_crop
-                .as_ref()
-                .map_or(self.is_wallpaper_light, |crop| {
-                    sample_subcrop_is_light(crop, self.width, self.height, 130, 68, 55, 22)
-                });
-            let f2_is_light = self
-                .wallpaper_crop
-                .as_ref()
-                .map_or(self.is_wallpaper_light, |crop| {
-                    sample_subcrop_is_light(crop, self.width, self.height, 205, 68, 50, 22)
-                });
+            let f0_is_light = if self.style_mode < 0.5 {
+                is_light
+            } else {
+                is_light
+                    || self.wallpaper_crop.as_ref().is_some_and(|crop| {
+                        sample_subcrop_is_light(crop, self.width, self.height, 60, 68, 50, 22)
+                    })
+            };
+            let f1_is_light = if self.style_mode < 0.5 {
+                is_light
+            } else {
+                is_light
+                    || self.wallpaper_crop.as_ref().is_some_and(|crop| {
+                        sample_subcrop_is_light(crop, self.width, self.height, 130, 68, 55, 22)
+                    })
+            };
+            let f2_is_light = if self.style_mode < 0.5 {
+                is_light
+            } else {
+                is_light
+                    || self.wallpaper_crop.as_ref().is_some_and(|crop| {
+                        sample_subcrop_is_light(crop, self.width, self.height, 205, 68, 50, 22)
+                    })
+            };
 
             let f0_unselected = if f0_is_light {
                 [8, 12, 20, 255]
@@ -1178,13 +1184,17 @@ impl TodoWidget {
                     (0.5, 0.0, self.is_wallpaper_light)
                 };
 
-                // In clean solid mode or light mode, follow effective theme; in glass modes, follow local wallpaper luminance
-                let row_is_light = is_light || self.style_mode < 0.5 || mean_lum > 0.179;
+                // In clean solid mode, follow effective theme; in glass modes, follow local wallpaper luminance
+                let row_is_light = if self.style_mode < 0.5 {
+                    is_light
+                } else {
+                    is_light || mean_lum > 0.40
+                };
 
                 // Never apply light shadow under dark text in light mode (prevents bleaching)
                 let text_shadow_col = if row_is_light {
                     [0, 0, 0, 0]
-                } else if spread > 0.05 {
+                } else if spread > 0.05 || self.style_mode >= 0.5 {
                     [10, 14, 22, 180] // Dark scrim under light text only
                 } else {
                     [0, 0, 0, 0]
@@ -1391,11 +1401,11 @@ impl TodoWidget {
             }
 
             // 4. Bottom Add Task Bar (hug-content dynamic cy)
-            let add_is_light = is_light
-                || self
-                    .wallpaper_crop
-                    .as_ref()
-                    .map_or(self.is_wallpaper_light, |crop| {
+            let add_is_light = if self.style_mode < 0.5 {
+                is_light
+            } else {
+                is_light
+                    || self.wallpaper_crop.as_ref().is_some_and(|crop| {
                         sample_subcrop_is_light(
                             crop,
                             self.width,
@@ -1405,7 +1415,8 @@ impl TodoWidget {
                             200,
                             26,
                         )
-                    });
+                    })
+            };
             let (add_primary, add_dimmed, add_secondary) = if add_is_light {
                 ([8, 12, 20, 255], [28, 36, 50, 255], [18, 24, 34, 255])
             } else {
@@ -1593,7 +1604,7 @@ impl TodoWidget {
                         156.0,
                         18.0,
                         Tokens::RADIUS_INNER_TILE,
-                        if self.is_wallpaper_light {
+                        if is_light {
                             Tokens::INNER_TILE_BG_LIGHT
                         } else {
                             Tokens::INNER_TILE_BG_DARK
@@ -1714,7 +1725,7 @@ impl TodoWidget {
                     FontWeight::Bold,
                 );
             } else {
-                let btn_bg = if self.is_wallpaper_light {
+                let btn_bg = if is_light {
                     [220, 226, 238, 120]
                 } else {
                     Tokens::INNER_TILE_BG_DARK

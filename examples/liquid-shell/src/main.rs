@@ -352,6 +352,10 @@ fn main() {
         Some(wakeup_write_fd),
     );
     let mut todo = TodoWidget::new(&qh, &compositor_state, &layer_shell, display_ptr);
+    clock.style_mode = island.style_mode;
+    clock.theme_mode = island.theme_mode;
+    todo.style_mode = island.style_mode;
+    todo.theme_mode = island.theme_mode;
 
     if let Some(cache) = wallpaper_mgr.cached_buffer() {
         let clock_crop = WallpaperManager::get_wallpaper_crop(
