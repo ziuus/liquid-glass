@@ -1467,7 +1467,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let top_flush = select(1.0, smoothstep(-half_size.y, -half_size.y + 4.0, local_px.y), is_attached);
     let thickness = select(15.0, params.refraction_strength, params.refraction_strength >= 1.0);
-    let off_px = refract_dir * (thickness * lens_profile * top_flush);
+
+    // Continuous interior liquid dome magnification (active in Liquid Glass mode style_mode >= 1.5)
+    var dome_disp_px = vec2<f32>(0.0);
+    if style_mode >= 1.5 {
+        let dome_norm = local_px / half_size;
+        let r_sq = clamp(dot(dome_norm, dome_norm), 0.0, 1.0);
+        let dome_curve = clamp(params.curvature, 0.01, 0.15);
+        let dome_weight = smoothstep(0.0, bezel * 1.5, depth);
+        // Optical lens magnification: pulling sample rays inward magnifies background elements
+        dome_disp_px = -dome_norm * (1.0 - r_sq * 0.40) * (min(half_size.x, half_size.y) * dome_curve * 1.4) * dome_weight;
+    }
+
+    let off_px = (refract_dir * (thickness * lens_profile) + dome_disp_px) * top_flush;
     let off_uv = off_px / params.surface_size;
 
     let debug_mode = params._pad.y;
