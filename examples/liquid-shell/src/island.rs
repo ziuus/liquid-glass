@@ -1307,8 +1307,6 @@ impl IslandWidget {
     }
 
     pub fn update_physics(&mut self, dt: f32) -> bool {
-        self.check_window_overlap();
-
         let effective_dt = (dt * self.anim_speed).clamp(0.0, 0.05);
 
         // Apple Liquid Motion: fluid volume preservation (coupled squash & stretch)
@@ -1320,17 +1318,25 @@ impl IslandWidget {
         let squash_h = -self.vel_w * 0.16 * (self.current_h / self.current_w.max(20.0));
         let squash_w = -self.vel_h * 0.16 * (self.current_w / self.current_h.max(20.0));
 
+        let min_w = if self.mode == IslandMode::Hidden {
+            self.target_w
+        } else {
+            Tokens::ISLAND_COMPACT_W * 0.6
+        };
         let force_w =
             -spring_k * (self.current_w - self.target_w) - damping * self.vel_w + squash_w;
         self.vel_w += force_w * effective_dt;
-        self.current_w =
-            (self.current_w + self.vel_w * effective_dt).max(Tokens::ISLAND_COMPACT_W * 0.6);
+        self.current_w = (self.current_w + self.vel_w * effective_dt).max(min_w);
 
+        let min_h = if self.mode == IslandMode::Hidden {
+            self.target_h
+        } else {
+            Tokens::ISLAND_COMPACT_H * 0.6
+        };
         let force_h =
             -spring_k * (self.current_h - self.target_h) - damping * self.vel_h + squash_h;
         self.vel_h += force_h * effective_dt;
-        self.current_h =
-            (self.current_h + self.vel_h * effective_dt).max(Tokens::ISLAND_COMPACT_H * 0.6);
+        self.current_h = (self.current_h + self.vel_h * effective_dt).max(min_h);
 
         let force_y = -spring_k * (self.current_y - self.target_y) - damping * self.vel_y;
         self.vel_y += force_y * effective_dt;
@@ -1341,13 +1347,18 @@ impl IslandWidget {
         self.vel_alpha += force_a * effective_dt;
         self.current_alpha = (self.current_alpha + self.vel_alpha * effective_dt).clamp(0.0, 1.0);
 
-        let settling = (self.current_w - self.target_w).abs() < 0.5
+        let mut settling = (self.current_w - self.target_w).abs() < 0.5
             && (self.current_h - self.target_h).abs() < 0.5
             && (self.current_y - self.target_y).abs() < 0.5
             && (self.current_alpha - self.target_alpha).abs() < 0.01
             && self.vel_w.abs() < 1.0
             && self.vel_h.abs() < 1.0
             && self.vel_y.abs() < 1.0;
+
+        if self.mode == IslandMode::Hidden && self.current_alpha <= 0.02 && self.current_y <= -25.0
+        {
+            settling = true;
+        }
 
         let mut slide_settling = true;
         if self.transition_from_mode.is_some() {
@@ -1545,9 +1556,9 @@ impl IslandWidget {
 
     pub fn check_window_overlap(&mut self) {
         let check_interval = if self.mode == IslandMode::Hidden {
-            Duration::from_millis(16)
+            Duration::from_millis(250)
         } else {
-            Duration::from_millis(80)
+            Duration::from_millis(1000)
         };
         if self.last_window_check.elapsed() < check_interval {
             return;

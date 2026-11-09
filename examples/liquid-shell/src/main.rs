@@ -601,8 +601,10 @@ fn main() {
             || app.island.is_hovered
             || app.todo.is_hovered;
 
-        let timeout_ms = if animating || app.island.mode == IslandMode::Hidden {
+        let timeout_ms = if animating {
             16
+        } else if app.island.mode == IslandMode::Hidden {
+            250
         } else {
             let sec = now_local.second();
             let sub_ms = now_local.timestamp_subsec_millis();
