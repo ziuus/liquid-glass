@@ -864,9 +864,8 @@ impl IslandWidget {
 
                 if self.is_inside_island(lx, ly)
                     && !self.is_swiping
-                    && dist < 8.0
+                    && dist < 12.0
                     && self.press_time.elapsed() < Duration::from_millis(600)
-                    && self.last_mode_cycle.elapsed() >= Duration::from_millis(400)
                 {
                     if button == 273 {
                         // Right-click toggles between Attached (docked to top edge) and Floating styles
@@ -2849,11 +2848,6 @@ impl IslandWidget {
     }
 
     fn handle_click(&mut self, lx: f32, ly: f32) {
-        // Discard any clicks within 400ms of a mode switch / swipe to prevent accidental triggers
-        if self.last_mode_cycle.elapsed() < Duration::from_millis(400) {
-            return;
-        }
-
         let island_cx = (self.width as f32) * 0.5;
         let island_top = self.current_y;
         let island_w = self.current_w;
@@ -2874,6 +2868,36 @@ impl IslandWidget {
             return;
         }
 
+        // Track navigation button exemption (allows rapid skipping without triggering double-click collapse)
+        let ctrl_y = island_top + 68.0;
+        let play_cx = island_cx + island_w * 0.5 - 64.0;
+        let prev_cx = play_cx - 44.0;
+        let next_cx = play_cx + 44.0;
+        let is_track_nav = self.mode == IslandMode::MusicExpanded
+            && (((lx - prev_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt() <= 20.0
+                || ((lx - next_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt() <= 20.0);
+
+        // Double-click detection: collapses expanded island or expands compact pill
+        if !is_track_nav {
+            let click_dt = self.last_click_time.elapsed();
+            let click_dx = lx - self.last_click_pos[0];
+            let click_dy = ly - self.last_click_pos[1];
+            let click_dist = (click_dx * click_dx + click_dy * click_dy).sqrt();
+
+            if click_dt < Duration::from_millis(500) && click_dist < 45.0 {
+                self.last_click_time = Instant::now() - Duration::from_secs(10);
+                if self.mode == IslandMode::CompactPill {
+                    self.set_mode(IslandMode::MusicExpanded);
+                } else {
+                    self.set_mode(IslandMode::CompactPill);
+                }
+                return;
+            }
+        }
+
+        self.last_click_time = Instant::now();
+        self.last_click_pos = [lx, ly];
+
         // Page dot clicks across all expanded modes
         let dot_start_x = island_cx + island_w * 0.5 - 65.0;
         let dot_y = island_top + 22.0;
@@ -2891,36 +2915,6 @@ impl IslandWidget {
             }
             return;
         }
-
-        // Track navigation button exemption (allows rapid skipping without triggering double-click collapse)
-        let ctrl_y = island_top + 68.0;
-        let play_cx = island_cx + island_w * 0.5 - 64.0;
-        let prev_cx = play_cx - 44.0;
-        let next_cx = play_cx + 44.0;
-        let is_track_nav = self.mode == IslandMode::MusicExpanded
-            && (((lx - prev_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt() <= 20.0
-                || ((lx - next_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt() <= 20.0);
-
-        // Double-click detection: expands compact pill and collapses/hides expanded pages
-        if !is_track_nav {
-            let click_dt = self.last_click_time.elapsed();
-            let click_dx = lx - self.last_click_pos[0];
-            let click_dy = ly - self.last_click_pos[1];
-            let click_dist = (click_dx * click_dx + click_dy * click_dy).sqrt();
-
-            if click_dt < Duration::from_millis(400) && click_dist < 35.0 {
-                self.last_click_time = Instant::now() - Duration::from_secs(10);
-                if self.mode == IslandMode::CompactPill {
-                    self.set_mode(IslandMode::MusicExpanded);
-                } else {
-                    self.set_mode(IslandMode::CompactPill);
-                }
-                return;
-            }
-        }
-
-        self.last_click_time = Instant::now();
-        self.last_click_pos = [lx, ly];
 
         match self.mode {
             IslandMode::CompactPill => {
