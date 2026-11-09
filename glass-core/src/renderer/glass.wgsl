@@ -61,8 +61,8 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
         default: {}
     }
     
-    // Dilation padding in normalized coordinates to prevent edge clipping of anti-aliasing, specular rim, fillet wings, and drop shadow
-    let quad_pad = vec2<f32>(24.0, 24.0) / params.surface_size;
+    // Dilation padding in normalized coordinates to prevent edge clipping of anti-aliasing, specular rim, and fillet wings
+    let quad_pad = vec2<f32>(32.0, 32.0) / params.surface_size;
     let min_bounds = max(params.bounds.xy - quad_pad, vec2<f32>(0.0));
     let max_bounds = min(params.bounds.xy + params.bounds.zw + quad_pad, vec2<f32>(1.0));
     let quad_size = max_bounds - min_bounds;
@@ -109,12 +109,12 @@ fn rr_sdf_notched(p: vec2<f32>, b: vec2<f32>, r_bottom: f32, r_fillet: f32) -> f
         if x > hx {
             // In the outward fillet wing area
             if x <= cx {
-                return max(d_fillet_arc, -hy - y);
+                return d_fillet_arc;
             } else {
-                return length(vec2<f32>(x - cx, max(-hy - y, 0.0)));
+                return dist_c - rf;
             }
         } else {
-            return max(d_body, -hy - y);
+            return x - hx;
         }
     } else {
         return d_body;
@@ -1391,7 +1391,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let is_island = (params.padding >= 26.9 && params.padding <= 27.1);
     let is_attached = (is_island && params.deformation >= 0.9);
     let r_bottom = r;
-    let r_fillet = 18.0;
+    let r_fillet = 24.0;
 
     // Crisp, stable SDF
     let sdf = select(rr_sdf(local_px, half_size, r), rr_sdf_notched(local_px, half_size, r_bottom, r_fillet), is_attached);
@@ -1399,40 +1399,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let style_mode = params._pad.x; // 0.0 = Obsidian (Clean), 1.0 = Glassmorphism (Frosted), 2.0 = Liquid Glass
     let is_light = params.is_light;
     
-    // Outside the shape: refined tight physical ambient contact shadow or transparent
+    // Outside the shape: transparent (clean physical liquid glass with zero dirty shadow smudges)
     if sdf > 0.0 {
-        // Dynamic Island (el_type 27.0) is a floating status pill with zero drop shadow
-        if !is_island && style_mode >= 0.5 {
-            // Tight physical contact shadow: 0 3.5px 12px at 12-15% alpha (no huge cloudy halo)
-            let shadow_px = local_px - vec2<f32>(0.0, 3.5);
-            let d_shadow = max(rr_sdf(shadow_px, half_size, r), 0.0);
-
-            if d_shadow <= 16.0 {
-                let bg_under_shadow = textureSampleLevel(background_texture, background_sampler, uv, 0.0).rgb;
-                let shadow_luma = dot(bg_under_shadow, vec3<f32>(0.2126, 0.7152, 0.0722));
-                let is_shadow_light = (is_light > 0.5 || shadow_luma > 0.50);
-
-                // Tight Gaussian decay (sigma = 5.5px, decays smoothly to 14px)
-                let amb_sigma = 5.5;
-                let ambient = exp(-(d_shadow * d_shadow) / (2.0 * amb_sigma * amb_sigma));
-
-                // Directional weight: top receives 0%, bottom receives full shadow
-                let norm_y = clamp(local_px.y / half_size.y, -1.0, 1.0);
-                let dir_weight = clamp(norm_y * 0.75 + 0.25, 0.0, 1.0);
-
-                // Smooth outer cutoff reaching 0 at 14px
-                let cutoff = 1.0 - smoothstep(6.0, 14.0, d_shadow);
-
-                // Subtle alpha: 15% on light, 12% on dark
-                let max_alpha = select(0.12, 0.15, is_shadow_light);
-                let shadow_alpha = ambient * dir_weight * cutoff * max_alpha;
-
-                // Seamless edge blend to eliminate hard perimeter stroke
-                let edge_blend = clamp(sdf * 0.5, 0.0, 1.0);
-
-                return vec4<f32>(0.0, 0.0, 0.0, shadow_alpha * edge_blend);
-            }
-        }
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
     

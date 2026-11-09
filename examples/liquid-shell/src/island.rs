@@ -495,8 +495,8 @@ impl IslandWidget {
         }
         let island_cx = (self.width as f32) * 0.5;
         let island_top = self.current_y;
-        let flare = if self.dock_mode == IslandDockMode::Attached && ly <= 18.0 {
-            18.0
+        let flare = if self.dock_mode == IslandDockMode::Attached && ly <= 24.0 {
+            24.0
         } else {
             0.0
         };
@@ -517,7 +517,7 @@ impl IslandWidget {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
         let flare = if self.dock_mode == IslandDockMode::Attached {
-            20
+            24
         } else {
             0
         };
@@ -2596,8 +2596,8 @@ impl IslandWidget {
         let island_h = self.current_h;
 
         // Check if click was inside current island capsule, flared wings, or top edge
-        let flare = if self.dock_mode == IslandDockMode::Attached && ly <= 18.0 {
-            18.0
+        let flare = if self.dock_mode == IslandDockMode::Attached && ly <= 24.0 {
+            24.0
         } else {
             0.0
         };
