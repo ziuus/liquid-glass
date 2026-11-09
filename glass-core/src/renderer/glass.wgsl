@@ -1538,14 +1538,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let vibrant_crystal = max(mix(vec3<f32>(crystal_luma), base_crystal, 1.25), vec3<f32>(0.0));
 
         if effective_light > 0.5 {
-            // Apple Porcelain Ceramic Glass: 62% luminous pearl porcelain diffusion backing
-            // Preserves 38% of backdrop refraction and vibrancy while guaranteeing 12:1 contrast for obsidian typography
-            col = mix(vibrant_crystal, vec3<f32>(0.95, 0.97, 1.0), 0.62);
-        } else {
-            // Apple Obsidian Smoked Crystal: 54% smoked charcoal crystal diffusion backing
-            // Preserves 46% of backdrop vibrant color while guaranteeing 10:1 contrast for crisp white typography
+            // Apple Liquid Glass (Light / White mode): pristine 20% satin lift, preserving 80% crystal clarity
             let top_ambient = mix(0.008, 0.001, (local_px.y / half_size.y) * 0.5 + 0.5);
-            let obsidian_base = mix(vibrant_crystal, vec3<f32>(0.07, 0.09, 0.13), 0.54);
+            col = mix(vibrant_crystal, vec3<f32>(0.96, 0.98, 1.0), 0.20) + vec3<f32>(top_ambient);
+        } else {
+            // Apple Liquid Glass (Dark / Vibrant mode): pristine 18% obsidian lift, preserving 82% crystal clarity
+            let top_ambient = mix(0.008, 0.001, (local_px.y / half_size.y) * 0.5 + 0.5);
+            let obsidian_base = mix(vibrant_crystal, vec3<f32>(0.07, 0.09, 0.13), 0.18);
             col = obsidian_base + vec3<f32>(top_ambient * clamp(1.0 - crystal_luma * 3.0, 0.0, 1.0));
         }
 
@@ -1563,13 +1562,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
         // 2. Physical Glass Satin Sheen & Translucency
         if effective_light > 0.5 {
-            // Apple Porcelain Ceramic Glass (Light / White mode)
-            let light_density = mix(0.96, 0.92, (local_px.y / half_size.y) * 0.5 + 0.5);
-            col = mix(vibrant_col * light_density, vec3<f32>(0.95, 0.97, 1.0), 0.62);
+            // Apple Frosted Glass (Light mode)
+            let light_density = mix(0.98, 0.94, (local_px.y / half_size.y) * 0.5 + 0.5);
+            col = mix(vibrant_col * light_density, vec3<f32>(0.96, 0.98, 1.0), 0.22);
         } else {
-            // Apple Smoked Acrylic Satin Glass (Dark / Vibrant mode)
+            // Apple Frosted Glass (Dark mode)
             let top_ambient = mix(0.006, 0.001, (local_px.y / half_size.y) * 0.5 + 0.5);
-            let obsidian_base = mix(vibrant_col, vec3<f32>(0.07, 0.09, 0.13), 0.54);
+            let obsidian_base = mix(vibrant_col, vec3<f32>(0.07, 0.09, 0.13), 0.18);
             col = obsidian_base + vec3<f32>(top_ambient * clamp(1.0 - f_luma * 4.0, 0.0, 1.0));
         }
     } else {

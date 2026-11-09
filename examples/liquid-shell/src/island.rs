@@ -971,8 +971,14 @@ impl IslandWidget {
                 self.target_y = dock_y;
                 self.target_alpha = 1.0;
             }
+            IslandMode::Notification => {
+                // Snug compact notification banner: 420x76px
+                self.target_w = 420.0;
+                self.target_h = 76.0;
+                self.target_y = dock_y;
+                self.target_alpha = 1.0;
+            }
             IslandMode::MusicExpanded
-            | IslandMode::Notification
             | IslandMode::QuickAccess
             | IslandMode::SystemOverview
             | IslandMode::PowerMenu => {
@@ -2278,8 +2284,8 @@ impl IslandWidget {
                         self.height,
                         &notif.app.to_uppercase(),
                         content_x,
-                        island_top + 28.0,
-                        11.0,
+                        island_top + 20.0,
+                        10.5,
                         col_dim,
                         FontWeight::Bold,
                     );
@@ -2292,8 +2298,8 @@ impl IslandWidget {
                         self.height,
                         &summary,
                         content_x,
-                        island_top + 48.0,
-                        15.0,
+                        island_top + 38.0,
+                        14.5,
                         col_ink,
                         FontWeight::Bold,
                     );
@@ -2306,8 +2312,8 @@ impl IslandWidget {
                         self.height,
                         &body,
                         content_x,
-                        island_top + 68.0,
-                        13.0,
+                        island_top + 56.0,
+                        12.5,
                         col_dim,
                         FontWeight::Medium,
                     );
@@ -2319,7 +2325,7 @@ impl IslandWidget {
                         self.width,
                         self.height,
                         right_x - 38.0,
-                        island_top + 26.0,
+                        island_top + 20.0,
                         18.0,
                         8.5,
                         6.0,
@@ -2335,7 +2341,7 @@ impl IslandWidget {
                         self.height,
                         "now",
                         right_x - 38.0,
-                        island_top + 26.0,
+                        island_top + 20.0,
                         10.5,
                         if is_light {
                             [255, 255, 255, 255]

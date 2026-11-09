@@ -923,7 +923,7 @@ impl TodoWidget {
         // Sliding Active Tab Pill (Liquid Glass Lens with Crisp Double Bevel)
         let tab_pill_cx = 96.0 * (1.0 - tab_t) + 224.0 * tab_t;
         let pill_fill = if is_light {
-            [255, 255, 255, 245]
+            [255, 255, 255, 175]
         } else {
             [255, 255, 255, 45]
         };
@@ -950,7 +950,7 @@ impl TodoWidget {
             8.0,
             1.2,
             if is_light {
-                [0, 0, 0, 22]
+                [255, 255, 255, 220]
             } else {
                 [255, 255, 255, 90]
             },
@@ -1056,7 +1056,7 @@ impl TodoWidget {
 
             // Sliding active filter pill (Liquid Glass Lens with Crisp Bevel Stroke)
             let filter_pill_fill = if is_light {
-                [255, 255, 255, 245]
+                [255, 255, 255, 175]
             } else {
                 [255, 255, 255, 45]
             };
@@ -1082,7 +1082,7 @@ impl TodoWidget {
                 7.0,
                 1.1,
                 if is_light {
-                    [0, 0, 0, 20]
+                    [255, 255, 255, 220]
                 } else {
                     [255, 255, 255, 85]
                 },
@@ -1194,9 +1194,9 @@ impl TodoWidget {
                 // Unified coherent typography across the entire card
                 let row_is_light = is_light;
 
-                // Subtle scrim under light text in glass mode for 100% legibility
+                // Subtle scrim under text for 100% legibility across light and dark backdrops
                 let text_shadow_col = if row_is_light {
-                    [0, 0, 0, 0]
+                    [255, 255, 255, 120]
                 } else {
                     [10, 14, 22, 160]
                 };
