@@ -812,19 +812,6 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        Self::draw_animated_terminal_icon(buf, width, height, cx, cy, true, color);
-    }
-
-    /// Draw a precision terminal prompt icon (>_) with optional blinking cursor
-    pub fn draw_animated_terminal_icon(
-        buf: &mut [u8],
-        width: u32,
-        height: u32,
-        cx: f32,
-        cy: f32,
-        cursor_visible: bool,
-        color: [u8; 4],
-    ) {
         // Chevron '>'
         Self::draw_segment(
             buf,
@@ -844,12 +831,7 @@ impl UIFont {
             1.5,
             color,
         );
-        // Underline cursor '_' (faint when cursor_visible is false)
-        let cur_color = if cursor_visible {
-            color
-        } else {
-            [color[0], color[1], color[2], (color[3] as f32 * 0.20) as u8]
-        };
+        // Underline cursor '_'
         Self::draw_segment(
             buf,
             width,
@@ -857,7 +839,7 @@ impl UIFont {
             (cx + 1.0, cy + 4.5),
             (cx + 6.5, cy + 4.5),
             1.5,
-            cur_color,
+            color,
         );
     }
 
@@ -868,19 +850,6 @@ impl UIFont {
         height: u32,
         cx: f32,
         cy: f32,
-        color: [u8; 4],
-    ) {
-        Self::draw_animated_browser_icon(buf, width, height, cx, cy, 0.0, color);
-    }
-
-    /// Draw a precision browser globe icon with animated 3D rotating meridian lines
-    pub fn draw_animated_browser_icon(
-        buf: &mut [u8],
-        width: u32,
-        height: u32,
-        cx: f32,
-        cy: f32,
-        rot_phase: f32,
         color: [u8; 4],
     ) {
         // Outer spherical circle
@@ -895,23 +864,8 @@ impl UIFont {
             1.2,
             color,
         );
-        // Animated rotating meridian curve (gives authentic 3D rotating globe effect)
-        let m_phase = rot_phase.rem_euclid(std::f32::consts::PI);
-        let m_scale = m_phase.sin();
-        let m_w = (m_scale * 6.2).abs().max(0.6);
-        let m_offset = (m_phase - std::f32::consts::FRAC_PI_2).cos() * 1.5;
-        Self::draw_rounded_rect_stroke(
-            buf,
-            width,
-            height,
-            cx + m_offset,
-            cy,
-            m_w,
-            6.8,
-            m_w,
-            1.2,
-            color,
-        );
+        // Vertical meridian curved ellipse
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 3.4, 6.8, 3.4, 1.2, color);
     }
 
     /// Draw a precision close/dismiss icon (X)
@@ -954,27 +908,13 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        Self::draw_animated_editor_icon(buf, width, height, cx, cy, 0.0, color);
-    }
-
-    /// Draw a precision editor code brackets icon (< / >) with breathing expand factor
-    pub fn draw_animated_editor_icon(
-        buf: &mut [u8],
-        width: u32,
-        height: u32,
-        cx: f32,
-        cy: f32,
-        expand_px: f32,
-        color: [u8; 4],
-    ) {
-        let exp = expand_px.clamp(-2.0, 3.0);
         // Left bracket '<'
         Self::draw_segment(
             buf,
             width,
             height,
-            (cx - 3.0 - exp, cy - 5.0),
-            (cx - 7.0 - exp, cy),
+            (cx - 3.0, cy - 5.0),
+            (cx - 7.0, cy),
             1.4,
             color,
         );
@@ -982,8 +922,8 @@ impl UIFont {
             buf,
             width,
             height,
-            (cx - 7.0 - exp, cy),
-            (cx - 3.0 - exp, cy + 5.0),
+            (cx - 7.0, cy),
+            (cx - 3.0, cy + 5.0),
             1.4,
             color,
         );
@@ -992,8 +932,8 @@ impl UIFont {
             buf,
             width,
             height,
-            (cx + 3.0 + exp, cy - 5.0),
-            (cx + 7.0 + exp, cy),
+            (cx + 3.0, cy - 5.0),
+            (cx + 7.0, cy),
             1.4,
             color,
         );
@@ -1001,8 +941,8 @@ impl UIFont {
             buf,
             width,
             height,
-            (cx + 7.0 + exp, cy),
-            (cx + 3.0 + exp, cy + 5.0),
+            (cx + 7.0, cy),
+            (cx + 3.0, cy + 5.0),
             1.4,
             color,
         );
@@ -1027,27 +967,13 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        Self::draw_animated_folder_icon(buf, width, height, cx, cy, 0.0, color);
-    }
-
-    /// Draw a precision Lucide-grade folder icon with animated liftable tab
-    pub fn draw_animated_folder_icon(
-        buf: &mut [u8],
-        width: u32,
-        height: u32,
-        cx: f32,
-        cy: f32,
-        tab_lift: f32,
-        color: [u8; 4],
-    ) {
-        let lift = tab_lift.clamp(0.0, 3.0);
         // Tab: top left
         Self::draw_segment(
             buf,
             width,
             height,
-            (cx - 7.0, cy - 4.5 - lift),
-            (cx - 3.0, cy - 4.5 - lift),
+            (cx - 7.0, cy - 4.5),
+            (cx - 3.0, cy - 4.5),
             1.4,
             color,
         );
@@ -1055,7 +981,7 @@ impl UIFont {
             buf,
             width,
             height,
-            (cx - 3.0, cy - 4.5 - lift),
+            (cx - 3.0, cy - 4.5),
             (cx - 1.5, cy - 2.5),
             1.4,
             color,
@@ -1082,31 +1008,17 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        Self::draw_animated_music_icon(buf, width, height, cx, cy, 0.0, color);
-    }
-
-    /// Draw a precision Lucide-grade music note icon with rhythmic bounce
-    pub fn draw_animated_music_icon(
-        buf: &mut [u8],
-        width: u32,
-        height: u32,
-        cx: f32,
-        cy: f32,
-        bounce_y: f32,
-        color: [u8; 4],
-    ) {
-        let by = cy + bounce_y;
         // Left note head
-        Self::draw_rounded_rect_fill(buf, width, height, cx - 4.0, by + 3.0, 2.4, 1.8, 1.8, color);
+        Self::draw_rounded_rect_fill(buf, width, height, cx - 4.0, cy + 3.0, 2.4, 1.8, 1.8, color);
         // Right note head
-        Self::draw_rounded_rect_fill(buf, width, height, cx + 4.0, by + 1.0, 2.4, 1.8, 1.8, color);
+        Self::draw_rounded_rect_fill(buf, width, height, cx + 4.0, cy + 1.0, 2.4, 1.8, 1.8, color);
         // Left stem
         Self::draw_segment(
             buf,
             width,
             height,
-            (cx - 2.0, by + 3.0),
-            (cx - 2.0, by - 5.5),
+            (cx - 2.0, cy + 3.0),
+            (cx - 2.0, cy - 5.5),
             1.4,
             color,
         );
@@ -1115,8 +1027,8 @@ impl UIFont {
             buf,
             width,
             height,
-            (cx + 6.0, by + 1.0),
-            (cx + 6.0, by - 7.5),
+            (cx + 6.0, cy + 1.0),
+            (cx + 6.0, cy - 7.5),
             1.4,
             color,
         );
@@ -1125,8 +1037,8 @@ impl UIFont {
             buf,
             width,
             height,
-            (cx - 2.0, by - 5.5),
-            (cx + 6.0, by - 7.5),
+            (cx - 2.0, cy - 5.5),
+            (cx + 6.0, cy - 7.5),
             2.0,
             color,
         );
@@ -1147,35 +1059,10 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        Self::draw_animated_lock_icon(buf, width, height, cx, cy, 0.0, color);
-    }
-
-    /// Draw a precision Lucide-grade Lock icon with animated shackle lift
-    pub fn draw_animated_lock_icon(
-        buf: &mut [u8],
-        width: u32,
-        height: u32,
-        cx: f32,
-        cy: f32,
-        shackle_lift: f32,
-        color: [u8; 4],
-    ) {
-        let lift = shackle_lift.clamp(0.0, 3.0);
         // Body (half_w = 6.0, half_h = 4.5, radius = 2.0)
         Self::draw_rounded_rect_fill(buf, width, height, cx, cy + 2.5, 6.0, 4.5, 2.0, color);
         // Shackle (arched stroke, half_w = 3.6, half_h = 4.0, radius = 3.6)
-        Self::draw_rounded_rect_stroke(
-            buf,
-            width,
-            height,
-            cx,
-            cy - 3.5 - lift,
-            3.6,
-            4.0,
-            3.6,
-            1.4,
-            color,
-        );
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy - 3.5, 3.6, 4.0, 3.6, 1.4, color);
         // Keyhole dot (contrast negative dot inside body)
         let inv_color = [20, 25, 35, 255];
         Self::draw_rounded_rect_fill(buf, width, height, cx, cy + 2.0, 1.2, 1.6, 1.0, inv_color);
@@ -1236,24 +1123,11 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        Self::draw_animated_restart_icon(buf, width, height, cx, cy, 0.0, color);
-    }
-
-    /// Draw a precision Lucide-grade Restart icon with dynamic angle rotation
-    pub fn draw_animated_restart_icon(
-        buf: &mut [u8],
-        width: u32,
-        height: u32,
-        cx: f32,
-        cy: f32,
-        rotation_rad: f32,
-        color: [u8; 4],
-    ) {
         let r = 6.0f32;
-        let min_x = (cx - r - 2.5).max(0.0) as u32;
-        let max_x = (cx + r + 2.5).min(width as f32 - 1.0) as u32;
-        let min_y = (cy - r - 2.5).max(0.0) as u32;
-        let max_y = (cy + r + 2.5).min(height as f32 - 1.0) as u32;
+        let min_x = (cx - r - 2.0).max(0.0) as u32;
+        let max_x = (cx + r + 2.0).min(width as f32 - 1.0) as u32;
+        let min_y = (cy - r - 2.0).max(0.0) as u32;
+        let max_y = (cy + r + 2.0).min(height as f32 - 1.0) as u32;
 
         for y in min_y..=max_y {
             for x in min_x..=max_x {
@@ -1262,11 +1136,9 @@ impl UIFont {
                 let dist = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
                 let d_ring = (dist - r).abs() - 0.75;
 
-                // Relative angle shifted by rotation_rad
-                let angle = (py - cy).atan2(px - cx);
-                let rel_angle = (angle - rotation_rad).rem_euclid(std::f32::consts::TAU);
-                // 270 degree arc, 60 degree gap
-                let in_gap = rel_angle < 0.6 || rel_angle > (std::f32::consts::TAU - 0.4);
+                let angle = (py - cy).atan2(px - cx); // [-pi, pi]
+                                                      // 270 degree arc, open top-right (from -0.5 to 0.5 rad gap)
+                let in_gap = (-0.4..0.6).contains(&angle);
                 if !in_gap {
                     let alpha =
                         (1.0 - Self::smoothstep(-0.4, 0.4, d_ring)) * (color[3] as f32 / 255.0);
@@ -1286,22 +1158,27 @@ impl UIFont {
             }
         }
 
-        // Arrow head at arc termination, rotated by rotation_rad
-        let term_angle = rotation_rad + 0.6;
-        let ax = cx + r * term_angle.cos();
-        let ay = cy + r * term_angle.sin();
-        let tang_x = -term_angle.sin();
-        let tang_y = term_angle.cos();
-        let norm_x = term_angle.cos();
-        let norm_y = term_angle.sin();
-
-        let barb1_x = ax - tang_x * 3.5 + norm_x * 2.2;
-        let barb1_y = ay - tang_y * 3.5 + norm_y * 2.2;
-        let barb2_x = ax - tang_x * 3.5 - norm_x * 2.2;
-        let barb2_y = ay - tang_y * 3.5 - norm_y * 2.2;
-
-        Self::draw_segment(buf, width, height, (barb1_x, barb1_y), (ax, ay), 1.4, color);
-        Self::draw_segment(buf, width, height, (barb2_x, barb2_y), (ax, ay), 1.4, color);
+        // Arrow head at arc termination (top right: cx + 4.5, cy - 3.5)
+        let ax = cx + 4.8;
+        let ay = cy - 3.5;
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (ax - 3.5, ay - 1.0),
+            (ax + 0.5, ay),
+            1.4,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (ax - 0.5, ay + 3.8),
+            (ax + 0.5, ay),
+            1.4,
+            color,
+        );
     }
 
     /// Draw a precision Lucide-grade Power Off icon (circle with top vertical bar)
@@ -1313,38 +1190,11 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        Self::draw_animated_power_icon(buf, width, height, cx, cy, 0.0, 0.0, color);
-    }
-
-    /// Draw a precision Lucide-grade Power Off icon with sliding switch pin and pulsing aura
-    #[allow(clippy::too_many_arguments)]
-    pub fn draw_animated_power_icon(
-        buf: &mut [u8],
-        width: u32,
-        height: u32,
-        cx: f32,
-        cy: f32,
-        pin_press_ratio: f32,
-        pulse_glow: f32,
-        color: [u8; 4],
-    ) {
         let r = 6.2f32;
         let min_x = (cx - r - 2.0).max(0.0) as u32;
         let max_x = (cx + r + 2.0).min(width as f32 - 1.0) as u32;
         let min_y = (cy - r - 2.0).max(0.0) as u32;
         let max_y = (cy + r + 2.0).min(height as f32 - 1.0) as u32;
-
-        let outer_col = if pulse_glow > 0.05 {
-            let boost = (pulse_glow * 35.0) as u8;
-            [
-                color[0].saturating_add(boost),
-                color[1].saturating_add(boost),
-                color[2].saturating_add(boost),
-                color[3],
-            ]
-        } else {
-            color
-        };
 
         for y in min_y..=max_y {
             for x in min_x..=max_x {
@@ -1358,17 +1208,16 @@ impl UIFont {
                 let in_top_gap = angle > -1.95 && angle < -1.19;
                 if !in_top_gap {
                     let alpha =
-                        (1.0 - Self::smoothstep(-0.4, 0.4, d_ring)) * (outer_col[3] as f32 / 255.0);
+                        (1.0 - Self::smoothstep(-0.4, 0.4, d_ring)) * (color[3] as f32 / 255.0);
                     if alpha > 0.01 {
                         let idx = ((y * width + x) * 4) as usize;
                         if idx + 3 < buf.len() {
                             let inv_a = 1.0 - alpha;
-                            buf[idx] =
-                                (outer_col[0] as f32 * alpha + buf[idx] as f32 * inv_a) as u8;
+                            buf[idx] = (color[0] as f32 * alpha + buf[idx] as f32 * inv_a) as u8;
                             buf[idx + 1] =
-                                (outer_col[1] as f32 * alpha + buf[idx + 1] as f32 * inv_a) as u8;
+                                (color[1] as f32 * alpha + buf[idx + 1] as f32 * inv_a) as u8;
                             buf[idx + 2] =
-                                (outer_col[2] as f32 * alpha + buf[idx + 2] as f32 * inv_a) as u8;
+                                (color[2] as f32 * alpha + buf[idx + 2] as f32 * inv_a) as u8;
                             buf[idx + 3] = (alpha * 255.0).max(buf[idx + 3] as f32) as u8;
                         }
                     }
@@ -1376,11 +1225,16 @@ impl UIFont {
             }
         }
 
-        // Center vertical power pin - slides down into the ring when pressed!
-        let pin_shift = pin_press_ratio.clamp(0.0, 1.0) * 2.8;
-        let top_y = cy - 7.5 + pin_shift;
-        let bot_y = cy - 1.0 + pin_shift * 0.4;
-        Self::draw_segment(buf, width, height, (cx, top_y), (cx, bot_y), 1.6, color);
+        // Center vertical power pin
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx, cy - 7.5),
+            (cx, cy - 1.0),
+            1.5,
+            color,
+        );
     }
 
     /// Draw a precision Lucide-grade Battery icon with level bar

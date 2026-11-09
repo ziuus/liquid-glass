@@ -140,7 +140,6 @@ impl QuickAccessApp {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn draw_app_icon(
     buf: &mut [u8],
     width: u32,
@@ -148,38 +147,23 @@ fn draw_app_icon(
     icon: &str,
     cx: f32,
     cy: f32,
-    t_sec: f32,
-    is_hover: bool,
     col: [u8; 4],
 ) {
     match icon.to_ascii_lowercase().as_str() {
         "terminal" | "term" | "console" | "shell" => {
-            let blink = (t_sec * 3.6).sin() > 0.0 || is_hover;
-            UIFont::draw_animated_terminal_icon(buf, width, height, cx, cy, blink, col);
+            UIFont::draw_terminal_icon(buf, width, height, cx, cy, col);
         }
         "browser" | "web" | "internet" | "globe" => {
-            let rot_phase = t_sec * if is_hover { 2.4 } else { 1.2 };
-            UIFont::draw_animated_browser_icon(buf, width, height, cx, cy, rot_phase, col);
+            UIFont::draw_browser_icon(buf, width, height, cx, cy, col);
         }
         "editor" | "code" | "dev" | "text" => {
-            let expand = if is_hover {
-                ((t_sec * 5.0).sin() * 1.2).max(0.0)
-            } else {
-                ((t_sec * 2.0).sin() * 0.4).max(0.0)
-            };
-            UIFont::draw_animated_editor_icon(buf, width, height, cx, cy, expand, col);
+            UIFont::draw_editor_icon(buf, width, height, cx, cy, col);
         }
         "folder" | "files" | "file" | "explorer" => {
-            let lift = if is_hover { 1.8 } else { 0.0 };
-            UIFont::draw_animated_folder_icon(buf, width, height, cx, cy, lift, col);
+            UIFont::draw_folder_icon(buf, width, height, cx, cy, col);
         }
         "music" | "audio" | "sound" | "player" => {
-            let bounce = if is_hover {
-                (t_sec * 6.5).sin() * 1.4
-            } else {
-                (t_sec * 2.8).sin() * 0.7
-            };
-            UIFont::draw_animated_music_icon(buf, width, height, cx, cy, bounce, col);
+            UIFont::draw_music_icon(buf, width, height, cx, cy, col);
         }
         "settings" | "config" | "gear" => {
             UIFont::draw_settings_icon(buf, width, height, cx, cy, col);
@@ -1453,7 +1437,7 @@ impl IslandWidget {
 
         !settling
             || (self.music.is_playing && self.mode != IslandMode::Hidden)
-            || (self.mode != IslandMode::CompactPill && self.mode != IslandMode::Hidden)
+            || self.mode == IslandMode::Notification
             || self.is_hovered
             || hold_active
     }
@@ -2398,7 +2382,6 @@ impl IslandWidget {
 
                 let cur_lx = self.cursor_pos[0] * (self.width as f32);
                 let cur_ly = self.cursor_pos[1] * (self.height as f32);
-                let t_sec = self.start_time.elapsed().as_secs_f32();
 
                 for (idx, app) in self.quick_access.iter().enumerate() {
                     let cx = start_x + (idx as f32) * item_w;
@@ -2433,21 +2416,7 @@ impl IslandWidget {
                         tile_bg,
                     );
 
-                    // Animated micro-elevation and signature app illumination on hover
-                    let icon_cy = if is_tile_hover { cy - 8.5 } else { cy - 7.0 };
-                    let app_ink = if is_tile_hover {
-                        match app.icon.to_ascii_lowercase().as_str() {
-                            "terminal" | "term" | "console" | "shell" => [52, 211, 153, 255], // Modern Emerald
-                            "browser" | "web" | "internet" | "globe" => [56, 189, 248, 255], // Radiant Cyan Sky
-                            "editor" | "code" | "dev" | "text" => [167, 139, 250, 255], // Electric Violet
-                            "folder" | "files" | "file" | "explorer" => [251, 191, 36, 255], // Warm Amber Gold
-                            "music" | "audio" | "sound" | "player" => [244, 114, 182, 255], // Vibrant Coral Rose
-                            _ => [129, 140, 248, 255],
-                        }
-                    } else {
-                        col_ink
-                    };
-
+                    let icon_cy = cy - 7.0;
                     draw_app_icon(
                         buf,
                         self.width,
@@ -2455,9 +2424,7 @@ impl IslandWidget {
                         &app.icon,
                         cx,
                         icon_cy,
-                        t_sec,
-                        is_tile_hover,
-                        app_ink,
+                        col_ink,
                     );
 
                     self.font.draw_text_centered(
@@ -2468,7 +2435,7 @@ impl IslandWidget {
                         cx,
                         cy + 13.0,
                         Tokens::TYPE_CAPTION,
-                        if is_tile_hover { app_ink } else { col_ink },
+                        col_ink,
                         col_shadow,
                         FontWeight::Medium,
                     );
@@ -2653,7 +2620,6 @@ impl IslandWidget {
 
                 let cur_lx = self.cursor_pos[0] * (self.width as f32);
                 let cur_ly = self.cursor_pos[1] * (self.height as f32);
-                let t_sec = self.start_time.elapsed().as_secs_f32();
 
                 for (idx, (name, accent_col)) in actions.iter().enumerate() {
                     let cx = start_x + (idx as f32) * item_w;
@@ -2764,84 +2730,44 @@ impl IslandWidget {
                         } else {
                             [255, 255, 255, 255]
                         }
-                    } else if is_tile_hover {
-                        *accent_col
                     } else {
                         col_ink
                     };
 
-                    let icon_y = if is_tile_hover || is_tile_pressed {
-                        cy - 11.5
-                    } else {
-                        cy - 10.0
-                    };
-
-                    // Dynamic Animated Lucide Vector Icons
+                    // Precision Lucide Vector Icon (clean monochrome B&W)
                     match idx {
-                        0 => {
-                            let lift = if is_tile_hover { 1.6 } else { 0.0 };
-                            UIFont::draw_animated_lock_icon(
-                                buf,
-                                self.width,
-                                self.height,
-                                cx,
-                                icon_y,
-                                lift,
-                                icon_ink,
-                            );
-                        }
-                        1 => {
-                            let moon_y = if is_tile_hover {
-                                cy - 11.5
-                            } else {
-                                cy - 10.0 + (t_sec * 1.8).sin() * 0.6
-                            };
-                            UIFont::draw_moon_icon(
-                                buf,
-                                self.width,
-                                self.height,
-                                cx,
-                                moon_y,
-                                icon_ink,
-                            );
-                        }
-                        2 => {
-                            let rot = if is_tile_pressed {
-                                t_sec * (6.0 + hold_progress * 18.0)
-                            } else if is_tile_hover {
-                                t_sec * 3.5
-                            } else {
-                                0.0
-                            };
-                            UIFont::draw_animated_restart_icon(
-                                buf,
-                                self.width,
-                                self.height,
-                                cx,
-                                icon_y,
-                                rot,
-                                icon_ink,
-                            );
-                        }
-                        _ => {
-                            let pulse = if is_tile_pressed {
-                                (t_sec * 9.0).sin().abs()
-                            } else if is_tile_hover {
-                                0.4
-                            } else {
-                                0.0
-                            };
-                            UIFont::draw_animated_power_icon(
-                                buf,
-                                self.width,
-                                self.height,
-                                cx,
-                                icon_y,
-                                hold_progress,
-                                pulse,
-                                icon_ink,
-                            );
-                        }
+                        0 => UIFont::draw_lock_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            cy - 10.0,
+                            icon_ink,
+                        ),
+                        1 => UIFont::draw_moon_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            cy - 10.0,
+                            icon_ink,
+                        ),
+                        2 => UIFont::draw_restart_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            cy - 10.0,
+                            icon_ink,
+                        ),
+                        _ => UIFont::draw_power_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            cy - 10.0,
+                            icon_ink,
+                        ),
                     }
 
                     // Text (hold hint / action name)
