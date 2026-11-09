@@ -1075,7 +1075,7 @@ impl IslandWidget {
                     .or_else(|| val.get("blur"))
                     .and_then(|b| b.as_f64())
                     .map(|b| b as f32)
-                    .unwrap_or(8.0);
+                    .unwrap_or(0.0);
                 return (
                     dock_mode,
                     fillet_compact,
@@ -1278,16 +1278,22 @@ impl IslandWidget {
     pub fn update_physics(&mut self, dt: f32) -> bool {
         self.check_window_overlap();
 
-        let spring_k = 380.0f32;
-        let damping = 33.1f32;
+        // Apple Liquid Motion: fluid volume preservation (coupled squash & stretch)
+        // Spring tuning: stiffness 320.0, damping 21.5 (damping ratio ~0.60) for fluid bounce
+        let spring_k = 320.0f32;
+        let damping = 21.5f32;
 
-        let force_w = -spring_k * (self.current_w - self.target_w) - damping * self.vel_w;
+        // Fluid volume conservation: horizontal expansion squashes height momentarily
+        let squash_h = -self.vel_w * 0.16 * (self.current_h / self.current_w.max(20.0));
+        let squash_w = -self.vel_h * 0.16 * (self.current_w / self.current_h.max(20.0));
+
+        let force_w = -spring_k * (self.current_w - self.target_w) - damping * self.vel_w + squash_w;
         self.vel_w += force_w * dt;
-        self.current_w += self.vel_w * dt;
+        self.current_w = (self.current_w + self.vel_w * dt).max(Tokens::ISLAND_COMPACT_W * 0.6);
 
-        let force_h = -spring_k * (self.current_h - self.target_h) - damping * self.vel_h;
+        let force_h = -spring_k * (self.current_h - self.target_h) - damping * self.vel_h + squash_h;
         self.vel_h += force_h * dt;
-        self.current_h += self.vel_h * dt;
+        self.current_h = (self.current_h + self.vel_h * dt).max(Tokens::ISLAND_COMPACT_H * 0.6);
 
         let force_y = -spring_k * (self.current_y - self.target_y) - damping * self.vel_y;
         self.vel_y += force_y * dt;
@@ -2771,13 +2777,17 @@ impl IslandWidget {
                 }
             };
 
+            let motion_speed = (self.vel_w.hypot(self.vel_h) / 320.0).clamp(0.0, 1.0);
+            let dynamic_refraction = 14.0 + motion_speed * 14.0;
+            let dynamic_bevel = 14.0 + motion_speed * 6.0;
+
             let island = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(island_shape)
                 .bounds(x_norm, y_norm, w_norm, h_norm)
                 .curvature(current_fillet)
-                .bevel(14.0)
-                .refraction(14.0)
+                .bevel(dynamic_bevel)
+                .refraction(dynamic_refraction)
                 .dispersion(0.12)
                 .blur(self.blur_radius)
                 .specular(1.10)

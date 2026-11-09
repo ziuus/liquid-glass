@@ -205,7 +205,7 @@ impl TodoWidget {
         };
 
         let font = QuicksandFont::new();
-        let spring_params = SpringParams::default_ui();
+        let spring_params = SpringParams::bouncy();
 
         Self {
             layer_surface: Some(layer_surface),
