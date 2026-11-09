@@ -1479,26 +1479,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         dome_disp_px = -dome_norm * (1.0 - r_sq * 0.40) * (min(half_size.x, half_size.y) * dome_curve * 1.4) * dome_weight;
     }
 
-    // Interactive cursor surface tension ripple (active when pointer is hovering over glass)
-    var ptr_disp_px = vec2<f32>(0.0);
-    var ptr_spec = 0.0;
-    if style_mode >= 1.5 && params.pointer_pos.x >= 0.0 && params.pointer_pos.y >= 0.0 {
-        let pointer_surface_px = params.pointer_pos * params.surface_size;
-        let pointer_local_px = pointer_surface_px - center;
-        let ptr_diff = local_px - pointer_local_px;
-        let ptr_dist = length(ptr_diff);
-        if ptr_dist < 64.0 {
-            let ptr_norm = ptr_diff / max(ptr_dist, 0.001);
-            let ptr_sigma = 24.0;
-            // First derivative of Gaussian depression produces outward refractive wave
-            let ptr_slope = (ptr_dist / (ptr_sigma * ptr_sigma)) * exp(-(ptr_dist * ptr_dist) / (2.0 * ptr_sigma * ptr_sigma));
-            ptr_disp_px = ptr_norm * ptr_slope * 90.0 * smoothstep(0.0, 10.0, depth);
-            // Delicate circular meniscus light ring around cursor touch point
-            ptr_spec = exp(-pow((ptr_dist - 18.0) / 7.0, 2.0)) * 0.22 * smoothstep(0.0, 8.0, depth);
-        }
-    }
-
-    let off_px = (refract_dir * (thickness * lens_profile) + dome_disp_px + ptr_disp_px) * top_flush;
+    let off_px = (refract_dir * (thickness * lens_profile) + dome_disp_px) * top_flush;
     let off_uv = off_px / params.surface_size;
 
     let debug_mode = params._pad.y;
@@ -1618,12 +1599,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         // Dark-field absorption on trailing edges, bright crystalline glint on top-left facing meniscus
         let edge_contour = smoothstep(1.8, 0.0, depth) * 0.16 * (1.0 - light_facing * 0.70) * top_flush;
         let specular_glint = (rim_1px * 0.85 + inner_highlight * 0.40) * light_facing * top_flush;
-        base_surface = (col - vec3<f32>(edge_contour)) + vec3<f32>(specular_glint + ptr_spec);
+        base_surface = (col - vec3<f32>(edge_contour)) + vec3<f32>(specular_glint);
     } else {
         // ── DARK / VIBRANT BACKDROP: DIAMOND-CUT SPECULAR HAIRLINE ──
         let rim_reflection = (rim_1px * 0.95 + inner_highlight * 0.40) * dir_weight * top_flush;
         let rim_tint = vec3<f32>(1.0, 1.0, 1.0);
-        base_surface = col + rim_tint * (rim_reflection + ptr_spec);
+        base_surface = col + rim_tint * rim_reflection;
     }
 
     let app = render_element_appearance(local_px, half_size, params.padding, params.tint.y, params.time, params.tint, effective_light);
