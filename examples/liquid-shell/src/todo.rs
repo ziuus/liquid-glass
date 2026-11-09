@@ -895,11 +895,11 @@ impl TodoWidget {
         };
 
         // ── Top Segmented Tabs: "Tasks ({count})" & "Agenda" (cy = 32.5) ──
-        // Modern Apple Camera / VisionOS Active Ink: Cyber Acid-Lime #E4F953 on dark, Obsidian on light
+        // Clean Apple / VisionOS Active Ink: Pure White on dark, Obsidian on light
         let selected_ink = if is_light {
             [12, 16, 24, 255]
         } else {
-            [228, 249, 83, 255]
+            [255, 255, 255, 255]
         };
         let tab_t = self.tab_spring.value.clamp(0.0, 1.0);
 
@@ -925,7 +925,7 @@ impl TodoWidget {
         let pill_fill = if is_light {
             [218, 226, 240, 255]
         } else {
-            [255, 255, 255, 32]
+            [255, 255, 255, 45]
         };
         UIFont::draw_rounded_rect_fill(
             buf,
@@ -952,7 +952,7 @@ impl TodoWidget {
             if is_light {
                 [255, 255, 255, 200]
             } else {
-                [255, 255, 255, 75]
+                [255, 255, 255, 90]
             },
         );
 
@@ -994,7 +994,7 @@ impl TodoWidget {
         } else if is_light {
             [18, 24, 34, 255]
         } else {
-            [170, 178, 195, 230]
+            [180, 190, 205, 210]
         };
         self.font.draw_text_centered(
             buf,
@@ -1015,7 +1015,7 @@ impl TodoWidget {
         } else if is_light {
             [18, 24, 34, 255]
         } else {
-            [170, 178, 195, 230]
+            [180, 190, 205, 210]
         };
         self.font.draw_text_centered(
             buf,
@@ -1058,7 +1058,7 @@ impl TodoWidget {
             let filter_pill_fill = if is_light {
                 [218, 226, 240, 255]
             } else {
-                [255, 255, 255, 32]
+                [255, 255, 255, 45]
             };
             UIFont::draw_rounded_rect_fill(
                 buf,
@@ -1084,66 +1084,31 @@ impl TodoWidget {
                 if is_light {
                     [255, 255, 255, 200]
                 } else {
-                    [255, 255, 255, 75]
+                    [255, 255, 255, 85]
                 },
             );
 
             // Filter Bar Labels: "All" (cx = 84.0), "Active" (cx = 156.0), "Done" (cx = 228.0), cy = 79.5
-            let f0_is_light = if self.style_mode < 0.5 {
-                is_light
+            let filter_unselected = if is_light {
+                [80, 90, 105, 230]
             } else {
-                is_light
-                    || self.wallpaper_crop.as_ref().is_some_and(|crop| {
-                        sample_subcrop_is_light(crop, self.width, self.height, 60, 68, 50, 22)
-                    })
-            };
-            let f1_is_light = if self.style_mode < 0.5 {
-                is_light
-            } else {
-                is_light
-                    || self.wallpaper_crop.as_ref().is_some_and(|crop| {
-                        sample_subcrop_is_light(crop, self.width, self.height, 130, 68, 55, 22)
-                    })
-            };
-            let f2_is_light = if self.style_mode < 0.5 {
-                is_light
-            } else {
-                is_light
-                    || self.wallpaper_crop.as_ref().is_some_and(|crop| {
-                        sample_subcrop_is_light(crop, self.width, self.height, 205, 68, 50, 22)
-                    })
-            };
-
-            let f0_unselected = if f0_is_light {
-                [8, 12, 20, 255]
-            } else {
-                [185, 195, 210, 200]
-            };
-            let f1_unselected = if f1_is_light {
-                [8, 12, 20, 255]
-            } else {
-                [185, 195, 210, 200]
-            };
-            let f2_unselected = if f2_is_light {
-                [8, 12, 20, 255]
-            } else {
-                [185, 195, 210, 200]
+                [175, 185, 200, 210]
             };
 
             let f0_col = if self.active_filter == 0 {
                 selected_ink
             } else {
-                f0_unselected
+                filter_unselected
             };
             let f1_col = if self.active_filter == 1 {
                 selected_ink
             } else {
-                f1_unselected
+                filter_unselected
             };
             let f2_col = if self.active_filter == 2 {
                 selected_ink
             } else {
-                f2_unselected
+                filter_unselected
             };
 
             self.font.draw_text_centered(
@@ -1448,63 +1413,78 @@ impl TodoWidget {
             }
 
             // 4. Bottom Add Task Bar (hug-content dynamic cy)
-            let add_is_light = if self.style_mode < 0.5 {
-                is_light
-            } else {
-                is_light
-                    && self.wallpaper_crop.as_ref().is_some_and(|crop| {
-                        sample_subcrop_is_light(
-                            crop,
-                            self.width,
-                            self.height,
-                            42,
-                            (add_bar_cy - 12.0).max(0.0) as u32,
-                            200,
-                            26,
-                        )
-                    })
-            };
-            let (add_primary, add_dimmed, add_secondary) = if add_is_light {
-                ([8, 12, 20, 255], [28, 36, 50, 255], [18, 24, 34, 255])
+            let (add_primary, add_dimmed, add_secondary) = if is_light {
+                (
+                    [12, 16, 24, 255],
+                    [100, 110, 125, 230],
+                    [100, 110, 125, 230],
+                )
             } else {
                 (
-                    Tokens::TEXT_PRIMARY,
-                    [235, 240, 252, 255],
-                    [235, 240, 252, 255],
+                    [255, 255, 255, 255],
+                    [180, 190, 205, 230],
+                    [175, 185, 200, 210],
                 )
             };
 
-            let add_fill = if add_is_light {
-                Tokens::INNER_TILE_BG_LIGHT
-            } else {
-                Tokens::INNER_TILE_BG_ROW
-            };
-            UIFont::draw_rounded_rect_fill(
-                buf,
-                content_w,
-                content_h,
-                180.0 + tasks_offset_x,
-                add_bar_cy,
-                156.0,
-                16.0,
-                Tokens::RADIUS_INNER_TILE,
-                add_fill,
-            );
-            // Soft 16% white top highlight bevel on input container (inset from corners)
-            let add_hl = if add_is_light {
-                [0, 0, 0, 24]
-            } else {
-                [255, 255, 255, 42]
-            };
-            UIFont::draw_segment(
-                buf,
-                content_w,
-                content_h,
-                (180.0 + tasks_offset_x - 120.0, add_bar_cy - 15.0),
-                (180.0 + tasks_offset_x + 120.0, add_bar_cy - 15.0),
-                1.0,
-                add_hl,
-            );
+            let cur_lx = self.cursor_pos[0] * (self.width as f32);
+            let cur_ly = self.cursor_pos[1] * (self.height as f32);
+            let is_add_hover = self.is_hovered
+                && (cur_lx - (180.0 + tasks_offset_x)).abs() <= 156.0
+                && (cur_ly - add_bar_cy).abs() <= 16.0;
+
+            if self.is_editing {
+                let edit_bg = if is_light {
+                    [0, 0, 0, 12]
+                } else {
+                    [255, 255, 255, 18]
+                };
+                let edit_stroke = if is_light {
+                    [0, 0, 0, 30]
+                } else {
+                    [255, 255, 255, 60]
+                };
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    content_w,
+                    content_h,
+                    180.0 + tasks_offset_x,
+                    add_bar_cy,
+                    156.0,
+                    15.0,
+                    Tokens::RADIUS_INNER_TILE,
+                    edit_bg,
+                );
+                UIFont::draw_rounded_rect_stroke(
+                    buf,
+                    content_w,
+                    content_h,
+                    180.0 + tasks_offset_x,
+                    add_bar_cy,
+                    156.0,
+                    15.0,
+                    Tokens::RADIUS_INNER_TILE,
+                    1.0,
+                    edit_stroke,
+                );
+            } else if is_add_hover {
+                let hover_bg = if is_light {
+                    [0, 0, 0, 10]
+                } else {
+                    [255, 255, 255, 14]
+                };
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    content_w,
+                    content_h,
+                    180.0 + tasks_offset_x,
+                    add_bar_cy,
+                    156.0,
+                    15.0,
+                    Tokens::RADIUS_INNER_TILE,
+                    hover_bg,
+                );
+            }
 
             if self.is_editing {
                 let input_str = if self.input_buffer.is_empty() {
@@ -1588,10 +1568,10 @@ impl TodoWidget {
                     11.0,
                     11.0,
                     11.0,
-                    if add_is_light {
-                        [220, 226, 238, 140]
+                    if is_light {
+                        [0, 0, 0, 16]
                     } else {
-                        Tokens::INNER_TILE_BG_DARK
+                        [255, 255, 255, 28]
                     },
                 );
                 self.font.draw_text_centered(
@@ -2003,6 +1983,7 @@ fn sample_subcrop_stats(
     buffer_lum_stats(&sub)
 }
 
+#[allow(dead_code)]
 fn sample_subcrop_is_light(
     crop: &[u8],
     crop_w: u32,

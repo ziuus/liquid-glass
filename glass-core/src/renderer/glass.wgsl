@@ -1532,12 +1532,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let blur_mix = clamp(cur_radius / 2.0, 0.0, 1.0 - rim_disp_factor);
         let base_crystal = mix(sharp_col, frosted_col, blur_mix);
 
+        // 1. Apple Vibrancy: boost saturation of the refracted background so the glass feels alive and luminous
+        let crystal_luma = dot(base_crystal, vec3<f32>(0.2126, 0.7152, 0.0722));
+        let vibrant_crystal = max(mix(vec3<f32>(crystal_luma), base_crystal, 1.25), vec3<f32>(0.0));
+
         if effective_light > 0.5 {
-            // Apple Porcelain Ceramic Glass: optical transmission backing (guarantees readability on bright backdrops)
-            col = mix(base_crystal, vec3<f32>(0.95, 0.97, 0.99), 0.38);
+            // Subtle porcelain ceramic lift (10% tint on light, keeping transparency)
+            col = mix(vibrant_crystal, vec3<f32>(0.96, 0.98, 1.0), 0.12);
         } else {
-            // Apple Obsidian Liquid Glass: optical transmission backing (guarantees readability on split/light backdrops)
-            col = mix(base_crystal, vec3<f32>(0.07, 0.09, 0.14), 0.38);
+            // Crystal clear dark mode: vibrant backdrop colors transmit through lens with subtle directional sheen
+            let top_ambient = mix(0.008, 0.001, (local_px.y / half_size.y) * 0.5 + 0.5);
+            col = (vibrant_crystal * 1.03) + vec3<f32>(top_ambient * clamp(1.0 - crystal_luma * 3.0, 0.0, 1.0));
         }
 
         // Faint diagonal gradient across interior (top-left lighter 1.5%) for physical depth
