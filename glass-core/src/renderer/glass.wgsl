@@ -1434,17 +1434,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let is_light = params.is_light;
     let top_flush = select(1.0, smoothstep(-half_size.y, -half_size.y + 4.0, local_px.y), is_attached);
     
-    // Outside the shape: render physical 3D ambient contact shadow (grounds the glass against backdrop)
+    // Outside the shape: 100% clean transparent background (zero dirty shadow smear)
     if sdf > 0.0 {
-        let shadow_radius = 18.0;
-        if sdf < shadow_radius && top_flush > 0.5 {
-            let light_dir = vec2<f32>(-0.45, -0.65);
-            let facing = clamp(dot(grad_2d, -light_dir) * 0.5 + 0.5, 0.25, 1.0);
-            let falloff = pow(1.0 - sdf / shadow_radius, 2.0);
-            let shadow_strength = mix(0.16, 0.18, is_light);
-            let shadow_alpha = falloff * shadow_strength * facing;
-            return vec4<f32>(0.0, 0.0, 0.0, shadow_alpha);
-        }
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
     
