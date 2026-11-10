@@ -541,6 +541,7 @@ opacity.set_target(1.0);  // Spring-based fade
 
 ## Next Steps
 
-- See `examples/glass-panel/` for complete working examples
-- Check `LIQUID_GLASS_ANALYSIS.md` for technical details
-- Read the API docs for advanced usage
+- Flagship desktop suite: see `examples/liquid-shell/` and run `./install.sh`
+- Standalone widgets: see `examples/glass-panel/`, `examples/glass-clock/`, and `examples/glass-todo/`
+- Architecture & optics: see `ARCHITECTURE.md` and `LIQUID_GLASS_ANALYSIS.md`
+- Configuration & IPC: see `README.md` for `config.json` schema and `/tmp/liquid_island.fifo` commands
