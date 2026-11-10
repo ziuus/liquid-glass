@@ -326,7 +326,7 @@ impl TodoWidget {
 
                 if let Some(row) = self.task_pressed_row {
                     let dx = lx - self.press_start_pos[0];
-                    if dx < -6.0 || self.is_sliding {
+                    if dx < -25.0 || self.is_sliding {
                         self.is_sliding = true;
                         self.slide_offsets[row] = dx.clamp(-140.0, 0.0);
                     }
@@ -397,7 +397,60 @@ impl TodoWidget {
                 }
                 true
             }
-            _ => false,
+            PointerEventKind::Axis {
+                horizontal,
+                vertical,
+                ..
+            } => {
+                let px = event.position.0 as f32;
+                let py = event.position.1 as f32;
+                let lx = px - CARD_PAD;
+                let ly = py - CARD_PAD;
+                if lx < 0.0 || lx > CARD_W || ly < 0.0 || ly > self.get_card_height() {
+                    return false;
+                }
+
+                let delta = if vertical.discrete != 0 {
+                    vertical.discrete as f64
+                } else if horizontal.discrete != 0 {
+                    horizontal.discrete as f64
+                } else if vertical.absolute.abs() > 0.5 {
+                    vertical.absolute
+                } else if horizontal.absolute.abs() > 0.5 {
+                    horizontal.absolute
+                } else {
+                    0.0
+                };
+
+                if delta.abs() > 0.1 {
+                    if ly < 55.0 {
+                        // Top tabs: scroll switches between Tasks and Agenda
+                        if delta > 0.0 && self.active_tab == 0 {
+                            self.active_tab = 1;
+                            self.tab_spring.set_target(1.0);
+                            return true;
+                        } else if delta < 0.0 && self.active_tab == 1 {
+                            self.active_tab = 0;
+                            self.tab_spring.set_target(0.0);
+                            return true;
+                        }
+                    } else if self.active_tab == 0 {
+                        // Filter pills: scroll cycles All -> Active -> Done
+                        if delta > 0.0 {
+                            self.active_filter = (self.active_filter + 1) % 3;
+                        } else {
+                            self.active_filter = if self.active_filter == 0 {
+                                2
+                            } else {
+                                self.active_filter - 1
+                            };
+                        }
+                        self.filter_spring.set_target(self.active_filter as f32);
+                        return true;
+                    }
+                }
+                false
+            }
         }
     }
 
@@ -923,9 +976,9 @@ impl TodoWidget {
         // Sliding Active Tab Pill (Liquid Glass Lens with Crisp Double Bevel)
         let tab_pill_cx = 96.0 * (1.0 - tab_t) + 224.0 * tab_t;
         let pill_fill = if is_light {
-            [255, 255, 255, 175]
+            [255, 255, 255, 80]
         } else {
-            [255, 255, 255, 45]
+            [255, 255, 255, 28]
         };
         UIFont::draw_rounded_rect_fill(
             buf,
@@ -948,11 +1001,11 @@ impl TodoWidget {
             64.0,
             13.5,
             8.0,
-            1.2,
+            1.0,
             if is_light {
-                [255, 255, 255, 220]
+                [255, 255, 255, 160]
             } else {
-                [255, 255, 255, 90]
+                [255, 255, 255, 60]
             },
         );
 
@@ -1056,9 +1109,9 @@ impl TodoWidget {
 
             // Sliding active filter pill (Liquid Glass Lens with Crisp Bevel Stroke)
             let filter_pill_fill = if is_light {
-                [255, 255, 255, 175]
+                [255, 255, 255, 80]
             } else {
-                [255, 255, 255, 45]
+                [255, 255, 255, 28]
             };
             UIFont::draw_rounded_rect_fill(
                 buf,
@@ -1080,11 +1133,11 @@ impl TodoWidget {
                 32.0,
                 11.0,
                 7.0,
-                1.1,
+                1.0,
                 if is_light {
-                    [255, 255, 255, 220]
+                    [255, 255, 255, 160]
                 } else {
-                    [255, 255, 255, 85]
+                    [255, 255, 255, 60]
                 },
             );
 

@@ -888,31 +888,36 @@ impl IslandWidget {
                 vertical,
                 ..
             } => {
-                let lx = self.cursor_pos[0] * self.width as f32;
-                let ly = self.cursor_pos[1] * self.height as f32;
+                let lx = event.position.0 as f32;
+                let ly = event.position.1 as f32;
                 if !self.is_inside_island(lx, ly) || self.mode == IslandMode::Hidden {
                     return false;
                 }
 
                 self.last_interaction = Instant::now();
-                self.is_swiping = true;
                 self.power_held = None;
 
-                let delta = if horizontal.absolute.abs() > 30.0 {
-                    horizontal.absolute
-                } else if vertical.absolute.abs() > 30.0 {
+                let delta = if vertical.discrete != 0 {
+                    vertical.discrete as f64
+                } else if horizontal.discrete != 0 {
+                    horizontal.discrete as f64
+                } else if vertical.absolute.abs() > 0.5 {
                     vertical.absolute
+                } else if horizontal.absolute.abs() > 0.5 {
+                    horizontal.absolute
                 } else {
                     0.0
                 };
 
-                if delta.abs() > 30.0 && self.last_mode_cycle.elapsed() > Duration::from_millis(450)
+                if delta.abs() > 0.1 && self.last_mode_cycle.elapsed() >= Duration::from_millis(220)
                 {
                     if delta > 0.0 {
                         self.cycle_mode_forward();
                     } else {
                         self.cycle_mode_backward();
                     }
+                    self.is_swiping = false;
+                    return true;
                 }
                 true
             }
@@ -1003,7 +1008,7 @@ impl IslandWidget {
             IslandMode::MusicExpanded => IslandMode::SystemOverview,
             IslandMode::SystemOverview => IslandMode::QuickAccess,
             IslandMode::QuickAccess => IslandMode::PowerMenu,
-            IslandMode::PowerMenu => IslandMode::MusicExpanded,
+            IslandMode::PowerMenu => IslandMode::CompactPill,
             IslandMode::Notification => IslandMode::MusicExpanded,
         };
         self.set_mode(next);
@@ -1012,7 +1017,7 @@ impl IslandWidget {
     fn cycle_mode_backward(&mut self) {
         let prev = match self.mode {
             IslandMode::Hidden | IslandMode::CompactPill => IslandMode::PowerMenu,
-            IslandMode::MusicExpanded => IslandMode::PowerMenu,
+            IslandMode::MusicExpanded => IslandMode::CompactPill,
             IslandMode::SystemOverview => IslandMode::MusicExpanded,
             IslandMode::QuickAccess => IslandMode::SystemOverview,
             IslandMode::PowerMenu => IslandMode::QuickAccess,

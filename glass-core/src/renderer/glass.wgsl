@@ -1547,27 +1547,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // ════════════════════════════════════════════
-    // 4. PRECISION DOUBLE-RING GLASS BEVEL & REFRACTION LIP
+    // 4. PRECISION SINGLE-RING OPTICAL GLASS SPECULAR HAIRLINE
     // ════════════════════════════════════════════
     let light_vec_2d = normalize(vec2<f32>(-0.45, -0.65)); // Top-left light source
     let light_facing = max(dot(grad_2d, light_vec_2d), 0.0);
-    let dir_weight = mix(0.35, 1.00, light_facing);
 
-    // 1. Crisp outer 1.0px Fresnel hairline with directional light modulation
-    let corner_mult = 1.0 + 0.35 * corner_factor;
-    let rim_outer = smoothstep(1.3, 0.2, depth) * corner_mult;
-    let outer_spec = rim_outer * mix(0.25, 1.00, light_facing);
-
-    // 2. Secondary inner refraction bevel line (2.2px inside the boundary) - establishes solid glass thickness
-    let rim_inner = smoothstep(0.75, 0.0, abs(depth - 2.2)) * 0.42 * corner_mult;
-
-    // 3. Soft 2.5 - 4.5px volumetric lens highlight
-    let inner_highlight = smoothstep(4.5, 1.0, depth) * 0.22;
-
-    // 4. Dark refraction absorption boundary on trailing bottom-right edge
-    let dark_absorption = smoothstep(0.0, 1.4, depth) * smoothstep(3.2, 1.4, depth) * (1.0 - light_facing * 0.80) * 0.18;
-
-    let spec_rim = (outer_spec * 0.90 + rim_inner * dir_weight + inner_highlight * dir_weight) * params.specular_strength * top_flush;
+    // Single razor-sharp 1.2px diamond-cut specular meniscus rim (zero secondary concentric border)
+    let corner_mult = 1.0 + 0.25 * corner_factor;
+    let rim_outer = smoothstep(1.2, 0.2, depth) * corner_mult;
+    let spec_rim = rim_outer * mix(0.35, 1.00, light_facing) * params.specular_strength * top_flush;
 
     // ════════════════════════════════════════════
     // 5. MASTER COMPOSITE (OBSIDIAN, GLASSMORPHISM, LIQUID GLASS)
@@ -1584,15 +1572,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     } else if effective_light > 0.5 {
         // ── LIGHT / WHITE BACKDROP: PHYSICAL MENISCUS WITH SPECULAR GLINT ──
-        // Dark-field absorption on trailing edges, bright crystalline glint on top-left facing meniscus
-        let edge_contour = smoothstep(1.8, 0.0, depth) * 0.16 * (1.0 - light_facing * 0.70) * top_flush;
-        let specular_glint = (rim_outer * 0.85 + rim_inner * 0.40 + inner_highlight * 0.35) * light_facing * top_flush;
+        let edge_contour = smoothstep(1.5, 0.0, depth) * 0.10 * (1.0 - light_facing * 0.70) * top_flush;
+        let specular_glint = rim_outer * light_facing * top_flush;
         base_surface = (col - vec3<f32>(edge_contour)) + vec3<f32>(specular_glint);
     } else {
         // ── DARK / VIBRANT BACKDROP: DIAMOND-CUT SPECULAR HAIRLINE ──
         let rim_reflection = spec_rim;
         let rim_tint = vec3<f32>(1.0, 1.0, 1.0);
-        base_surface = (col - vec3<f32>(dark_absorption * top_flush)) + rim_tint * rim_reflection;
+        base_surface = col + rim_tint * rim_reflection;
     }
 
     let app = render_element_appearance(local_px, half_size, params.padding, params.tint.y, params.time, params.tint, effective_light);

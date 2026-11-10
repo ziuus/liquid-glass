@@ -966,44 +966,11 @@ impl AppData {
     }
 
     fn render_ui_overlay(&self, buf: &mut [u8]) {
-        let card_h = self.get_card_height();
+        let _card_h = self.get_card_height();
         let tasks_add_bar_cy = self.get_tasks_add_bar_cy();
         let agenda_add_bar_cy = self.get_agenda_add_bar_cy();
         let tasks_offset_x = -self.tab_spring.value * (self.width as f32);
         let agenda_offset_x = (1.0 - self.tab_spring.value) * (self.width as f32);
-
-        // 1. 1px Outer Specular Rim (ONLY on outer shell)
-        UIFont::draw_rounded_rect_stroke(
-            buf,
-            self.width,
-            self.height,
-            180.0,
-            card_h * 0.5,
-            178.0,
-            card_h * 0.5 - 2.0,
-            Tokens::RADIUS_OUTER,
-            1.0,
-            if self.is_wallpaper_light {
-                Tokens::RIM_OUTER_LIGHT
-            } else {
-                Tokens::RIM_OUTER_DARK
-            },
-        );
-
-        // 2. Top Specular Bevel Highlight
-        UIFont::draw_segment(
-            buf,
-            self.width,
-            self.height,
-            (32.0, 2.0),
-            (328.0, 2.0),
-            1.0,
-            if self.is_wallpaper_light {
-                [255, 255, 255, 180]
-            } else {
-                [255, 255, 255, 65]
-            },
-        );
 
         // Apple macOS Typography & Contrast
         let (col_primary, col_secondary, col_dimmed, _col_accent, col_shadow) =
@@ -1049,9 +1016,9 @@ impl AppData {
         // Sliding Active Tab Pill
         let tab_pill_cx = 96.0 * (1.0 - tab_t) + 224.0 * tab_t;
         let pill_fill = if self.is_wallpaper_light {
-            [255, 255, 255, 235]
+            [255, 255, 255, 80]
         } else {
-            [255, 255, 255, 220]
+            [255, 255, 255, 28]
         };
         UIFont::draw_rounded_rect_fill(
             buf,
@@ -1063,6 +1030,22 @@ impl AppData {
             13.5,
             8.0,
             pill_fill,
+        );
+        UIFont::draw_rounded_rect_stroke(
+            buf,
+            self.width,
+            self.height,
+            tab_pill_cx,
+            32.5,
+            64.0,
+            13.5,
+            8.0,
+            1.0,
+            if self.is_wallpaper_light {
+                [255, 255, 255, 160]
+            } else {
+                [255, 255, 255, 60]
+            },
         );
 
         // Top Right: Settings Icon Button
@@ -1163,11 +1146,11 @@ impl AppData {
                 },
             );
 
-            // Sliding active filter pill (high-contrast near-white fill with dark ink)
+            // Sliding active filter pill (Liquid Glass Lens with Crisp Bevel Stroke)
             let filter_pill_fill = if self.is_wallpaper_light {
-                [255, 255, 255, 235]
+                [255, 255, 255, 80]
             } else {
-                [255, 255, 255, 220]
+                [255, 255, 255, 28]
             };
             UIFont::draw_rounded_rect_fill(
                 buf,
@@ -1179,6 +1162,22 @@ impl AppData {
                 11.0,
                 7.0,
                 filter_pill_fill,
+            );
+            UIFont::draw_rounded_rect_stroke(
+                buf,
+                self.width,
+                self.height,
+                filt_cx + tasks_offset_x,
+                79.5,
+                32.0,
+                11.0,
+                7.0,
+                1.0,
+                if self.is_wallpaper_light {
+                    [255, 255, 255, 160]
+                } else {
+                    [255, 255, 255, 60]
+                },
             );
 
             // Filter Bar Labels: "All" (cx = 84.0), "Active" (cx = 156.0), "Done" (cx = 228.0), cy = 79.5
@@ -1422,37 +1421,48 @@ impl AppData {
                         slide_rim,
                     );
                 } else {
-                    let row_fill = if row_is_light {
-                        Tokens::INNER_TILE_BG_LIGHT
-                    } else {
-                        Tokens::INNER_TILE_BG_ROW
-                    };
-                    UIFont::draw_rounded_rect_fill(
-                        buf,
-                        self.width,
-                        self.height,
-                        180.0 + slide_x + tasks_offset_x,
-                        cy,
-                        156.0,
-                        18.0,
-                        Tokens::RADIUS_INNER_TILE,
-                        row_fill,
-                    );
-                    // 1px top highlight bevel for physical glass shelf depth (soft 15-18% white, inset from corners)
-                    let row_hl = if row_is_light {
-                        Tokens::INNER_TOP_HIGHLIGHT_LIGHT
-                    } else {
-                        Tokens::INNER_TOP_HIGHLIGHT_DARK
-                    };
-                    UIFont::draw_segment(
-                        buf,
-                        self.width,
-                        self.height,
-                        (180.0 + slide_x + tasks_offset_x - 136.0, cy - 17.0),
-                        (180.0 + slide_x + tasks_offset_x + 136.0, cy - 17.0),
-                        1.0,
-                        row_hl,
-                    );
+                    let cur_lx = self.cursor_pos[0] * (self.width as f32);
+                    let cur_ly = self.cursor_pos[1] * (self.height as f32);
+                    let is_row_hover = self.is_hovered
+                        && (cur_lx - (180.0 + slide_x + tasks_offset_x)).abs() <= 156.0
+                        && (cur_ly - cy).abs() <= 18.0;
+
+                    if is_row_hover {
+                        let hover_fill = if row_is_light {
+                            [0, 0, 0, 14]
+                        } else {
+                            [255, 255, 255, 20]
+                        };
+                        UIFont::draw_rounded_rect_fill(
+                            buf,
+                            self.width,
+                            self.height,
+                            180.0 + slide_x + tasks_offset_x,
+                            cy,
+                            156.0,
+                            18.0,
+                            Tokens::RADIUS_INNER_TILE,
+                            hover_fill,
+                        );
+                    }
+
+                    // Delicate hairline divider between rows
+                    if row_idx < visible_indices.len().min(6) - 1 {
+                        let div_col = if row_is_light {
+                            [0, 0, 0, 14]
+                        } else {
+                            [255, 255, 255, 14]
+                        };
+                        UIFont::draw_segment(
+                            buf,
+                            self.width,
+                            self.height,
+                            (180.0 + slide_x + tasks_offset_x - 145.0, cy + 22.0),
+                            (180.0 + slide_x + tasks_offset_x + 145.0, cy + 22.0),
+                            1.0,
+                            div_col,
+                        );
+                    }
                 }
 
                 // Precision anti-aliased vector checkbox
