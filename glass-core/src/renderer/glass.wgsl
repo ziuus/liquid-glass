@@ -1434,8 +1434,26 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let is_light = params.is_light;
     let top_flush = select(1.0, smoothstep(-half_size.y, -half_size.y + 4.0, local_px.y), is_attached);
     
-    // Outside the shape: 100% clean transparent background (zero dirty shadow smear)
+    // ════════════════════════════════════════════
+    // 1b. PHYSICAL 3D DIRECTIONAL AMBIENT CONTACT SHADOW
+    // ════════════════════════════════════════════
+    // Compact, intimate 7px contact shadow cast towards bottom-right (away from top-left key light).
+    // Zero smear on lit/top edges; silky cubic smoothstep blend into desktop wallpaper.
     if sdf > 0.0 {
+        let shadow_radius = 7.0;
+        if sdf < shadow_radius && top_flush > 0.5 {
+            let light_vec_2d = normalize(vec2<f32>(-0.45, -0.65));
+            let shadow_facing = max(dot(grad_2d, -light_vec_2d), 0.0);
+            if shadow_facing > 0.02 {
+                let shadow_norm = clamp(sdf / shadow_radius, 0.0, 1.0);
+                let falloff = pow(1.0 - smoothstep(0.0, 1.0, shadow_norm), 1.8);
+                let shadow_strength = mix(0.035, 0.07, is_light);
+                let shadow_alpha = falloff * shadow_strength * pow(shadow_facing, 1.6);
+                if shadow_alpha > 0.002 {
+                    return vec4<f32>(0.0, 0.0, 0.0, shadow_alpha);
+                }
+            }
+        }
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
     
@@ -1445,7 +1463,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let depth = max(-sdf, 0.0);
     let bezel = clamp(params.bevel, 10.0, 36.0); // 10-36px physical bezel
     let t = clamp(depth / bezel, 0.0, 1.0);       // 0.0 at outer edge, 1.0 where bezel ends
-    let corner_factor = clamp(abs(grad_2d.x * grad_2d.y) * 4.0, 0.0, 1.0);
 
     // ════════════════════════════════════════════
     // 3. PHYSICAL 3D SNELL'S LAW REFRACTION BAND & CAUCHY DISPERSION
@@ -1533,20 +1550,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Real liquid glass has ZERO drawn border lines. The perimeter is defined 100%
     // by Snell refraction bending background rays, plus a directional specular glint
     // ONLY where the curved 3D surface catches the top-left key light.
-    let light_vec_2d = normalize(vec2<f32>(-0.45, -0.65)); // Top-left light source
+    let light_vec_2d = normalize(vec2<f32>(-0.45, -0.65)); // Top-left key light
+    let shadow_vec_2d = -light_vec_2d;
     let light_facing = max(dot(grad_2d, light_vec_2d), 0.0);
-    let glint_power = pow(light_facing, 2.0); // Directional falloff: zero line on bottom/sides
+    let shadow_facing = max(dot(grad_2d, shadow_vec_2d), 0.0);
+    let glint_power = pow(light_facing, 3.5); // Tight directional specular lobe: zero on shadow side
 
-    let corner_mult = 1.0 + 0.25 * corner_factor;
-
-    // 1. Thin specular line of 1-1.5px on the lit side only (top-left)
-    let rim_outer = smoothstep(1.5, 0.0, depth) * corner_mult;
-    let spec_line = rim_outer * glint_power * params.specular_strength * top_flush;
-
-    // 2. Soft inner edge glow of 3-5px on all sides, with firm ~30% floor on shadow side (grounds dark backdrops like ferns)
-    let inner_glow = smoothstep(4.0, 0.2, depth);
-    let glow_dir = mix(0.55, 1.0, light_facing); // Firm floor on shadow side
-    let edge_glow = inner_glow * glow_dir * 0.20 * top_flush;
+    // Razor-thin crystalline specular glint of 1.0px along lit perimeter only (zero artificial corner multiplier)
+    let spec_line = smoothstep(1.0, 0.0, depth) * glint_power * params.specular_strength * top_flush;
 
     // ════════════════════════════════════════════
     // 5. MASTER COMPOSITE (OBSIDIAN, GLASSMORPHISM, LIQUID GLASS)
@@ -1562,13 +1573,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             base_surface = vec3<f32>(0.0, 0.0, 0.0);
         }
     } else if effective_light > 0.5 {
-        // ── LIGHT / WHITE BACKDROP: DELICATE SPECULAR GLINT + GENTLE INNER GLOW ──
-        let light_highlight = spec_line * 0.40 + edge_glow * 0.35;
-        base_surface = col + vec3<f32>(light_highlight);
+        // ── LIGHT / WHITE BACKDROP: CRYSTALLINE SPECULAR GLINT + SHADOW-SIDE OPTICAL GROUNDING ──
+        // Zero white outline on bottom or sides. Lit side gets clean glint; shadow side gets subtle 3.5% grounding
+        let lit_highlight = spec_line * 0.30;
+        let shadow_meniscus = smoothstep(1.8, 0.0, depth) * pow(shadow_facing, 2.0) * 0.035 * top_flush;
+        base_surface = col + vec3<f32>(lit_highlight) - vec3<f32>(shadow_meniscus);
     } else {
-        // ── DARK / VIBRANT BACKDROP (e.g. Ferns): LIT SPECULAR + 30% FLOOR EDGE GLOW ──
-        let dark_highlight = spec_line * 0.70 + edge_glow;
-        base_surface = col + vec3<f32>(dark_highlight);
+        // ── DARK / VIBRANT BACKDROP (e.g. Ferns): LIT SPECULAR + 18% AMBIENT RIM FLOOR ──
+        let dark_spec = spec_line * 0.60;
+        let dark_rim = smoothstep(1.2, 0.0, depth) * mix(0.18, 0.40, light_facing) * top_flush;
+        base_surface = col + vec3<f32>(dark_spec + dark_rim);
     }
 
     let app = render_element_appearance(local_px, half_size, params.padding, params.tint.y, params.time, params.tint, effective_light);
