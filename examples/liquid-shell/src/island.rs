@@ -346,6 +346,8 @@ pub enum IslandIpcEvent {
     SetFilletExpanded(f32),
     SetBlur(f32),
     SetSpeed(f32),
+    ToggleHoverExpand,
+    SetHoverExpand(bool),
     ReloadConfig,
 }
 
@@ -452,6 +454,8 @@ pub struct IslandWidget {
     pub theme_mode: u32,
     pub blur_radius: f32,
     pub anim_speed: f32,
+    pub hover_to_expand: bool,
+    pub hover_dwell_start: Option<Instant>,
     pub hot_edge_dwell_start: Option<Instant>,
     pub needs_input_region_update: bool,
 }
@@ -548,6 +552,7 @@ impl IslandWidget {
             theme_mode,
             blur_radius,
             anim_speed,
+            hover_to_expand,
         ) = Self::load_config_values();
         let init_y = dock_mode.dock_y();
 
@@ -638,6 +643,8 @@ impl IslandWidget {
             theme_mode,
             blur_radius,
             anim_speed,
+            hover_to_expand,
+            hover_dwell_start: None,
             hot_edge_dwell_start: None,
             needs_input_region_update: true,
         }
@@ -758,8 +765,12 @@ impl IslandWidget {
                 if self.is_inside_island(lx, ly) {
                     self.is_hovered = true;
                     self.last_interaction = Instant::now();
+                    if self.hover_to_expand && self.mode == IslandMode::CompactPill {
+                        self.hover_dwell_start = Some(Instant::now());
+                    }
                 } else {
                     self.is_hovered = false;
+                    self.hover_dwell_start = None;
                 }
                 true
             }
@@ -768,8 +779,9 @@ impl IslandWidget {
                 self.is_pressed = false;
                 self.is_swiping = false;
                 self.hot_edge_dwell_start = None;
+                self.hover_dwell_start = None;
                 self.cursor_pos = [-1.0, -1.0];
-                self.last_interaction = Instant::now() - Duration::from_millis(1000);
+                self.last_interaction = Instant::now();
                 true
             }
             PointerEventKind::Motion { .. } => {
@@ -788,8 +800,19 @@ impl IslandWidget {
                 if inside {
                     self.is_hovered = true;
                     self.last_interaction = Instant::now();
+                    if self.hover_to_expand && self.mode == IslandMode::CompactPill {
+                        if let Some(start) = self.hover_dwell_start {
+                            if start.elapsed() >= Duration::from_millis(150) {
+                                self.set_mode(IslandMode::MusicExpanded);
+                                self.hover_dwell_start = None;
+                            }
+                        } else {
+                            self.hover_dwell_start = Some(Instant::now());
+                        }
+                    }
                 } else {
                     self.is_hovered = false;
+                    self.hover_dwell_start = None;
                 }
 
                 if self.is_pressed && inside {
@@ -1041,6 +1064,7 @@ impl IslandWidget {
         u32,
         f32,
         f32,
+        bool,
     ) {
         let home = std::env::var("HOME").unwrap_or_default();
         let conf_path = format!("{}/.config/liquid-glass/config.json", home);
@@ -1106,6 +1130,11 @@ impl IslandWidget {
                     .and_then(|s| s.as_f64())
                     .map(|s| s as f32)
                     .unwrap_or(1.0);
+                let hover_to_expand = island_val
+                    .and_then(|i| i.get("hover_to_expand").or_else(|| i.get("hover_expand")))
+                    .or_else(|| val.get("hover_to_expand"))
+                    .and_then(|h| h.as_bool())
+                    .unwrap_or(true);
                 return (
                     dock_mode,
                     fillet_compact,
@@ -1115,6 +1144,7 @@ impl IslandWidget {
                     theme_mode,
                     blur_radius,
                     anim_speed,
+                    hover_to_expand,
                 );
             }
         }
@@ -1133,6 +1163,7 @@ impl IslandWidget {
             0,
             0.0,
             1.0,
+            true,
         )
     }
 
@@ -1171,6 +1202,7 @@ impl IslandWidget {
         island_obj["blur_radius"] = serde_json::json!(self.blur_radius);
         island_obj["style_mode"] = serde_json::json!(self.style_mode);
         island_obj["animation_speed"] = serde_json::json!(self.anim_speed);
+        island_obj["hover_to_expand"] = serde_json::json!(self.hover_to_expand);
         island_obj["quick_access"] = serde_json::json!(self.quick_access);
         root_val["island"] = island_obj;
 
@@ -1239,7 +1271,7 @@ impl IslandWidget {
     }
 
     pub fn reload_config(&mut self) {
-        let (mode, r_c, r_e, apps, style, theme, blur, speed) = Self::load_config_values();
+        let (mode, r_c, r_e, apps, style, theme, blur, speed, hover) = Self::load_config_values();
         self.fillet_radius_compact = r_c;
         self.fillet_radius_expanded = r_e;
         self.quick_access = apps;
@@ -1247,6 +1279,7 @@ impl IslandWidget {
         self.theme_mode = theme;
         self.blur_radius = blur;
         self.anim_speed = speed;
+        self.hover_to_expand = hover;
         self.set_dock_mode(mode);
     }
 
@@ -1309,6 +1342,14 @@ impl IslandWidget {
                 IslandIpcEvent::SetSpeed(s) => {
                     self.anim_speed = s.clamp(0.1, 5.0);
                     self.needs_redraw = true;
+                    self.save_config();
+                }
+                IslandIpcEvent::ToggleHoverExpand => {
+                    self.hover_to_expand = !self.hover_to_expand;
+                    self.save_config();
+                }
+                IslandIpcEvent::SetHoverExpand(h) => {
+                    self.hover_to_expand = h;
                     self.save_config();
                 }
                 IslandIpcEvent::ReloadConfig => self.reload_config(),
@@ -1423,7 +1464,23 @@ impl IslandWidget {
                 (self.music.elapsed_sec / self.music.duration_sec).clamp(0.0, 1.0);
         }
 
-        // When expanded, retract back after 4s of no user interaction
+        // Hover to expand dwell trigger
+        if self.hover_to_expand && self.is_hovered && self.mode == IslandMode::CompactPill {
+            if let Some(start) = self.hover_dwell_start {
+                if start.elapsed() >= Duration::from_millis(150) {
+                    self.set_mode(IslandMode::MusicExpanded);
+                    self.hover_dwell_start = None;
+                }
+            }
+        }
+
+        // When expanded, retract back after timeout of no user interaction
+        let retract_timeout = if self.hover_to_expand {
+            Duration::from_millis(350)
+        } else {
+            Duration::from_millis(4000)
+        };
+
         if !self.is_hovered
             && !self.is_pressed
             && matches!(
@@ -1433,7 +1490,7 @@ impl IslandWidget {
                     | IslandMode::SystemOverview
                     | IslandMode::PowerMenu
             )
-            && self.last_interaction.elapsed() >= Duration::from_millis(4000)
+            && self.last_interaction.elapsed() >= retract_timeout
         {
             self.set_mode(IslandMode::CompactPill);
         }
@@ -3310,6 +3367,23 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>, wakeup_fd: Option<i32>) {
                         || trimmed == "reload_config"
                     {
                         send_evt(IslandIpcEvent::ReloadConfig);
+                    } else if trimmed == "toggle_hover_expand"
+                        || trimmed == "toggle hover expand"
+                        || trimmed == "toggle_hover"
+                    {
+                        send_evt(IslandIpcEvent::ToggleHoverExpand);
+                    } else if trimmed == "hover_expand:true"
+                        || trimmed == "hover_expand 1"
+                        || trimmed == "hover_to_expand:true"
+                        || trimmed == "hover_to_expand 1"
+                    {
+                        send_evt(IslandIpcEvent::SetHoverExpand(true));
+                    } else if trimmed == "hover_expand:false"
+                        || trimmed == "hover_expand 0"
+                        || trimmed == "hover_to_expand:false"
+                        || trimmed == "hover_to_expand 0"
+                    {
+                        send_evt(IslandIpcEvent::SetHoverExpand(false));
                     } else if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
                         if val.get("type").and_then(|t| t.as_str()) == Some("notification") {
                             let app = val
