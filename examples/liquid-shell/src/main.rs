@@ -313,6 +313,122 @@ impl ProvidesRegistryState for ShellApp {
     registry_handlers![OutputState, SeatState];
 }
 
+fn parse_theme_mode(val: &serde_json::Value) -> Option<u32> {
+    if let Some(s) = val.get("theme").and_then(|v| v.as_str()) {
+        match s.to_lowercase().as_str() {
+            "dark" => return Some(1),
+            "light" => return Some(2),
+            "auto" => return Some(0),
+            _ => {}
+        }
+    }
+    if let Some(t) = val.get("theme_mode").and_then(|v| v.as_u64()) {
+        return Some(t as u32);
+    }
+    None
+}
+
+impl ShellApp {
+    pub fn reload_config(&mut self, conf_path: &str) {
+        if let Ok(content) = std::fs::read_to_string(conf_path) {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(t) = parse_theme_mode(&val) {
+                    self.clock.theme_mode = t;
+                    self.island.theme_mode = t;
+                    self.todo.theme_mode = t;
+                }
+                if let Some(s) = val
+                    .get("style_mode")
+                    .or_else(|| val.get("style"))
+                    .and_then(|v| v.as_f64())
+                {
+                    self.clock.style_mode = s as f32;
+                    self.island.style_mode = s as f32;
+                    self.todo.style_mode = s as f32;
+                }
+                if let Some(b) = val
+                    .get("blur_radius")
+                    .or_else(|| val.get("blur"))
+                    .and_then(|v| v.as_f64())
+                {
+                    self.clock.blur_radius = b as f32;
+                    self.island.blur_radius = b as f32;
+                    self.todo.blur_radius = b as f32;
+                }
+
+                if let Some(clk) = val.get("clock") {
+                    if let Some(s) = clk.get("style_mode").and_then(|v| v.as_f64()) {
+                        self.clock.style_mode = s as f32;
+                    }
+                    if let Some(t) = parse_theme_mode(clk) {
+                        self.clock.theme_mode = t;
+                    }
+                    if let Some(b) = clk
+                        .get("blur_radius")
+                        .or_else(|| clk.get("blur"))
+                        .and_then(|v| v.as_f64())
+                    {
+                        self.clock.blur_radius = b as f32;
+                    }
+                    if let Some(spd) = clk
+                        .get("animation_speed")
+                        .or_else(|| clk.get("speed"))
+                        .and_then(|v| v.as_f64())
+                    {
+                        self.clock.anim_speed = spd as f32;
+                    }
+                }
+
+                if let Some(td) = val.get("todo") {
+                    if let Some(s) = td.get("style_mode").and_then(|v| v.as_f64()) {
+                        self.todo.style_mode = s as f32;
+                    }
+                    if let Some(t) = parse_theme_mode(td) {
+                        self.todo.theme_mode = t;
+                    }
+                    if let Some(b) = td
+                        .get("blur_radius")
+                        .or_else(|| td.get("blur"))
+                        .and_then(|v| v.as_f64())
+                    {
+                        self.todo.blur_radius = b as f32;
+                    }
+                    if let Some(spd) = td
+                        .get("animation_speed")
+                        .or_else(|| td.get("speed"))
+                        .and_then(|v| v.as_f64())
+                    {
+                        self.todo.anim_speed = spd as f32;
+                    }
+                }
+
+                if let Some(isl) = val.get("island") {
+                    if let Some(s) = isl.get("style_mode").and_then(|v| v.as_f64()) {
+                        self.island.style_mode = s as f32;
+                    }
+                    if let Some(t) = parse_theme_mode(isl) {
+                        self.island.theme_mode = t;
+                    }
+                    if let Some(b) = isl
+                        .get("blur_radius")
+                        .or_else(|| isl.get("blur"))
+                        .and_then(|v| v.as_f64())
+                    {
+                        self.island.blur_radius = b as f32;
+                    }
+                    if let Some(h) = isl.get("hover_to_expand").and_then(|v| v.as_bool()) {
+                        self.island.hover_to_expand = h;
+                    }
+                }
+
+                self.clock.draw();
+                self.island.draw();
+                self.todo.draw();
+            }
+        }
+    }
+}
+
 fn main() {
     env_logger::init();
     log::info!("Starting unified liquid-shell (Phase 2 Shared GPU)...");
@@ -359,57 +475,8 @@ fn main() {
     todo.theme_mode = island.theme_mode;
     todo.blur_radius = island.blur_radius;
 
-    // Load per-component overrides from config.json if present
     let home = std::env::var("HOME").unwrap_or_default();
     let conf_path = format!("{}/.config/liquid-glass/config.json", home);
-    if let Ok(content) = std::fs::read_to_string(&conf_path) {
-        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
-            if let Some(clk) = val.get("clock") {
-                if let Some(s) = clk.get("style_mode").and_then(|v| v.as_f64()) {
-                    clock.style_mode = s as f32;
-                }
-                if let Some(t) = clk.get("theme_mode").and_then(|v| v.as_u64()) {
-                    clock.theme_mode = t as u32;
-                }
-                if let Some(b) = clk
-                    .get("blur_radius")
-                    .or_else(|| clk.get("blur"))
-                    .and_then(|v| v.as_f64())
-                {
-                    clock.blur_radius = b as f32;
-                }
-                if let Some(spd) = clk
-                    .get("animation_speed")
-                    .or_else(|| clk.get("speed"))
-                    .and_then(|v| v.as_f64())
-                {
-                    clock.anim_speed = spd as f32;
-                }
-            }
-            if let Some(td) = val.get("todo") {
-                if let Some(s) = td.get("style_mode").and_then(|v| v.as_f64()) {
-                    todo.style_mode = s as f32;
-                }
-                if let Some(t) = td.get("theme_mode").and_then(|v| v.as_u64()) {
-                    todo.theme_mode = t as u32;
-                }
-                if let Some(b) = td
-                    .get("blur_radius")
-                    .or_else(|| td.get("blur"))
-                    .and_then(|v| v.as_f64())
-                {
-                    todo.blur_radius = b as f32;
-                }
-                if let Some(spd) = td
-                    .get("animation_speed")
-                    .or_else(|| td.get("speed"))
-                    .and_then(|v| v.as_f64())
-                {
-                    todo.anim_speed = spd as f32;
-                }
-            }
-        }
-    }
 
     if let Some(cache) = wallpaper_mgr.cached_buffer() {
         let clock_crop = WallpaperManager::get_wallpaper_crop(
@@ -461,6 +528,8 @@ fn main() {
         wallpaper_mgr,
     };
 
+    app.reload_config(&conf_path);
+
     while app.first_configure_count < 3 {
         event_queue.blocking_dispatch(&mut app).unwrap();
     }
@@ -476,6 +545,10 @@ fn main() {
 
     let mut last_minute = chrono::Local::now().minute();
     let mut last_frame = Instant::now();
+    let mut last_config_check = Instant::now();
+    let mut last_config_modified = std::fs::metadata(&conf_path)
+        .and_then(|m| m.modified())
+        .ok();
 
     while !app.exit {
         let _ = event_queue.dispatch_pending(&mut app);
@@ -484,6 +557,18 @@ fn main() {
         let now = Instant::now();
         let dt = (now - last_frame).as_secs_f32().clamp(0.001, 0.05);
         last_frame = now;
+
+        if now.duration_since(last_config_check).as_millis() >= 300 {
+            last_config_check = now;
+            if let Ok(meta) = std::fs::metadata(&conf_path) {
+                if let Ok(mod_time) = meta.modified() {
+                    if last_config_modified != Some(mod_time) {
+                        last_config_modified = Some(mod_time);
+                        app.reload_config(&conf_path);
+                    }
+                }
+            }
+        }
 
         let (new_style, new_theme, new_blur) = app.island.check_ipc();
         if let Some(s) = new_style {

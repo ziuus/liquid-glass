@@ -1436,12 +1436,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     // Outside the shape: render physical 3D ambient contact shadow (grounds the glass against backdrop)
     if sdf > 0.0 {
-        let shadow_radius = 12.0;
+        let shadow_radius = 18.0;
         if sdf < shadow_radius && top_flush > 0.5 {
             let light_dir = vec2<f32>(-0.45, -0.65);
             let facing = clamp(dot(grad_2d, -light_dir) * 0.5 + 0.5, 0.25, 1.0);
             let falloff = pow(1.0 - sdf / shadow_radius, 2.0);
-            let shadow_strength = mix(0.12, 0.05, is_light);
+            let shadow_strength = mix(0.16, 0.18, is_light);
             let shadow_alpha = falloff * shadow_strength * facing;
             return vec4<f32>(0.0, 0.0, 0.0, shadow_alpha);
         }
@@ -1462,18 +1462,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Meniscus refraction vector follows the true analytic surface normal
     let refract_dir = grad_2d;
 
-    // Superellipse height derivative h'(t) with high slope clamp
-    let u = clamp(1.0 - t, 0.0, 1.0);
-    let u4 = u * u * u * u;
-    let denom = pow(max(1.0 - u4, 0.0001), 0.75);
-    let raw_slope = (u * u * u) / denom;
-    let se_slope = clamp(raw_slope, 0.0, 6.0) / 6.0;
-
-    // Smooth cosine spread across full bezel depth with zero slope at t=1 (eliminates slope jump / kinks)
-    let wide_spread = pow(cos(t * 1.5707963), 2.0);
-
-    // Blended gentler profile: maintains high rim tilt while staying elevated across the entire bezel
-    let lens_profile = mix(wide_spread, se_slope, 0.35);
+    // Zero-slope displacement profile flat at both ends (eliminates slope jump / kink at bezel boundary)
+    let lens_profile = 1.0 - smoothstep(0.0, 1.0, t);
 
     let thickness = select(15.0, params.refraction_strength, params.refraction_strength >= 1.0);
 
@@ -1557,8 +1547,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let glint_power = pow(light_facing, 2.0); // Directional falloff: zero line on bottom/sides
 
     let corner_mult = 1.0 + 0.25 * corner_factor;
-    let rim_outer = smoothstep(1.2, 0.1, depth) * corner_mult;
-    let spec_rim = rim_outer * glint_power * params.specular_strength * top_flush;
+
+    // 1. Thin specular line of 1-1.5px on the lit side only (top-left)
+    let rim_outer = smoothstep(1.5, 0.0, depth) * corner_mult;
+    let spec_line = rim_outer * glint_power * params.specular_strength * top_flush;
+
+    // 2. Soft inner edge glow of 3-5px at 10-15% on all sides, with 30% floor on shadow side (prevents open panels on dark backdrops)
+    let inner_glow = smoothstep(4.0, 0.2, depth);
+    let glow_dir = mix(0.30, 1.0, light_facing); // 30% floor
+    let edge_glow = inner_glow * glow_dir * 0.12 * top_flush;
 
     // ════════════════════════════════════════════
     // 5. MASTER COMPOSITE (OBSIDIAN, GLASSMORPHISM, LIQUID GLASS)
@@ -1574,14 +1571,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             base_surface = vec3<f32>(0.0, 0.0, 0.0);
         }
     } else if effective_light > 0.5 {
-        // ── LIGHT / WHITE BACKDROP: PHYSICAL MENISCUS WITH DELICATE SPECULAR GLINT ──
-        let specular_glint = rim_outer * glint_power * params.specular_strength * 0.40 * top_flush;
-        base_surface = col + vec3<f32>(specular_glint);
+        // ── LIGHT / WHITE BACKDROP: DELICATE SPECULAR GLINT + SOFT INNER GLOW ──
+        let light_highlight = spec_line * 0.40 + edge_glow * 0.50;
+        base_surface = col + vec3<f32>(light_highlight);
     } else {
-        // ── DARK / VIBRANT BACKDROP: DIRECTIONAL SPECULAR GLINT ──
-        let rim_reflection = spec_rim;
-        let rim_tint = vec3<f32>(1.0, 1.0, 1.0);
-        base_surface = col + rim_tint * rim_reflection;
+        // ── DARK / VIBRANT BACKDROP (e.g. Ferns): LIT SPECULAR + 30% FLOOR EDGE GLOW ──
+        let dark_highlight = spec_line * 0.85 + edge_glow;
+        base_surface = col + vec3<f32>(dark_highlight);
     }
 
     let app = render_element_appearance(local_px, half_size, params.padding, params.tint.y, params.time, params.tint, effective_light);

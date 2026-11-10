@@ -102,8 +102,6 @@ pub struct TodoWidget {
 
     pub wallpaper_crop: Option<Vec<u8>>,
     pub overlay_buffer: Vec<u8>,
-    pub current_wallpaper_path: Option<String>,
-    pub last_wallpaper_check: Instant,
     pub is_wallpaper_light: bool,
 
     pub todos: TodoState,
@@ -225,8 +223,6 @@ impl TodoWidget {
 
             wallpaper_crop: None,
             overlay_buffer: Vec::new(),
-            current_wallpaper_path: None,
-            last_wallpaper_check: Instant::now(),
             is_wallpaper_light: false,
 
             todos,
@@ -862,35 +858,6 @@ impl TodoWidget {
         }
     }
 
-    fn check_wallpaper(&mut self) {
-        if self.last_wallpaper_check.elapsed().as_secs() < 4 {
-            return;
-        }
-        self.last_wallpaper_check = Instant::now();
-
-        let queried = get_active_wallpaper_path();
-        if queried != self.current_wallpaper_path && queried.is_some() {
-            log::info!("Wallpaper changed to {:?}", queried);
-            if let Some(buf) = load_wallpaper_image(queried.as_deref()) {
-                self.current_wallpaper_path = queried;
-                let crop = get_wallpaper_crop(
-                    &buf,
-                    self.pos_x as u32,
-                    self.pos_y as u32,
-                    self.width,
-                    self.height,
-                );
-                self.is_wallpaper_light =
-                    WallpaperManager::is_buffer_light_hysteresis(&crop, self.is_wallpaper_light);
-                if let Some(renderer) = &mut self.renderer {
-                    renderer.update_background(self.width, self.height, &crop);
-                }
-                self.wallpaper_crop = Some(crop);
-                self.draw();
-            }
-        }
-    }
-
     pub fn update_physics(&mut self, dt: f32) -> bool {
         let eff_dt = dt * self.anim_speed;
         self.tab_spring.update(eff_dt);
@@ -1436,8 +1403,8 @@ impl TodoWidget {
             let (add_primary, add_dimmed, add_secondary) = if is_light {
                 (
                     [12, 16, 24, 255],
-                    [100, 110, 125, 230],
-                    [100, 110, 125, 230],
+                    [45, 55, 70, 240], // Ink at ~65% equivalent (> 5:1 contrast against light background)
+                    [45, 55, 70, 240],
                 )
             } else {
                 (
@@ -1851,8 +1818,6 @@ impl TodoWidget {
     }
 
     pub fn draw(&mut self) -> bool {
-        self.check_wallpaper();
-
         let (item_count, bitmask) = if self.active_tab == 0 {
             let visible_indices = self.filtered_indices();
             let mut bm = 0u32;
@@ -2043,126 +2008,4 @@ fn get_theme_accent() -> [f32; 4] {
         }
     }
     [0.0, 0.0, 0.0, 0.0]
-}
-
-fn get_active_wallpaper_path() -> Option<String> {
-    let awww_cache = dirs_cache_awww();
-    if let Some(path) = awww_cache {
-        if std::path::Path::new(&path).exists() {
-            return Some(path);
-        }
-    }
-
-    if let Ok(out) = std::process::Command::new("awww").arg("query").output() {
-        let s = String::from_utf8_lossy(&out.stdout);
-        for line in s.lines() {
-            if line.contains("image:") {
-                if let Some(p) = line.split("image:").nth(1) {
-                    let path = p.trim().to_string();
-                    if std::path::Path::new(&path).exists() {
-                        return Some(path);
-                    }
-                }
-            }
-        }
-    }
-
-    let cache_path = format!(
-        "{}/.cache/current_wallpaper",
-        std::env::var("HOME").unwrap_or_default()
-    );
-    if let Ok(content) = std::fs::read_to_string(&cache_path) {
-        let p = content.trim().to_string();
-        if std::path::Path::new(&p).exists() {
-            return Some(p);
-        }
-    }
-
-    None
-}
-
-fn dirs_cache_awww() -> Option<String> {
-    let home = std::env::var("HOME").ok()?;
-    let cache_dir = format!("{}/.cache/awww", home);
-    if let Ok(entries) = std::fs::read_dir(cache_dir) {
-        for version_entry in entries.flatten() {
-            if let Ok(mon_entries) = std::fs::read_dir(version_entry.path()) {
-                for mon_entry in mon_entries.flatten() {
-                    if let Ok(bytes) = std::fs::read(mon_entry.path()) {
-                        let s = String::from_utf8_lossy(&bytes);
-                        for part in s.split(|c: char| c == '\0' || c.is_whitespace()) {
-                            let trimmed = part.trim();
-                            if trimmed.starts_with('/') && std::path::Path::new(trimmed).exists() {
-                                return Some(trimmed.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-fn load_wallpaper_image(path: Option<&str>) -> Option<Arc<Vec<u8>>> {
-    let active_detected = get_active_wallpaper_path();
-    let candidates = [
-        path,
-        active_detected.as_deref(),
-        Some("/home/zius/Pictures/wallpaper/scott-webb-hDyO6rr3kqk-unsplash.jpg"),
-        Some("/home/zius/Pictures/wallpaper/surreal-cherry-5120x2880-26233.jpg"),
-        Some("/home/zius/Pictures/wallpaper/Fantasy-Landscape3.png"),
-    ];
-
-    for candidate in candidates.into_iter().flatten() {
-        if let Ok(img) = image::open(candidate) {
-            log::info!("Loaded wallpaper: {}", candidate);
-            let rgba = img.to_rgba8();
-            let (ow, oh) = (rgba.width() as f32, rgba.height() as f32);
-
-            // Exactly match awww --resize crop --crop-gravity center
-            let scale = (1920.0 / ow).max(1080.0 / oh);
-            let sw = (ow * scale).round() as u32;
-            let sh = (oh * scale).round() as u32;
-            let scaled =
-                image::imageops::resize(&rgba, sw, sh, image::imageops::FilterType::Triangle);
-            let left = sw.saturating_sub(1920) / 2;
-            let top = sh.saturating_sub(1080) / 2;
-            let cropped = image::imageops::crop_imm(&scaled, left, top, 1920, 1080).to_image();
-            return Some(Arc::new(cropped.into_raw()));
-        }
-    }
-
-    let mut fallback = vec![0u8; 1920 * 1080 * 4];
-    for y in 0..1080 {
-        for x in 0..1920 {
-            let i = (y * 1920 + x) * 4;
-            fallback[i] = 240;
-            fallback[i + 1] = 242;
-            fallback[i + 2] = 240;
-            fallback[i + 3] = 255;
-        }
-    }
-    Some(Arc::new(fallback))
-}
-
-#[allow(dead_code)]
-fn init_wallpaper_1080p() -> (Option<Arc<Vec<u8>>>, Option<String>) {
-    let path = get_active_wallpaper_path();
-    let buf = load_wallpaper_image(path.as_deref());
-    (buf, path)
-}
-
-#[allow(dead_code)]
-fn get_wallpaper_crop(cache: &[u8], x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {
-    let mut crop = vec![0u8; (w * h * 4) as usize];
-    for row in 0..h {
-        let src_y = (y + row).min(1079);
-        let src_x = x.min(1920u32.saturating_sub(w));
-        let src_start = ((src_y * 1920 + src_x) * 4) as usize;
-        let dst_start = (row * w * 4) as usize;
-        let len = (w * 4) as usize;
-        crop[dst_start..dst_start + len].copy_from_slice(&cache[src_start..src_start + len]);
-    }
-    crop
 }

@@ -40,19 +40,50 @@ impl WallpaperManager {
             }
             let home = std::env::var("HOME").unwrap_or_default();
             let cache_dir = format!("{}/.cache/awww", home);
-            let c_path = match std::ffi::CString::new(cache_dir) {
-                Ok(p) => p,
-                Err(_) => {
-                    libc::close(fd);
-                    return (None, None);
+            let mut first_wd = None;
+
+            if let Ok(c_path) = std::ffi::CString::new(cache_dir.clone()) {
+                let wd = libc::inotify_add_watch(
+                    fd,
+                    c_path.as_ptr(),
+                    libc::IN_MODIFY | libc::IN_CREATE | libc::IN_DELETE | libc::IN_CLOSE_WRITE,
+                );
+                if wd >= 0 {
+                    first_wd = Some(wd);
                 }
-            };
-            let wd = libc::inotify_add_watch(
-                fd,
-                c_path.as_ptr(),
-                libc::IN_MODIFY | libc::IN_CREATE | libc::IN_DELETE | libc::IN_CLOSE_WRITE,
-            );
-            (Some(fd), if wd >= 0 { Some(wd) } else { None })
+            }
+
+            // Also watch subdirectories in ~/.cache/awww (e.g. 0.12.1 where eDP-1 is written)
+            if let Ok(entries) = std::fs::read_dir(&cache_dir) {
+                for entry in entries.flatten() {
+                    if entry.path().is_dir() {
+                        if let Some(p_str) = entry.path().to_str() {
+                            if let Ok(c_path) = std::ffi::CString::new(p_str) {
+                                let _ = libc::inotify_add_watch(
+                                    fd,
+                                    c_path.as_ptr(),
+                                    libc::IN_MODIFY
+                                        | libc::IN_CREATE
+                                        | libc::IN_DELETE
+                                        | libc::IN_CLOSE_WRITE,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Also watch ~/.cache/current_wallpaper
+            let cur_wall = format!("{}/.cache/current_wallpaper", home);
+            if let Ok(c_path) = std::ffi::CString::new(cur_wall) {
+                let _ = libc::inotify_add_watch(
+                    fd,
+                    c_path.as_ptr(),
+                    libc::IN_MODIFY | libc::IN_CLOSE_WRITE,
+                );
+            }
+
+            (Some(fd), first_wd)
         }
     }
 
@@ -68,7 +99,14 @@ impl WallpaperManager {
 
     /// Queries the active wallpaper path from awww CLI, ~/.cache/awww, or fallback cache.
     pub fn get_active_wallpaper_path() -> Option<String> {
-        // 1. Live query to awww daemon (primary source of truth, 0.002s)
+        // 1. Direct read from awww cache directory (instant zero-process read, <5µs)
+        if let Some(path) = dirs_cache_awww() {
+            if std::path::Path::new(&path).exists() {
+                return Some(path);
+            }
+        }
+
+        // 2. Live query to awww daemon
         if let Ok(out) = std::process::Command::new("awww").arg("query").output() {
             let s = String::from_utf8_lossy(&out.stdout);
             for line in s.lines() {
@@ -80,13 +118,6 @@ impl WallpaperManager {
                         }
                     }
                 }
-            }
-        }
-
-        // 2. Direct read from awww cache directory
-        if let Some(path) = dirs_cache_awww() {
-            if std::path::Path::new(&path).exists() {
-                return Some(path);
             }
         }
 
@@ -163,11 +194,11 @@ impl WallpaperManager {
         crop
     }
 
-    /// Checks if wallpaper has changed via inotify or throttled polling (every 5000ms fallback).
+    /// Checks if wallpaper has changed via inotify or fast fallback polling (250ms).
     /// Returns true if the cache was updated.
     pub fn check_update(&mut self) -> bool {
         let inotify_fired = self.poll_inotify_triggered();
-        let timer_due = self.last_check.elapsed().as_millis() >= 10_000;
+        let timer_due = self.last_check.elapsed().as_millis() >= 250;
 
         if !inotify_fired && !timer_due {
             return false;
