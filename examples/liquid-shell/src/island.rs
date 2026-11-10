@@ -2319,7 +2319,7 @@ impl IslandWidget {
                         20.0,
                         14.0,
                         if is_light {
-                            [24, 28, 38, 255]
+                            [0, 0, 0, 16]
                         } else {
                             [245, 248, 255, 255]
                         },
@@ -2332,7 +2332,7 @@ impl IslandWidget {
                         island_cy,
                         9.5,
                         if is_light {
-                            [255, 255, 255, 255]
+                            [12, 16, 24, 255]
                         } else {
                             [16, 20, 28, 255]
                         },
@@ -2392,7 +2392,7 @@ impl IslandWidget {
                         8.5,
                         6.0,
                         if is_light {
-                            [20, 26, 38, 240]
+                            [0, 0, 0, 16]
                         } else {
                             [255, 255, 255, 28]
                         },
@@ -2405,12 +2405,8 @@ impl IslandWidget {
                         right_x - 38.0,
                         island_top + 20.0,
                         10.5,
-                        if is_light {
-                            [255, 255, 255, 255]
-                        } else {
-                            col_dim
-                        },
-                        if is_light { [0, 0, 0, 0] } else { col_shadow },
+                        col_dim,
+                        [0, 0, 0, 0],
                         FontWeight::Medium,
                     );
 

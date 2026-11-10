@@ -991,23 +991,6 @@ impl TodoWidget {
             8.0,
             pill_fill,
         );
-        // Bevel stroke on active pill
-        UIFont::draw_rounded_rect_stroke(
-            buf,
-            content_w,
-            content_h,
-            tab_pill_cx,
-            32.5,
-            64.0,
-            13.5,
-            8.0,
-            1.0,
-            if is_light {
-                [255, 255, 255, 160]
-            } else {
-                [255, 255, 255, 60]
-            },
-        );
 
         // Top Right: Settings Icon Button
         let is_settings_active = self.is_cal_editing;
@@ -1018,7 +1001,7 @@ impl TodoWidget {
                 Tokens::INNER_TILE_BG_HOVER_DARK
             }
         } else if is_light {
-            [235, 240, 248, 200]
+            Tokens::INNER_TILE_BG_LIGHT
         } else {
             Tokens::INNER_TILE_BG_DARK
         };
@@ -1123,22 +1106,6 @@ impl TodoWidget {
                 11.0,
                 7.0,
                 filter_pill_fill,
-            );
-            UIFont::draw_rounded_rect_stroke(
-                buf,
-                content_w,
-                content_h,
-                filt_cx + tasks_offset_x,
-                79.5,
-                32.0,
-                11.0,
-                7.0,
-                1.0,
-                if is_light {
-                    [255, 255, 255, 160]
-                } else {
-                    [255, 255, 255, 60]
-                },
             );
 
             // Filter Bar Labels: "All" (cx = 84.0), "Active" (cx = 156.0), "Done" (cx = 228.0), cy = 79.5
@@ -1249,7 +1216,7 @@ impl TodoWidget {
 
                 // Subtle scrim under text for 100% legibility across light and dark backdrops
                 let text_shadow_col = if row_is_light {
-                    [255, 255, 255, 120]
+                    [0, 0, 0, 0]
                 } else {
                     [10, 14, 22, 160]
                 };

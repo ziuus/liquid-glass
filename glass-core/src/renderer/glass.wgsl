@@ -1441,7 +1441,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let light_dir = vec2<f32>(-0.45, -0.65);
             let facing = clamp(dot(grad_2d, -light_dir) * 0.5 + 0.5, 0.25, 1.0);
             let falloff = pow(1.0 - sdf / shadow_radius, 2.0);
-            let shadow_strength = mix(0.12, 0.20, is_light);
+            let shadow_strength = mix(0.12, 0.05, is_light);
             let shadow_alpha = falloff * shadow_strength * facing;
             return vec4<f32>(0.0, 0.0, 0.0, shadow_alpha);
         }
@@ -1574,8 +1574,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             base_surface = vec3<f32>(0.0, 0.0, 0.0);
         }
     } else if effective_light > 0.5 {
-        // ── LIGHT / WHITE BACKDROP: PHYSICAL MENISCUS WITH SPECULAR GLINT ──
-        let specular_glint = rim_outer * glint_power * top_flush;
+        // ── LIGHT / WHITE BACKDROP: PHYSICAL MENISCUS WITH DELICATE SPECULAR GLINT ──
+        let specular_glint = rim_outer * glint_power * params.specular_strength * 0.40 * top_flush;
         base_surface = col + vec3<f32>(specular_glint);
     } else {
         // ── DARK / VIBRANT BACKDROP: DIRECTIONAL SPECULAR GLINT ──
