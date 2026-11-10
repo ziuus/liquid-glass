@@ -15,10 +15,17 @@
 <br />
 
 <p align="center">
-  <img src="assets/hero.png" alt="Liquid Glass Floating Media Island" width="620" style="border-radius: 16px; box-shadow: 0 20px 50px rgba(0,0,0,0.5);" />
+  <img src="assets/photo_2026-11-10_12-42-23.jpg" alt="Liquid Glass Floating Dynamic Island" width="620" style="border-radius: 20px; box-shadow: 0 16px 40px rgba(0,0,0,0.12);" />
 </p>
 
-*Physical plano-convex Snell refraction, Cauchy chromatic dispersion (RGB edge separation), directional meniscus glints, and tactile spring kinetics running natively on Wayland.*
+### 📸 Live Desktop Showcase (Light & Dark Wayland Environments)
+
+| Crystalline Light Mode (Physical Refraction & Specular Glint) | Deep Dark Foliage Mode (Chlorophyll Backing & Ambient Rim) |
+| :---: | :---: |
+| <img src="assets/photo_2026-11-10_12-42-23.jpg" alt="Dynamic Island Light" width="380" /> | <img src="assets/photo_2026-11-10_12-41-34.jpg" alt="Quick Access Island Dark" width="380" /> |
+| <img src="assets/photo_2026-11-10_12-33-31.jpg" alt="Digital Clock Light" width="380" /> | <img src="assets/photo_2026-11-10_12-41-51.jpg" alt="Tasks & Agenda Dark" width="380" /> |
+
+*Physical plano-convex Snell refraction, Cauchy chromatic dispersion (RGB edge separation), directional 7px contact shadows, and tactile spring kinetics running natively on Wayland.*
 
 <br />
 
@@ -42,7 +49,9 @@ Most "glassmorphism" effects in modern web and desktop apps are superficial: the
 | **Refraction** | ❌ None (Flat blur) | ✅ **Snell's Law ray-bending** through plano-convex lens domes |
 | **Dispersion** | ❌ None | ✅ **Cauchy chromatic aberration** (RGB wavelength splitting at bevels) |
 | **Fresnel Response** | ❌ Constant opacity | ✅ **Schlick's approximation** (grazing angles gleam with total internal reflection) |
-| **Meniscus Edges** | ❌ Simple border stroke | ✅ **Directional sunlight highlights** + polished 1.2px rim glints |
+| **Meniscus Edges** | ❌ Simple border stroke | ✅ **Directional sunlight highlights** + zero artificial cartoon strokes |
+| **Contact Shadows** | ❌ Heavy black smudge | ✅ **Directional 7px contact shadows** with cubic smoothstep wallpaper blending |
+| **Curvature & Kinks** | ⚠️ Faceted slope jumps | ✅ **Zero-slope $C^1$ profile** eliminating boundary kinks |
 | **Idle Overhead** | ⚠️ Constant redraws / CPU burn | ✅ **0.0% CPU Idle** via event-driven kernel `epoll_wait` |
 | **Fragment Cost** | ⚠️ Fullscreen canvas redraws | ✅ **Tight bounded quads** — zero background overdraw |
 
@@ -54,15 +63,18 @@ The workspace is organized into modular, purpose-built crates:
 
 ```
 liquid-glass/
-├── glass-core/        # Hardware-accelerated rendering engine (WGPU + WGSL)
-│   ├── renderer/      # Bounded pipeline, dynamic uniform offsets, optical shaders
-│   ├── material/      # Physical material profiles (LiquidGlass, Frosted, Acrylic)
-│   ├── animation/     # Sub-stepped Runge-Kutta 4 (RK4) spring physics
-│   └── geometry/      # Procedural shapes (Capsule, RoundedRect, Circle)
-├── glass-ui/          # High-level declarative UI components
-│   └── GlassWidget, GlassCard, GlassButton, GlassToggle, GlassSlider
+├── glass-core/        # Headless optical engine: Snell refraction, Cauchy dispersion, WGPU pipelines, RK4 physics
+│   ├── renderer/      # Bounded quad pipeline, dynamic uniform offsets, glass.wgsl shaders
+│   ├── material/      # Physical material profiles (LiquidGlass, Frosted, Acrylic, Obsidian)
+│   ├── animation/     # Sub-stepped Runge-Kutta 4 (RK4) spring kinetics
+│   └── geometry/      # Procedural SDF shapes (Capsule, RoundedRect, Notched docked island)
+├── glass-platform/    # Wayland/X11 layer-shell protocols, awww/swww inotify wallpaper sync, luminance detection
+├── glass-ui/          # Declarative retained-mode UI widgets (GlassCard, GlassButton, GlassToggle, GlassSlider)
 └── examples/
-    ├── glass-panel/   # Wayland layer-shell floating media control island
+    ├── liquid-shell/  # Flagship desktop shell: Dynamic Island, Swiss Analog Dial, Digital Clock, Tasks panel
+    ├── glass-panel/   # Wayland layer-shell floating media island
+    ├── glass-clock/   # Standalone physical liquid glass clock widget
+    ├── glass-todo/    # Standalone glass task management widget
     └── simple-window/ # Cross-platform desktop window playground (winit + wgpu)
 ```
 
@@ -139,27 +151,54 @@ exec-once = liquid-shell
 ```
 
 **Configuration** (`~/.config/liquid-glass/config.json`):
+*Monitored via inotify — updates styles, themes, and dimensions live without process restarts.*
+
 ```json
 {
-  "edge_style": "curved",
-  "fillet_radius_compact": 10.0,
-  "fillet_radius_expanded": 24.0,
-  "style_mode": 2.0,
   "theme_mode": 0,
-  "quick_access": [
-    { "name": "Terminal", "command": "foot", "icon": "terminal" },
-    { "name": "Browser", "command": "brave", "icon": "browser" },
-    { "name": "Editor", "command": "code", "icon": "editor" },
-    { "name": "Files", "command": "thunar", "icon": "files" },
-    { "name": "Music", "command": "spotify", "icon": "music" }
-  ]
+  "style_mode": 2.0,
+  "blur_radius": 0.0,
+  "animation_speed": 1.0,
+  "island": {
+    "edge_style": "floating",
+    "fillet_radius_compact": 10.0,
+    "fillet_radius_expanded": 24.0,
+    "hover_to_expand": true,
+    "style_mode": 2.0,
+    "quick_access": [
+      { "name": "Terminal", "command": "foot", "icon": "terminal" },
+      { "name": "Browser", "command": "brave", "icon": "browser" },
+      { "name": "Editor", "command": "code", "icon": "editor" },
+      { "name": "Files", "command": "thunar", "icon": "files" },
+      { "name": "Music", "command": "spotify", "icon": "music" }
+    ]
+  },
+  "clock": {
+    "enabled": true,
+    "style_mode": 2.0
+  },
+  "todo": {
+    "enabled": true,
+    "style_mode": 2.0
+  }
 }
 ```
 
 **IPC Control** (`/tmp/liquid_island.fifo`):
 ```bash
+# Carousel slides & interaction
 echo "next_slide" > /tmp/liquid_island.fifo
-echo "set_edge curved" > /tmp/liquid_island.fifo
+echo "prev_slide" > /tmp/liquid_island.fifo
+echo "slide_music" > /tmp/liquid_island.fifo
+echo "slide_apps" > /tmp/liquid_island.fifo
+echo "slide_system" > /tmp/liquid_island.fifo
+echo "slide_power" > /tmp/liquid_island.fifo
+echo "toggle" > /tmp/liquid_island.fifo
+
+# Live optical & geometry adjustment
+echo "set_edge curved" > /tmp/liquid_island.fifo      # floating | attached | curved
+echo "set_theme auto" > /tmp/liquid_island.fifo       # auto (0) | dark (1) | light (2)
+echo "set_style liquid" > /tmp/liquid_island.fifo     # clean (0.0) | frosted (1.0) | liquid (2.0)
 echo "set_fillet_compact 12.0" > /tmp/liquid_island.fifo
 ```
 
