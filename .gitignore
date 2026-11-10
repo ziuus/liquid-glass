@@ -21,6 +21,8 @@ target/
 /scratch/
 /tmp/
 *.log
+assets/photo_*.jpg
+assets/photo_*.png
 
 # Experimental shaders
 glass-core/src/renderer/glass_liquid.wgsl
