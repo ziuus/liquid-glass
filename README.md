@@ -14,12 +14,6 @@
 
 <br />
 
-<p align="center">
-  <img src="assets/photo_2026-11-10_12-42-23.jpg" alt="Liquid Glass Floating Dynamic Island" width="620" style="border-radius: 20px; box-shadow: 0 16px 40px rgba(0,0,0,0.12);" />
-</p>
-
-### 📸 Live Desktop Showcase (Light & Dark Wayland Environments)
-
 | Crystalline Light Mode (Physical Refraction & Specular Glint) | Deep Dark Foliage Mode (Chlorophyll Backing & Ambient Rim) |
 | :---: | :---: |
 | <img src="assets/photo_2026-11-10_12-42-23.jpg" alt="Dynamic Island Light" width="380" /> | <img src="assets/photo_2026-11-10_12-41-34.jpg" alt="Quick Access Island Dark" width="380" /> |
