@@ -940,12 +940,12 @@ impl TodoWidget {
             },
         );
 
-        // Sliding Active Tab Pill (Liquid Glass Lens with Crisp Double Bevel)
+        // Sliding Active Tab Pill (Liquid Glass Lens)
         let tab_pill_cx = 96.0 * (1.0 - tab_t) + 224.0 * tab_t;
         let pill_fill = if is_light {
-            [255, 255, 255, 80]
+            [255, 255, 255, 110]
         } else {
-            [255, 255, 255, 28]
+            [255, 255, 255, 48]
         };
         UIFont::draw_rounded_rect_fill(
             buf,
@@ -1057,11 +1057,11 @@ impl TodoWidget {
                 },
             );
 
-            // Sliding active filter pill (Liquid Glass Lens with Crisp Bevel Stroke)
+            // Sliding active filter pill (Liquid Glass Lens)
             let filter_pill_fill = if is_light {
-                [255, 255, 255, 80]
+                [255, 255, 255, 110]
             } else {
-                [255, 255, 255, 28]
+                [255, 255, 255, 48]
             };
             UIFont::draw_rounded_rect_fill(
                 buf,
@@ -1077,7 +1077,7 @@ impl TodoWidget {
 
             // Filter Bar Labels: "All" (cx = 84.0), "Active" (cx = 156.0), "Done" (cx = 228.0), cy = 79.5
             let filter_unselected = if is_light {
-                [80, 90, 105, 230]
+                [35, 45, 60, 245]
             } else {
                 [205, 215, 230, 230]
             };
@@ -1403,8 +1403,8 @@ impl TodoWidget {
             let (add_primary, add_dimmed, add_secondary) = if is_light {
                 (
                     [12, 16, 24, 255],
-                    [45, 55, 70, 240], // Ink at ~65% equivalent (> 5:1 contrast against light background)
-                    [45, 55, 70, 240],
+                    [35, 45, 60, 245], // Ink at ~75% equivalent (> 5.5:1 contrast against light background)
+                    [35, 45, 60, 245],
                 )
             } else {
                 (
@@ -1886,8 +1886,8 @@ impl TodoWidget {
                 .bounds(x_norm, y_norm, w_norm, h_norm)
                 .curvature(0.08)
                 .bevel(22.0)
-                .refraction(18.0)
-                .dispersion(0.12)
+                .refraction(20.0)
+                .dispersion(0.14)
                 .blur(self.blur_radius)
                 .tint(0.0, progress_packed, 0.0, is_light_f32)
                 .roughness(-1.0)

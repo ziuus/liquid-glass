@@ -1552,10 +1552,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let rim_outer = smoothstep(1.5, 0.0, depth) * corner_mult;
     let spec_line = rim_outer * glint_power * params.specular_strength * top_flush;
 
-    // 2. Soft inner edge glow of 3-5px at 10-15% on all sides, with 30% floor on shadow side (prevents open panels on dark backdrops)
+    // 2. Soft inner edge glow of 3-5px on all sides, with firm ~30% floor on shadow side (grounds dark backdrops like ferns)
     let inner_glow = smoothstep(4.0, 0.2, depth);
-    let glow_dir = mix(0.30, 1.0, light_facing); // 30% floor
-    let edge_glow = inner_glow * glow_dir * 0.12 * top_flush;
+    let glow_dir = mix(0.55, 1.0, light_facing); // Firm floor on shadow side
+    let edge_glow = inner_glow * glow_dir * 0.20 * top_flush;
 
     // ════════════════════════════════════════════
     // 5. MASTER COMPOSITE (OBSIDIAN, GLASSMORPHISM, LIQUID GLASS)
@@ -1571,12 +1571,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             base_surface = vec3<f32>(0.0, 0.0, 0.0);
         }
     } else if effective_light > 0.5 {
-        // ── LIGHT / WHITE BACKDROP: DELICATE SPECULAR GLINT + SOFT INNER GLOW ──
-        let light_highlight = spec_line * 0.40 + edge_glow * 0.50;
+        // ── LIGHT / WHITE BACKDROP: DELICATE SPECULAR GLINT + GENTLE INNER GLOW ──
+        let light_highlight = spec_line * 0.40 + edge_glow * 0.35;
         base_surface = col + vec3<f32>(light_highlight);
     } else {
         // ── DARK / VIBRANT BACKDROP (e.g. Ferns): LIT SPECULAR + 30% FLOOR EDGE GLOW ──
-        let dark_highlight = spec_line * 0.85 + edge_glow;
+        let dark_highlight = spec_line * 0.70 + edge_glow;
         base_surface = col + vec3<f32>(dark_highlight);
     }
 
