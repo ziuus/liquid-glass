@@ -1527,33 +1527,20 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     if style_mode >= 1.5 {
         // ── 2.0: TRUE COLOR LIQUID GLASS ──
-        // Optical Snell refraction with crystalline optical clarity & natural backdrop transmission
+        // Optical Snell refraction with crystalline optical clarity, 100% natural contrast, zero milky overlay
         let cur_radius = clamp(params.blur_radius, 0.0, 48.0);
-        let frosted_col = sample_frost_blur(uv + off_uv, cur_radius);
-        let blur_mix = clamp(cur_radius / 24.0, 0.0, 0.45);
-        let base_crystal = mix(sharp_col, frosted_col, blur_mix);
-
-        // Delicate physical ambient light sheen across upper surface (neutral white light, zero color distortion)
-        let top_ambient = mix(0.012, 0.002, (local_px.y / half_size.y) * 0.5 + 0.5);
-
-        if effective_light > 0.5 {
-            // Clean neutral white lift in light mode (preserves 90% of backdrop true color)
-            col = mix(base_crystal, vec3<f32>(1.0, 1.0, 1.0), 0.10) + vec3<f32>(top_ambient);
+        if cur_radius > 0.5 {
+            let frosted_col = sample_frost_blur(uv + off_uv, cur_radius);
+            let blur_mix = clamp(cur_radius / 32.0, 0.0, 0.35);
+            col = mix(sharp_col, frosted_col, blur_mix);
         } else {
-            // Pure optical crystal in dark mode: 100% TRUE BACKDROP COLORS
-            col = base_crystal + vec3<f32>(top_ambient);
+            col = sharp_col;
         }
     } else if style_mode >= 0.5 {
         // ── 1.0: LUXURIOUS TRUE-COLOR FROSTED GLASSMORPHISM ──
-        // Deep 32-tap multi-scale backdrop diffusion (24px radius)
-        let frosted_col = sample_frost_blur(uv, 24.0);
-        let top_ambient = mix(0.010, 0.002, (local_px.y / half_size.y) * 0.5 + 0.5);
-
-        if effective_light > 0.5 {
-            col = mix(frosted_col, vec3<f32>(1.0, 1.0, 1.0), 0.12) + vec3<f32>(top_ambient);
-        } else {
-            col = frosted_col + vec3<f32>(top_ambient);
-        }
+        // Pure backdrop diffusion, 100% true backdrop color, zero fake white tint or contrast wash
+        let cur_radius = clamp(select(24.0, params.blur_radius, params.blur_radius >= 1.0), 1.0, 48.0);
+        col = sample_frost_blur(uv, cur_radius);
     } else {
         // ── 0.0: OBSIDIAN / CLEAN BACKGROUND ──
         col = sharp_col;
