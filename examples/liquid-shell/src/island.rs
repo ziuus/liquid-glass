@@ -2687,23 +2687,46 @@ impl IslandWidget {
                     };
 
                     // Clean, modern inner tile (NO top line segment, NO wireframe outline)
+                    let max_tile_w = (item_w - 10.0) * 0.5;
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
                         self.height,
                         cx,
                         cy,
-                        (item_w - 10.0) * 0.5,
+                        max_tile_w,
                         28.0,
                         Tokens::RADIUS_INNER_TILE,
                         tile_bg,
                     );
 
-                    // Modernized Apple liquid hold-to-confirm progress pill capsule
+                    // Modernized Apple liquid hold-to-confirm: Symmetric Center-to-Edge Expansion
                     if hold_progress > 0.01 && (idx == 2 || idx == 3) {
-                        let bar_y = cy + 21.0;
+                        let bar_y = cy + 20.5;
                         let max_bar_w = (item_w - 20.0) * 0.5;
-                        // Precision translucent track tinted with accent tone
+
+                        // 1. Center-outward radial liquid wave wash through the tile body
+                        let wave_ease = hold_progress.powf(0.85);
+                        let wave_w = max_tile_w * wave_ease;
+                        let wave_h = 28.0 * wave_ease;
+                        let wave_alpha = if is_light {
+                            (hold_progress * 48.0) as u8
+                        } else {
+                            (hold_progress * 60.0) as u8
+                        };
+                        UIFont::draw_rounded_rect_fill(
+                            buf,
+                            self.width,
+                            self.height,
+                            cx,
+                            cy,
+                            wave_w,
+                            wave_h,
+                            Tokens::RADIUS_INNER_TILE * wave_ease,
+                            [accent_col[0], accent_col[1], accent_col[2], wave_alpha],
+                        );
+
+                        // 2. Precision translucent guide track (symmetrical)
                         UIFont::draw_rounded_rect_fill(
                             buf,
                             self.width,
@@ -2711,34 +2734,48 @@ impl IslandWidget {
                             cx,
                             bar_y,
                             max_bar_w,
-                            1.75,
-                            1.25,
+                            2.0,
+                            1.5,
                             if is_light {
-                                [accent_col[0], accent_col[1], accent_col[2], 40]
+                                [accent_col[0], accent_col[1], accent_col[2], 35]
                             } else {
-                                [accent_col[0], accent_col[1], accent_col[2], 55]
+                                [accent_col[0], accent_col[1], accent_col[2], 48]
                             },
                         );
-                        // Radiant expanding fill from left to right
-                        let cur_half_w = (max_bar_w * hold_progress).max(1.5);
-                        let cur_cx = (cx - max_bar_w) + cur_half_w;
-                        let fill_alpha = if hold_progress > 0.85 {
-                            // Pulsing confirmation glow
-                            255
+
+                        // 3. High-energy laser capsule expanding from CENTER to BOTH EDGES simultaneously
+                        let cur_half_w = (max_bar_w * wave_ease).max(2.0);
+                        let fill_alpha = if hold_progress > 0.88 {
+                            255 // Confirmation flash at peak
                         } else {
-                            235
+                            (180.0 + hold_progress * 70.0) as u8
                         };
                         UIFont::draw_rounded_rect_fill(
                             buf,
                             self.width,
                             self.height,
-                            cur_cx,
+                            cx,
                             bar_y,
                             cur_half_w,
-                            1.75,
-                            1.25,
+                            2.0,
+                            1.5,
                             [accent_col[0], accent_col[1], accent_col[2], fill_alpha],
                         );
+
+                        // Specular glint on the laser beam core
+                        if cur_half_w > 4.0 {
+                            UIFont::draw_rounded_rect_fill(
+                                buf,
+                                self.width,
+                                self.height,
+                                cx,
+                                bar_y - 0.5,
+                                cur_half_w * 0.7,
+                                0.8,
+                                0.6,
+                                [255, 255, 255, if hold_progress > 0.88 { 240 } else { 130 }],
+                            );
+                        }
                     }
 
                     let icon_ink = if is_tile_pressed && (idx == 2 || idx == 3) {

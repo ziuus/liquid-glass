@@ -1547,15 +1547,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // ════════════════════════════════════════════
-    // 4. PRECISION SINGLE-RING OPTICAL GLASS SPECULAR HAIRLINE
+    // 4. PHYSICAL 3D DIRECTIONAL SPECULAR MENISCUS GLINT (ZERO ARTIFICIAL BORDERS)
     // ════════════════════════════════════════════
+    // Real liquid glass has ZERO drawn border lines. The perimeter is defined 100%
+    // by Snell refraction bending background rays, plus a directional specular glint
+    // ONLY where the curved 3D surface catches the top-left key light.
     let light_vec_2d = normalize(vec2<f32>(-0.45, -0.65)); // Top-left light source
     let light_facing = max(dot(grad_2d, light_vec_2d), 0.0);
+    let glint_power = pow(light_facing, 2.0); // Directional falloff: zero line on bottom/sides
 
-    // Single razor-sharp 1.2px diamond-cut specular meniscus rim (zero secondary concentric border)
     let corner_mult = 1.0 + 0.25 * corner_factor;
-    let rim_outer = smoothstep(1.2, 0.2, depth) * corner_mult;
-    let spec_rim = rim_outer * mix(0.35, 1.00, light_facing) * params.specular_strength * top_flush;
+    let rim_outer = smoothstep(1.2, 0.1, depth) * corner_mult;
+    let spec_rim = rim_outer * glint_power * params.specular_strength * top_flush;
 
     // ════════════════════════════════════════════
     // 5. MASTER COMPOSITE (OBSIDIAN, GLASSMORPHISM, LIQUID GLASS)
@@ -1572,11 +1575,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     } else if effective_light > 0.5 {
         // ── LIGHT / WHITE BACKDROP: PHYSICAL MENISCUS WITH SPECULAR GLINT ──
-        let edge_contour = smoothstep(1.5, 0.0, depth) * 0.10 * (1.0 - light_facing * 0.70) * top_flush;
-        let specular_glint = rim_outer * light_facing * top_flush;
-        base_surface = (col - vec3<f32>(edge_contour)) + vec3<f32>(specular_glint);
+        let specular_glint = rim_outer * glint_power * top_flush;
+        base_surface = col + vec3<f32>(specular_glint);
     } else {
-        // ── DARK / VIBRANT BACKDROP: DIAMOND-CUT SPECULAR HAIRLINE ──
+        // ── DARK / VIBRANT BACKDROP: DIRECTIONAL SPECULAR GLINT ──
         let rim_reflection = spec_rim;
         let rim_tint = vec3<f32>(1.0, 1.0, 1.0);
         base_surface = col + rim_tint * rim_reflection;
