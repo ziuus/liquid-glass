@@ -1474,12 +1474,8 @@ impl IslandWidget {
             }
         }
 
-        // When expanded, retract back after timeout of no user interaction
-        let retract_timeout = if self.hover_to_expand {
-            Duration::from_millis(350)
-        } else {
-            Duration::from_millis(4000)
-        };
+        // When expanded, retract back after normal 4s timeout of no user interaction
+        let retract_timeout = Duration::from_millis(4000);
 
         if !self.is_hovered
             && !self.is_pressed
