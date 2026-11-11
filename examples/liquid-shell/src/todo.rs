@@ -997,12 +997,12 @@ impl TodoWidget {
         self.current_w = COMPACT_W + (self.target_w - COMPACT_W) * t;
         self.current_h = COMPACT_H + (self.target_h - COMPACT_H) * t;
 
-        // Auto-collapse when unhovered after inactivity (3.2 seconds)
+        // Auto-collapse when unhovered after inactivity (2.5 seconds)
         if !self.is_compact
             && !self.is_hovered
             && !self.is_editing
             && !self.is_cal_editing
-            && self.last_hover_time.elapsed().as_secs_f32() > 3.2
+            && self.last_hover_time.elapsed().as_secs_f32() > 2.5
         {
             self.collapse();
         }

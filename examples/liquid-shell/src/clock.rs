@@ -368,7 +368,7 @@ impl ClockWidget {
         // Auto-collapse after inactivity
         if !self.is_compact
             && !self.is_hovered
-            && self.last_hover_time.elapsed().as_secs_f32() > 3.2
+            && self.last_hover_time.elapsed().as_secs_f32() > 2.5
         {
             self.collapse();
         }

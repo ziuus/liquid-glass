@@ -1480,10 +1480,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if style_mode >= 1.5 {
         let dome_norm = local_px / half_size;
         let r_sq = clamp(dot(dome_norm, dome_norm), 0.0, 1.0);
-        let dome_curve = clamp(params.curvature, 0.04, 0.25);
+        let dome_curve = 0.045; // Crystalline optical depth (natural clarity without warping striped wallpapers)
         let dome_weight = smoothstep(0.0, bezel * 1.4, depth);
-        // Optical lens magnification: pulling sample rays inward magnifies background elements
-        dome_disp_px = -dome_norm * (1.0 - r_sq * 0.45) * (min(half_size.x, half_size.y) * dome_curve * 2.4) * dome_weight;
+        // Optical lens magnification: gentle ray deflection preserving wallpaper aesthetics
+        dome_disp_px = -dome_norm * (1.0 - r_sq * 0.45) * (min(half_size.x, half_size.y) * dome_curve) * dome_weight;
     }
 
     let off_px = (refract_dir * (thickness * lens_profile) + dome_disp_px) * top_flush;

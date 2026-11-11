@@ -733,6 +733,11 @@ fn main() {
 
         let timeout_ms = if animating {
             16
+        } else if !app.clock.is_compact
+            || !app.todo.is_compact
+            || (app.island.mode != IslandMode::CompactPill && app.island.mode != IslandMode::Hidden)
+        {
+            50
         } else if app.island.mode == IslandMode::Hidden {
             250
         } else {

@@ -611,7 +611,7 @@ impl IslandWidget {
             last_music_poll: Instant::now() - Duration::from_secs(10),
 
             active_notif: None,
-            notif_timeout_secs: 5.0,
+            notif_timeout_secs: 3.5,
             ipc_rx,
 
             font,
@@ -1471,7 +1471,12 @@ impl IslandWidget {
             if let Some(notif) = &self.active_notif {
                 if notif.timestamp.elapsed().as_secs_f32() > self.notif_timeout_secs {
                     self.active_notif = None;
-                    self.set_mode(IslandMode::CompactPill);
+                    let return_mode = if self.prev_mode == IslandMode::Hidden {
+                        IslandMode::Hidden
+                    } else {
+                        IslandMode::CompactPill
+                    };
+                    self.set_mode(return_mode);
                 }
             }
         }
@@ -3104,7 +3109,12 @@ impl IslandWidget {
             }
             IslandMode::Notification => {
                 self.active_notif = None;
-                self.set_mode(IslandMode::CompactPill);
+                let return_mode = if self.prev_mode == IslandMode::Hidden {
+                    IslandMode::Hidden
+                } else {
+                    IslandMode::CompactPill
+                };
+                self.set_mode(return_mode);
             }
             IslandMode::QuickAccess => {
                 let app_count = self.quick_access.len().max(1);
