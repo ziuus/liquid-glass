@@ -155,7 +155,7 @@ impl ClockWidget {
             epsilon: 0.001,
         };
 
-        Self {
+        let mut widget = Self {
             layer_surface: Some(layer_surface),
             surface,
             window_wrapper,
@@ -197,6 +197,35 @@ impl ClockWidget {
             fillet_radius: 18.0,
             last_hover_time: Instant::now() - std::time::Duration::from_secs(60),
             needs_input_region_update: true,
+        };
+
+        widget.load_config();
+        widget
+    }
+
+    pub fn load_config(&mut self) {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let conf_path = format!("{}/.config/liquid-glass/config.json", home);
+        if let Ok(content) = std::fs::read_to_string(&conf_path) {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(c) = val.get("clock") {
+                    if let Some(e) = c.get("enabled").and_then(|v| v.as_bool()) {
+                        self.enabled = e;
+                    }
+                    if let Some(s) = c.get("style_mode").and_then(|v| v.as_f64()) {
+                        self.style_mode = s as f32;
+                    }
+                    if let Some(b) = c.get("blur_radius").and_then(|v| v.as_f64()) {
+                        self.blur_radius = b as f32;
+                    }
+                    if let Some(spd) = c.get("animation_speed").and_then(|v| v.as_f64()) {
+                        self.anim_speed = spd as f32;
+                    }
+                    if let Some(hov) = c.get("hover_to_expand").and_then(|v| v.as_bool()) {
+                        self.hover_to_expand = hov;
+                    }
+                }
+            }
         }
     }
 
@@ -698,6 +727,8 @@ impl ClockWidget {
     pub fn draw(&mut self) -> bool {
         if !self.enabled {
             if let Some(renderer) = &mut self.renderer {
+                self.overlay_buffer.fill(0);
+                renderer.update_overlay(self.width, self.height, &self.overlay_buffer);
                 let _ = renderer.render(&[]);
             }
             return false;
