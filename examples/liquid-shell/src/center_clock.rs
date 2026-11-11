@@ -359,16 +359,16 @@ impl CenterHeroClock {
             let mut total_day_w = 0.0f32;
             for (i, &ch) in day_chars.iter().enumerate() {
                 let s = ch.to_string();
-                total_day_w += self.font.measure_text(&s, 30.0, FontWeight::Bold);
+                total_day_w += self.font.measure_text(&s, 28.0, FontWeight::Bold);
                 if i < day_chars.len() - 1 {
                     total_day_w += day_tracking;
                 }
             }
             let mut cur_day_x = cx - total_day_w * 0.5;
-            let day_cy = cy - 88.0;
+            let day_cy = cy - 76.0;
             for (i, &ch) in day_chars.iter().enumerate() {
                 let s = ch.to_string();
-                let ch_w = self.font.measure_text(&s, 30.0, FontWeight::Bold);
+                let ch_w = self.font.measure_text(&s, 28.0, FontWeight::Bold);
                 self.font.draw_text_centered_y(
                     buf,
                     self.width,
@@ -376,7 +376,7 @@ impl CenterHeroClock {
                     &s,
                     cur_day_x,
                     day_cy,
-                    30.0,
+                    28.0,
                     col_day,
                     col_shadow,
                     FontWeight::Bold,
@@ -392,16 +392,16 @@ impl CenterHeroClock {
             let date_chars: Vec<char> = date_full.chars().collect();
             for (i, &ch) in date_chars.iter().enumerate() {
                 let s = ch.to_string();
-                total_date_w += self.font.measure_text(&s, 17.0, FontWeight::Medium);
+                total_date_w += self.font.measure_text(&s, 16.0, FontWeight::Medium);
                 if i < date_chars.len() - 1 {
                     total_date_w += date_tracking;
                 }
             }
             let mut cur_date_x = cx - total_date_w * 0.5;
-            let date_cy = cy - 48.0;
+            let date_cy = cy - 40.0;
             for (i, &ch) in date_chars.iter().enumerate() {
                 let s = ch.to_string();
-                let ch_w = self.font.measure_text(&s, 17.0, FontWeight::Medium);
+                let ch_w = self.font.measure_text(&s, 16.0, FontWeight::Medium);
                 self.font.draw_text_centered_y(
                     buf,
                     self.width,
@@ -409,7 +409,7 @@ impl CenterHeroClock {
                     &s,
                     cur_date_x,
                     date_cy,
-                    17.0,
+                    16.0,
                     col_date,
                     col_shadow,
                     FontWeight::Medium,
@@ -422,8 +422,8 @@ impl CenterHeroClock {
 
             // AM/PM Crystalline Badge aligned with optical digits
             let has_h_tens = (hour_12 / 10) > 0;
-            let ampm_x = if has_h_tens { cx + 262.0 } else { cx + 208.0 };
-            let ampm_cy = cy + 54.0;
+            let ampm_x = if has_h_tens { cx + 214.0 } else { cx + 176.0 };
+            let ampm_cy = cy + 50.0;
             self.font.draw_text_centered_y(
                 buf,
                 self.width,
@@ -431,7 +431,7 @@ impl CenterHeroClock {
                 ampm,
                 ampm_x,
                 ampm_cy,
-                14.5,
+                14.0,
                 col_ampm,
                 col_shadow,
                 FontWeight::Bold,

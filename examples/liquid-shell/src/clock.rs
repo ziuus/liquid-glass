@@ -1,4 +1,4 @@
-use chrono::{Datelike, Local, Timelike};
+use crate::island::SysStats;
 use glass_core::font::{FontWeight, QuicksandFont, UIFont};
 use glass_core::geometry::Shape;
 use glass_core::renderer::GlassRenderer;
@@ -15,6 +15,7 @@ use smithay_client_toolkit::shell::wlr_layer::{
     LayerSurfaceData,
 };
 use smithay_client_toolkit::shell::WaylandSurface;
+use std::process::Command;
 use std::sync::Arc;
 use std::time::Instant;
 use wayland_backend::client::ObjectId;
@@ -23,9 +24,9 @@ use wayland_client::{Dispatch, Proxy, QueueHandle};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::ZwlrLayerSurfaceV1;
 
 pub const CARD_PAD: f32 = 24.0;
-pub const CARD_W: f32 = 320.0;
-pub const CARD_H: f32 = 224.0;
-pub const COMPACT_W: f32 = 156.0;
+pub const CARD_W: f32 = 340.0;
+pub const CARD_H: f32 = 280.0;
+pub const COMPACT_W: f32 = 230.0;
 pub const COMPACT_H: f32 = 36.0;
 
 pub struct WaylandWindow {
@@ -78,9 +79,7 @@ pub struct ClockWidget {
     #[allow(dead_code)]
     pub bat_is_light: bool,
 
-    pub battery_level: f32,
-    pub last_battery_check: Instant,
-    pub last_minute: u32,
+    pub sys_stats: SysStats,
     pub style_mode: f32,
     pub theme_mode: u32,
     pub blur_radius: f32,
@@ -99,6 +98,9 @@ pub struct ClockWidget {
     pub fillet_radius: f32,
     pub last_hover_time: Instant,
     pub needs_input_region_update: bool,
+
+    pub hovered_launcher: Option<usize>,
+    pub hovered_power: Option<usize>,
 }
 
 impl ClockWidget {
@@ -121,8 +123,8 @@ impl ClockWidget {
             + Dispatch<ZwlrLayerSurfaceV1, LayerSurfaceData>
             + 'static,
     {
-        let width = (CARD_W + CARD_PAD * 2.0) as u32; // 368
-        let height = (CARD_H + CARD_PAD * 2.0) as u32; // 272
+        let width = (CARD_W + CARD_PAD * 2.0) as u32; // 388
+        let height = (CARD_H + CARD_PAD * 2.0) as u32; // 328
         let pos_x = 24i32;
         let pos_y = 0i32; // Flush against top screen edge
 
@@ -131,7 +133,7 @@ impl ClockWidget {
             qh,
             surface.clone(),
             Layer::Top,
-            Some("liquid-glass-clock"),
+            Some("liquid-glass-control-hub"),
             None,
         );
 
@@ -177,9 +179,7 @@ impl ClockWidget {
             time_is_light: false,
             bat_is_light: false,
 
-            battery_level: 100.0,
-            last_battery_check: Instant::now() - std::time::Duration::from_secs(60),
-            last_minute: 99,
+            sys_stats: SysStats::new(),
             style_mode: 2.0,
             theme_mode: 0,
             blur_radius: 6.0,
@@ -194,9 +194,12 @@ impl ClockWidget {
             current_h: COMPACT_H,
             target_h: COMPACT_H,
             size_spring: Spring::with_params(0.0, spring_params),
-            fillet_radius: 18.0,
-            last_hover_time: Instant::now() - std::time::Duration::from_secs(60),
+            fillet_radius: 12.0,
+            last_hover_time: Instant::now(),
             needs_input_region_update: true,
+
+            hovered_launcher: None,
+            hovered_power: None,
         };
 
         widget.load_config();
@@ -208,7 +211,8 @@ impl ClockWidget {
         let conf_path = format!("{}/.config/liquid-glass/config.json", home);
         if let Ok(content) = std::fs::read_to_string(&conf_path) {
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
-                if let Some(c) = val.get("clock") {
+                let obj = val.get("control_hub").or_else(|| val.get("clock"));
+                if let Some(c) = obj {
                     if let Some(e) = c.get("enabled").and_then(|v| v.as_bool()) {
                         self.enabled = e;
                     }
@@ -236,7 +240,7 @@ impl ClockWidget {
     pub fn init_gpu(&mut self, gpu: &SharedGpu) {
         let mut renderer = gpu
             .create_renderer(self.window_wrapper.clone(), self.width, self.height)
-            .expect("Failed to create GlassRenderer for clock");
+            .expect("Failed to create GlassRenderer for control hub");
 
         if let Some(crop) = &self.wallpaper_crop {
             renderer.update_background(self.width, self.height, crop);
@@ -280,6 +284,8 @@ impl ClockWidget {
     pub fn collapse(&mut self) {
         if !self.is_compact {
             self.is_compact = true;
+            self.hovered_launcher = None;
+            self.hovered_power = None;
             self.size_spring.set_target(0.0);
             self.needs_input_region_update = true;
         }
@@ -303,6 +309,40 @@ impl ClockWidget {
         let cx = (self.width as f32) * 0.5;
         let half_w = self.current_w * 0.5 + flare;
         px >= (cx - half_w) && px <= (cx + half_w) && py >= 0.0 && py <= (self.current_h + 6.0)
+    }
+
+    fn hit_test_launcher(&self, px: f32, py: f32) -> Option<usize> {
+        let start_y = 162.0;
+        let end_y = 198.0;
+        if py < start_y || py > end_y {
+            return None;
+        }
+        let cx = (self.width as f32) * 0.5;
+        let start_x = cx - 140.0;
+        for i in 0..4 {
+            let bx = start_x + (i as f32) * 72.0;
+            if px >= bx && px <= bx + 64.0 {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    fn hit_test_power(&self, px: f32, py: f32) -> Option<usize> {
+        let start_y = 224.0;
+        let end_y = 258.0;
+        if py < start_y || py > end_y {
+            return None;
+        }
+        let cx = (self.width as f32) * 0.5;
+        let start_x = cx - 140.0;
+        for i in 0..4 {
+            let bx = start_x + (i as f32) * 72.0;
+            if px >= bx && px <= bx + 64.0 {
+                return Some(i);
+            }
+        }
+        None
     }
 
     pub fn apply_input_region<D>(&mut self, compositor: &CompositorState, qh: &QueueHandle<D>)
@@ -357,6 +397,8 @@ impl ClockWidget {
             PointerEventKind::Leave { .. } => {
                 self.is_hovered = false;
                 self.cursor_pos = [-10.0, -10.0];
+                self.hovered_launcher = None;
+                self.hovered_power = None;
                 self.last_hover_time = Instant::now();
                 true
             }
@@ -373,6 +415,14 @@ impl ClockWidget {
                 if inside && self.is_compact && self.hover_to_expand {
                     self.expand();
                 }
+
+                if !self.is_compact {
+                    self.hovered_launcher = self.hit_test_launcher(px, py);
+                    self.hovered_power = self.hit_test_power(px, py);
+                } else {
+                    self.hovered_launcher = None;
+                    self.hovered_power = None;
+                }
                 true
             }
             PointerEventKind::Press { .. } => {
@@ -384,6 +434,42 @@ impl ClockWidget {
                 if self.is_compact {
                     self.expand();
                 } else if py <= COMPACT_H {
+                    self.collapse();
+                } else if let Some(idx) = self.hit_test_launcher(px, py) {
+                    match idx {
+                        0 => {
+                            let _ = Command::new("foot").spawn();
+                        }
+                        1 => {
+                            let _ = Command::new("brave").spawn();
+                        }
+                        2 => {
+                            let _ = Command::new("code").spawn();
+                        }
+                        3 => {
+                            let _ = Command::new("thunar").spawn();
+                        }
+                        _ => {}
+                    }
+                    self.collapse();
+                } else if let Some(idx) = self.hit_test_power(px, py) {
+                    match idx {
+                        0 => {
+                            let _ = Command::new("/home/zius/.local/bin/hyprlock")
+                                .spawn()
+                                .or_else(|_| Command::new("hyprlock").spawn());
+                        }
+                        1 => {
+                            let _ = Command::new("systemctl").arg("suspend").spawn();
+                        }
+                        2 => {
+                            let _ = Command::new("systemctl").arg("reboot").spawn();
+                        }
+                        3 => {
+                            let _ = Command::new("systemctl").arg("poweroff").spawn();
+                        }
+                        _ => {}
+                    }
                     self.collapse();
                 }
                 true
@@ -405,7 +491,7 @@ impl ClockWidget {
         // Auto-collapse after inactivity
         if !self.is_compact
             && !self.is_hovered
-            && self.last_hover_time.elapsed().as_secs_f32() > 2.5
+            && self.last_hover_time.elapsed().as_secs_f32() > 3.0
         {
             self.collapse();
         }
@@ -413,94 +499,29 @@ impl ClockWidget {
         !self.size_spring.is_at_rest()
     }
 
-    pub fn update_battery(&mut self) {
-        if self.last_battery_check.elapsed().as_secs() < 30 {
-            return;
-        }
-        self.last_battery_check = Instant::now();
-        if let Ok(cap_str) = std::fs::read_to_string("/sys/class/power_supply/BAT0/capacity") {
-            if let Ok(cap) = cap_str.trim().parse::<f32>() {
-                self.battery_level = cap.clamp(0.0, 100.0);
-            }
-        }
-    }
-
     pub fn render_ui_overlay(&mut self, buf: &mut [u8]) {
         let is_light = self.effective_is_light();
 
-        let (date_col, _date_sec) = if is_light {
-            ([8, 12, 20, 255], [18, 24, 34, 255])
+        let (text_col, subtle_col, track_bg) = if is_light {
+            ([18, 24, 38, 255], [95, 110, 130, 200], [0, 0, 0, 24])
         } else {
-            ([255, 255, 255, 255], [235, 240, 252, 255])
-        };
-
-        let (time_col, ampm_col) = if is_light {
-            ([8, 12, 20, 255], [18, 24, 34, 255])
-        } else {
-            ([255, 255, 255, 255], [235, 240, 252, 255])
-        };
-
-        let bat_col = if is_light {
-            [8, 12, 20, 255]
-        } else {
-            [255, 255, 255, 255]
+            (
+                [245, 248, 255, 255],
+                [160, 175, 200, 200],
+                [255, 255, 255, 25],
+            )
         };
 
         let col_shadow = [0, 0, 0, 0];
-
-        let now = Local::now();
-        let hr = now.hour();
-        let mn = now.minute();
-        let hr12 = if hr == 0 {
-            12
-        } else if hr > 12 {
-            hr - 12
-        } else {
-            hr
-        };
-        let ampm = if hr >= 12 { "PM" } else { "AM" };
-        let time_str = format!("{:02}:{:02}", hr12, mn);
-
-        let wday_full = match now.weekday().num_days_from_sunday() {
-            1 => "MONDAY",
-            2 => "TUESDAY",
-            3 => "WEDNESDAY",
-            4 => "THURSDAY",
-            5 => "FRIDAY",
-            6 => "SATURDAY",
-            _ => "SUNDAY",
-        };
-
-        let wday_short = match now.weekday().num_days_from_sunday() {
-            1 => "MON",
-            2 => "TUE",
-            3 => "WED",
-            4 => "THU",
-            5 => "FRI",
-            6 => "SAT",
-            _ => "SUN",
-        };
-
-        let month_full = match now.month() {
-            1 => "JANUARY",
-            2 => "FEBRUARY",
-            3 => "MARCH",
-            4 => "APRIL",
-            5 => "MAY",
-            6 => "JUNE",
-            7 => "JULY",
-            8 => "AUGUST",
-            9 => "SEPTEMBER",
-            10 => "OCTOBER",
-            11 => "NOVEMBER",
-            _ => "DECEMBER",
-        };
-
-        let date_full = format!("{} {:02}, {}", month_full, now.day(), now.year());
-        let bat_str = format!("{:.0}%", self.battery_level);
-
         let cx = (self.width as f32) * 0.5;
         let t = self.size_spring.value.clamp(0.0, 1.0);
+
+        let ram_pct = if self.sys_stats.ram_total_gb > 0.0 {
+            ((self.sys_stats.ram_used_gb / self.sys_stats.ram_total_gb) * 100.0).clamp(0.0, 100.0)
+                as u32
+        } else {
+            0
+        };
 
         // ══════════════════════════════════════════════════════════════
         // 1. COMPACT OVERVIEW PILL (t < 0.35)
@@ -508,219 +529,590 @@ impl ClockWidget {
         if t < 0.35 {
             let comp_alpha = ((0.35 - t) / 0.35).clamp(0.0, 1.0);
             let alpha_u8 = (255.0 * comp_alpha) as u8;
-            let ink_col = [time_col[0], time_col[1], time_col[2], alpha_u8];
+            let ink_col = [text_col[0], text_col[1], text_col[2], alpha_u8];
+            let sub_ink = [
+                subtle_col[0],
+                subtle_col[1],
+                subtle_col[2],
+                (subtle_col[3] as f32 * comp_alpha) as u8,
+            ];
 
-            // Clock icon
-            UIFont::draw_clock_icon(buf, self.width, self.height, cx - 44.0, 18.0, ink_col);
+            let pill_cy = 18.0;
 
-            // Time text: e.g. "WED 04:21"
-            let compact_str = format!("{} {}", wday_short, time_str);
-            let time_w = self.font.measure_text(&compact_str, 13.0, FontWeight::Bold);
+            // CPU Segment
+            UIFont::draw_cpu_icon(buf, self.width, self.height, cx - 82.0, pill_cy, ink_col);
+            let cpu_str = format!("{}%", self.sys_stats.cpu_pct);
             self.font.draw_text_centered_y(
                 buf,
                 self.width,
                 self.height,
-                &compact_str,
-                cx - 30.0,
-                18.0,
-                13.0,
+                &cpu_str,
+                cx - 72.0,
+                pill_cy,
+                11.5,
                 ink_col,
                 col_shadow,
                 FontWeight::Bold,
             );
 
-            // Small battery indicator
-            UIFont::draw_battery_capsule(
+            // Divider 1
+            self.font.draw_text_centered_y(
                 buf,
                 self.width,
                 self.height,
-                cx - 30.0 + time_w + 14.0,
-                18.0,
-                self.battery_level,
+                "•",
+                cx - 36.0,
+                pill_cy,
+                11.0,
+                sub_ink,
+                col_shadow,
+                FontWeight::Bold,
+            );
+
+            // RAM Segment
+            UIFont::draw_ram_icon(buf, self.width, self.height, cx - 20.0, pill_cy, ink_col);
+            let ram_str = format!("{}%", ram_pct);
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                &ram_str,
+                cx - 10.0,
+                pill_cy,
+                11.5,
                 ink_col,
+                col_shadow,
+                FontWeight::Bold,
+            );
+
+            // Divider 2
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                "•",
+                cx + 26.0,
+                pill_cy,
+                11.0,
+                sub_ink,
+                col_shadow,
+                FontWeight::Bold,
+            );
+
+            // Battery Segment
+            UIFont::draw_battery_icon(
+                buf,
+                self.width,
+                self.height,
+                cx + 42.0,
+                pill_cy,
+                self.sys_stats.bat_pct,
+                self.sys_stats.bat_charging,
+                ink_col,
+            );
+            let bat_str = format!("{}%", self.sys_stats.bat_pct);
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                &bat_str,
+                cx + 56.0,
+                pill_cy,
+                11.5,
+                ink_col,
+                col_shadow,
+                FontWeight::Bold,
             );
         }
 
         // ══════════════════════════════════════════════════════════════
-        // 2. EXPANDED LIQUID FLOATING/EMERGING VIEW (t > 0.05)
+        // 2. EXPANDED CONTROL HUB CARD (t > 0.05)
         // ══════════════════════════════════════════════════════════════
         if t > 0.05 {
             let exp_alpha = ((t - 0.1) / 0.9).clamp(0.0, 1.0);
             let alpha_u8 = (255.0 * exp_alpha) as u8;
             let slide_y = (1.0 - t) * -22.0;
 
-            let col_day = [date_col[0], date_col[1], date_col[2], alpha_u8];
-            let col_time = [time_col[0], time_col[1], time_col[2], alpha_u8];
-            let col_ampm = [
-                ampm_col[0],
-                ampm_col[1],
-                ampm_col[2],
-                (180.0 * exp_alpha) as u8,
+            let col_ink = [text_col[0], text_col[1], text_col[2], alpha_u8];
+            let col_sub = [
+                subtle_col[0],
+                subtle_col[1],
+                subtle_col[2],
+                (subtle_col[3] as f32 * exp_alpha) as u8,
             ];
-            let col_bat = [bat_col[0], bat_col[1], bat_col[2], alpha_u8];
 
-            // ── A. FUTURISTIC WIDE-TRACKED DAY (e.g. W E D N E S D A Y) ──
-            // Reference Image 1: wide tracked uppercase lettering with generous character spacing
-            let tracking = 7.0f32;
-            let mut total_day_w = 0.0f32;
-            let chars: Vec<char> = wday_full.chars().collect();
-            for (i, &ch) in chars.iter().enumerate() {
-                let s = ch.to_string();
-                total_day_w += self.font.measure_text(&s, 16.0, FontWeight::Bold);
-                if i < chars.len() - 1 {
-                    total_day_w += tracking;
-                }
-            }
-
-            let mut cur_x = cx - total_day_w * 0.5;
-            let day_cy = 38.0 + slide_y;
-            for (i, &ch) in chars.iter().enumerate() {
-                let s = ch.to_string();
-                let ch_w = self.font.measure_text(&s, 16.0, FontWeight::Bold);
-                self.font.draw_text_centered_y(
-                    buf,
-                    self.width,
-                    self.height,
-                    &s,
-                    cur_x,
-                    day_cy,
-                    16.0,
-                    col_day,
-                    col_shadow,
-                    FontWeight::Bold,
-                );
-                cur_x += ch_w;
-                if i < chars.len() - 1 {
-                    cur_x += tracking;
-                }
-            }
-
-            // ── B. ELEGANT TRACKED DATE (e.g. NOVEMBER 11, 2026) ──
-            let date_tracking = 2.5f32;
-            let mut total_date_w = 0.0f32;
-            let date_chars: Vec<char> = date_full.chars().collect();
-            for (i, &ch) in date_chars.iter().enumerate() {
-                let s = ch.to_string();
-                total_date_w += self.font.measure_text(&s, 11.5, FontWeight::Medium);
-                if i < date_chars.len() - 1 {
-                    total_date_w += date_tracking;
-                }
-            }
-            let mut cur_date_x = cx - total_date_w * 0.5;
-            let date_cy = 60.0 + slide_y;
-            for (i, &ch) in date_chars.iter().enumerate() {
-                let s = ch.to_string();
-                let ch_w = self.font.measure_text(&s, 11.5, FontWeight::Medium);
-                self.font.draw_text_centered_y(
-                    buf,
-                    self.width,
-                    self.height,
-                    &s,
-                    cur_date_x,
-                    date_cy,
-                    11.5,
-                    col_day,
-                    col_shadow,
-                    FontWeight::Medium,
-                );
-                cur_date_x += ch_w;
-                if i < date_chars.len() - 1 {
-                    cur_date_x += date_tracking;
-                }
-            }
-
-            // ── C. HERO DIGITAL TIME (58px) + AM/PM BADGE ──
-            let time_cy = 118.0 + slide_y;
-            let time_baseline = self
-                .font
-                .vertical_center_baseline(time_cy, 58.0, FontWeight::Bold);
-            let time_w = self.font.measure_text(&time_str, 58.0, FontWeight::Bold);
-            let ampm_w = self.font.measure_text(ampm, 14.0, FontWeight::Bold);
-            let total_time_block_w = time_w + 10.0 + ampm_w;
-            let time_start_x = cx - total_time_block_w * 0.5;
-
-            let end_time_x = self.font.draw_text_with_shadow(
-                buf,
-                self.width,
-                self.height,
-                &time_str,
-                time_start_x,
-                time_baseline,
-                58.0,
-                col_time,
-                col_shadow,
-                FontWeight::Bold,
-            );
-
-            // AM/PM badge
-            self.font.draw_text_with_shadow(
-                buf,
-                self.width,
-                self.height,
-                ampm,
-                end_time_x + 8.0,
-                time_baseline - 6.0,
-                14.0,
-                col_ampm,
-                col_shadow,
-                FontWeight::Bold,
-            );
-
-            // ── D. LIQUID DEPTH REFLECTION (Reference Image 2) ──
-            // Mirror the rasterized digits downwards below the horizon line with liquid optical falloff
-            let baseline_y = time_baseline as usize;
-            let reflect_h = 18usize;
-            for dy in 1..=reflect_h {
-                let src_y = baseline_y.saturating_sub(dy);
-                let dst_y = baseline_y + dy;
-                if dst_y >= self.height as usize {
-                    break;
-                }
-                let falloff = (1.0 - (dy as f32 / reflect_h as f32)).powf(1.4) * 0.28 * exp_alpha;
-                for x in 0..self.width as usize {
-                    let src_idx = (src_y * self.width as usize + x) * 4;
-                    let dst_idx = (dst_y * self.width as usize + x) * 4;
-                    let src_a = buf[src_idx + 3] as f32 / 255.0;
-                    if src_a > 0.01 {
-                        let refl_a = (src_a * falloff * 255.0) as u8;
-                        if refl_a > buf[dst_idx + 3] {
-                            buf[dst_idx] = buf[src_idx];
-                            buf[dst_idx + 1] = buf[src_idx + 1];
-                            buf[dst_idx + 2] = buf[src_idx + 2];
-                            buf[dst_idx + 3] = refl_a;
-                        }
-                    }
-                }
-            }
-
-            // ── E. BATTERY CAPSULE & PERCENTAGE ──
-            let bat_cy = 180.0 + slide_y;
-            let bat_text_w = self.font.measure_text(&bat_str, 14.0, FontWeight::Bold);
-            let bat_block_w = bat_text_w + 12.0 + 26.0;
-            let bat_start_x = cx - bat_block_w * 0.5;
-
+            // ── A. HEADER BAR ──
+            let header_cy = 28.0 + slide_y;
             self.font.draw_text_centered_y(
                 buf,
                 self.width,
                 self.height,
-                &bat_str,
-                bat_start_x,
-                bat_cy,
-                14.0,
-                col_bat,
+                "CONTROL HUB",
+                54.0,
+                header_cy,
+                11.5,
+                col_sub,
                 col_shadow,
                 FontWeight::Bold,
             );
 
-            UIFont::draw_battery_capsule(
+            let up_str = format!(
+                "UPTIME {}h {}m",
+                self.sys_stats.uptime_hrs, self.sys_stats.uptime_mins
+            );
+            let up_w = self.font.measure_text(&up_str, 10.5, FontWeight::Medium);
+            self.font.draw_text_centered_y(
                 buf,
                 self.width,
                 self.height,
-                bat_start_x + bat_text_w + 14.0,
-                bat_cy,
-                self.battery_level,
-                col_bat,
+                &up_str,
+                334.0 - up_w,
+                header_cy,
+                10.5,
+                col_sub,
+                col_shadow,
+                FontWeight::Medium,
             );
+
+            // Subtle divider separator
+            UIFont::draw_segment(
+                buf,
+                self.width,
+                self.height,
+                (54.0, 40.0 + slide_y),
+                (334.0, 40.0 + slide_y),
+                1.0,
+                [255, 255, 255, (22.0 * exp_alpha) as u8],
+            );
+
+            let track_w = 280.0;
+            let bar_cx = 54.0 + track_w * 0.5;
+            let track_col = [
+                track_bg[0],
+                track_bg[1],
+                track_bg[2],
+                (track_bg[3] as f32 * exp_alpha) as u8,
+            ];
+
+            // ── B. TELEMETRY: CPU ──
+            let cpu_cy = 56.0 + slide_y;
+            UIFont::draw_cpu_icon(buf, self.width, self.height, 62.0, cpu_cy, col_ink);
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                "CPU LOAD",
+                76.0,
+                cpu_cy,
+                11.0,
+                col_ink,
+                col_shadow,
+                FontWeight::Bold,
+            );
+            let cpu_val = format!("{}%", self.sys_stats.cpu_pct);
+            let cpu_vw = self.font.measure_text(&cpu_val, 11.0, FontWeight::Bold);
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                &cpu_val,
+                334.0 - cpu_vw,
+                cpu_cy,
+                11.0,
+                col_ink,
+                col_shadow,
+                FontWeight::Bold,
+            );
+
+            let cpu_track_y = 68.0 + slide_y;
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                bar_cx,
+                cpu_track_y,
+                track_w * 0.5,
+                2.0,
+                2.0,
+                track_col,
+            );
+            let cpu_fill_w = track_w * (self.sys_stats.cpu_pct as f32 / 100.0).clamp(0.02, 1.0);
+            let cpu_fill_cx = 54.0 + cpu_fill_w * 0.5;
+            let cpu_color = if self.sys_stats.cpu_pct > 80 {
+                [235, 87, 87, alpha_u8]
+            } else {
+                [86, 178, 255, alpha_u8]
+            };
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                cpu_fill_cx,
+                cpu_track_y,
+                cpu_fill_w * 0.5,
+                2.0,
+                2.0,
+                cpu_color,
+            );
+
+            // ── C. TELEMETRY: MEMORY ──
+            let ram_cy = 86.0 + slide_y;
+            UIFont::draw_ram_icon(buf, self.width, self.height, 62.0, ram_cy, col_ink);
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                "MEMORY",
+                76.0,
+                ram_cy,
+                11.0,
+                col_ink,
+                col_shadow,
+                FontWeight::Bold,
+            );
+            let ram_val = format!(
+                "{:.1} / {:.1} GB ({}%)",
+                self.sys_stats.ram_used_gb, self.sys_stats.ram_total_gb, ram_pct
+            );
+            let ram_vw = self.font.measure_text(&ram_val, 11.0, FontWeight::Bold);
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                &ram_val,
+                334.0 - ram_vw,
+                ram_cy,
+                11.0,
+                col_ink,
+                col_shadow,
+                FontWeight::Bold,
+            );
+
+            let ram_track_y = 98.0 + slide_y;
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                bar_cx,
+                ram_track_y,
+                track_w * 0.5,
+                2.0,
+                2.0,
+                track_col,
+            );
+            let ram_fill_w = track_w * (ram_pct as f32 / 100.0).clamp(0.02, 1.0);
+            let ram_fill_cx = 54.0 + ram_fill_w * 0.5;
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                ram_fill_cx,
+                ram_track_y,
+                ram_fill_w * 0.5,
+                2.0,
+                2.0,
+                [168, 110, 255, alpha_u8],
+            );
+
+            // ── D. TELEMETRY: BATTERY ──
+            let bat_cy = 116.0 + slide_y;
+            UIFont::draw_battery_icon(
+                buf,
+                self.width,
+                self.height,
+                62.0,
+                bat_cy,
+                self.sys_stats.bat_pct,
+                self.sys_stats.bat_charging,
+                col_ink,
+            );
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                "BATTERY",
+                76.0,
+                bat_cy,
+                11.0,
+                col_ink,
+                col_shadow,
+                FontWeight::Bold,
+            );
+            let bat_val = format!(
+                "{}%{}",
+                self.sys_stats.bat_pct,
+                if self.sys_stats.bat_charging {
+                    " [CHARGING]"
+                } else {
+                    ""
+                }
+            );
+            let bat_vw = self.font.measure_text(&bat_val, 11.0, FontWeight::Bold);
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                &bat_val,
+                334.0 - bat_vw,
+                bat_cy,
+                11.0,
+                col_ink,
+                col_shadow,
+                FontWeight::Bold,
+            );
+
+            let bat_track_y = 128.0 + slide_y;
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                bar_cx,
+                bat_track_y,
+                track_w * 0.5,
+                2.0,
+                2.0,
+                track_col,
+            );
+            let bat_fill_w = track_w * (self.sys_stats.bat_pct as f32 / 100.0).clamp(0.02, 1.0);
+            let bat_fill_cx = 54.0 + bat_fill_w * 0.5;
+            let bat_fill_col = if self.sys_stats.bat_charging {
+                [78, 216, 138, alpha_u8]
+            } else if self.sys_stats.bat_pct <= 20 {
+                [242, 153, 74, alpha_u8]
+            } else {
+                [235, 240, 255, alpha_u8]
+            };
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                bat_fill_cx,
+                bat_track_y,
+                bat_fill_w * 0.5,
+                2.0,
+                2.0,
+                bat_fill_col,
+            );
+
+            // ── E. QUICK LAUNCHERS ──
+            let ql_label_y = 150.0 + slide_y;
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                "APPLICATIONS",
+                54.0,
+                ql_label_y,
+                10.0,
+                col_sub,
+                col_shadow,
+                FontWeight::Bold,
+            );
+
+            let btn_y = 180.0 + slide_y;
+            let app_labels = ["TERM", "WEB", "CODE", "FILES"];
+            for (i, label) in app_labels.iter().enumerate() {
+                let btn_cx = 54.0 + 32.0 + (i as f32) * 72.0;
+                let is_hover = self.hovered_launcher == Some(i);
+                let btn_bg = if is_hover {
+                    [255, 255, 255, (55.0 * exp_alpha) as u8]
+                } else {
+                    [255, 255, 255, (16.0 * exp_alpha) as u8]
+                };
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    btn_cx,
+                    btn_y,
+                    32.0,
+                    16.0,
+                    8.0,
+                    btn_bg,
+                );
+                UIFont::draw_rounded_rect_stroke(
+                    buf,
+                    self.width,
+                    self.height,
+                    btn_cx,
+                    btn_y,
+                    32.0,
+                    16.0,
+                    8.0,
+                    1.0,
+                    [
+                        255,
+                        255,
+                        255,
+                        (if is_hover { 110.0 } else { 30.0 } * exp_alpha) as u8,
+                    ],
+                );
+
+                match i {
+                    0 => UIFont::draw_terminal_icon(
+                        buf,
+                        self.width,
+                        self.height,
+                        btn_cx,
+                        btn_y - 4.0,
+                        col_ink,
+                    ),
+                    1 => UIFont::draw_browser_icon(
+                        buf,
+                        self.width,
+                        self.height,
+                        btn_cx,
+                        btn_y - 4.0,
+                        col_ink,
+                    ),
+                    2 => UIFont::draw_editor_icon(
+                        buf,
+                        self.width,
+                        self.height,
+                        btn_cx,
+                        btn_y - 4.0,
+                        col_ink,
+                    ),
+                    _ => UIFont::draw_folder_icon(
+                        buf,
+                        self.width,
+                        self.height,
+                        btn_cx,
+                        btn_y - 4.0,
+                        col_ink,
+                    ),
+                }
+
+                let tw = self.font.measure_text(label, 8.5, FontWeight::Bold);
+                self.font.draw_text_centered_y(
+                    buf,
+                    self.width,
+                    self.height,
+                    label,
+                    btn_cx - tw * 0.5,
+                    btn_y + 8.5,
+                    8.5,
+                    col_ink,
+                    col_shadow,
+                    FontWeight::Bold,
+                );
+            }
+
+            // ── F. POWER & SESSION CONTROLS ──
+            let pwr_label_y = 214.0 + slide_y;
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                "POWER & SESSION",
+                54.0,
+                pwr_label_y,
+                10.0,
+                col_sub,
+                col_shadow,
+                FontWeight::Bold,
+            );
+
+            let pwr_y = 241.0 + slide_y;
+            let pwr_labels = ["LOCK", "SLEEP", "REBOOT", "OFF"];
+            for (i, label) in pwr_labels.iter().enumerate() {
+                let pwr_cx = 54.0 + 32.0 + (i as f32) * 72.0;
+                let is_hover = self.hovered_power == Some(i);
+                let pwr_bg = if is_hover {
+                    if i == 3 {
+                        [235, 87, 87, (75.0 * exp_alpha) as u8]
+                    } else {
+                        [255, 255, 255, (55.0 * exp_alpha) as u8]
+                    }
+                } else {
+                    [255, 255, 255, (16.0 * exp_alpha) as u8]
+                };
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    pwr_cx,
+                    pwr_y,
+                    32.0,
+                    15.0,
+                    8.0,
+                    pwr_bg,
+                );
+                UIFont::draw_rounded_rect_stroke(
+                    buf,
+                    self.width,
+                    self.height,
+                    pwr_cx,
+                    pwr_y,
+                    32.0,
+                    15.0,
+                    8.0,
+                    1.0,
+                    [
+                        255,
+                        255,
+                        255,
+                        (if is_hover { 110.0 } else { 30.0 } * exp_alpha) as u8,
+                    ],
+                );
+
+                match i {
+                    0 => UIFont::draw_lock_icon(
+                        buf,
+                        self.width,
+                        self.height,
+                        pwr_cx,
+                        pwr_y - 4.0,
+                        col_ink,
+                    ),
+                    1 => UIFont::draw_moon_icon(
+                        buf,
+                        self.width,
+                        self.height,
+                        pwr_cx,
+                        pwr_y - 4.0,
+                        col_ink,
+                    ),
+                    2 => UIFont::draw_restart_icon(
+                        buf,
+                        self.width,
+                        self.height,
+                        pwr_cx,
+                        pwr_y - 4.0,
+                        col_ink,
+                    ),
+                    _ => UIFont::draw_power_icon(
+                        buf,
+                        self.width,
+                        self.height,
+                        pwr_cx,
+                        pwr_y - 4.0,
+                        if is_hover {
+                            [235, 87, 87, alpha_u8]
+                        } else {
+                            col_ink
+                        },
+                    ),
+                }
+
+                let tw = self.font.measure_text(label, 8.0, FontWeight::Bold);
+                self.font.draw_text_centered_y(
+                    buf,
+                    self.width,
+                    self.height,
+                    label,
+                    pwr_cx - tw * 0.5,
+                    pwr_y + 8.5,
+                    8.0,
+                    if is_hover && i == 3 {
+                        [255, 200, 200, alpha_u8]
+                    } else {
+                        col_ink
+                    },
+                    col_shadow,
+                    FontWeight::Bold,
+                );
+            }
         }
     }
 
@@ -734,7 +1126,7 @@ impl ClockWidget {
             return false;
         }
 
-        self.update_battery();
+        self.sys_stats.poll();
 
         let req_len = (self.width * self.height * 4) as usize;
         if self.overlay_buffer.len() != req_len {
@@ -749,7 +1141,6 @@ impl ClockWidget {
         let res = if let Some(renderer) = &mut self.renderer {
             renderer.update_overlay(self.width, self.height, &overlay_vec);
 
-            let now = Local::now();
             let (px, py) = (self.cursor_pos[0], self.cursor_pos[1]);
 
             let cx = (self.width as f32) * 0.5;
@@ -759,7 +1150,7 @@ impl ClockWidget {
             let w_norm = self.current_w / (self.width as f32);
             let h_norm = self.current_h / (self.height as f32);
 
-            let clock_card = GlassSurface::new()
+            let control_hub_card = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::RoundedRectangle {
                     radius: Tokens::RADIUS_OUTER,
@@ -774,14 +1165,13 @@ impl ClockWidget {
                 .fresnel(0.60)
                 .style_mode(self.style_mode)
                 .tint(0.0, 0.0, 1.0, is_light_f32)
-                .roughness(self.battery_level)
+                .roughness(self.sys_stats.bat_pct as f32)
                 .element_type(25.0)
                 .deformation(if self.is_docked { 2.0 } else { 0.0 })
                 .pointer_pos(px, py);
 
-            let surfaces = vec![clock_card];
+            let surfaces = vec![control_hub_card];
             let _ = renderer.render(&surfaces);
-            self.last_minute = now.minute();
             true
         } else {
             false
