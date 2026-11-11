@@ -353,110 +353,100 @@ impl CenterHeroClock {
                 }
             }
         } else {
-            // ── VisionOS Aero Frosted Capsule (Day & Date) ──
-            let pill_cx = cx;
-            let pill_cy = cy - 74.0;
-            let pill_w = 460.0f32;
-            let pill_h = 36.0f32;
-            let pill_r = 18.0f32;
-            let half_w = pill_w * 0.5;
-            let half_h = pill_h * 0.5;
-            let x_min = ((pill_cx - half_w - 2.0).max(0.0)) as u32;
-            let x_max = ((pill_cx + half_w + 2.0).min(self.width as f32 - 1.0)) as u32;
-            let y_min = ((pill_cy - half_h - 2.0).max(0.0)) as u32;
-            let y_max = ((pill_cy + half_h + 2.0).min(self.height as f32 - 1.0)) as u32;
-
-            let fill_base = if is_light { 0.0f32 } else { 255.0f32 };
-            let fill_alpha = if is_light { 0.08f32 } else { 0.12f32 };
-            let rim_alpha_max = if is_light { 0.20f32 } else { 0.35f32 };
-
-            for y in y_min..=y_max {
-                let py = y as f32 + 0.5;
-                let dy = (py - pill_cy).abs() - (half_h - pill_r);
-                let qy = dy.max(0.0);
-
-                for x in x_min..=x_max {
-                    let px = x as f32 + 0.5;
-                    let dx = (px - pill_cx).abs() - (half_w - pill_r);
-                    let qx = dx.max(0.0);
-
-                    let d = (qx * qx + qy * qy).sqrt() + dy.min(0.0).max(dx.min(0.0)) - pill_r;
-                    let alpha_fill = (0.5 - d).clamp(0.0, 1.0);
-                    if alpha_fill > 0.001 {
-                        let rim_edge = (1.0 - (d.abs() * 1.5)).clamp(0.0, 1.0);
-                        let is_top = if py < pill_cy { 1.0 } else { 0.35 };
-                        let rim_a = rim_edge * rim_alpha_max * is_top;
-                        let fill_a = fill_alpha * alpha_fill;
-                        let final_a = (fill_a + rim_a * (1.0 - fill_a)).clamp(0.0, 1.0);
-
-                        let idx = ((y * self.width + x) * 4) as usize;
-                        let r_out = (fill_base * final_a) as u8;
-                        let g_out = (fill_base * final_a) as u8;
-                        let b_out = (fill_base * final_a) as u8;
-                        let a_out = (final_a * 255.0) as u8;
-
-                        buf[idx] = r_out;
-                        buf[idx + 1] = g_out;
-                        buf[idx + 2] = b_out;
-                        buf[idx + 3] = a_out;
-                    }
+            // ── 1. Monumental Rice Day ("W E D N E S D A Y") ──
+            let day_tracking = 12.0f32;
+            let day_chars: Vec<char> = wday_full.chars().collect();
+            let mut total_day_w = 0.0f32;
+            for (i, &ch) in day_chars.iter().enumerate() {
+                let s = ch.to_string();
+                total_day_w += self.font.measure_text(&s, 54.0, FontWeight::Bold);
+                if i < day_chars.len() - 1 {
+                    total_day_w += day_tracking;
                 }
             }
-
-            // Draw pill content: "WEDNESDAY   •   NOVEMBER 11, 2026"
-            let day_date_text = format!("{}   •   {}", wday_full, date_full);
-            let tracking = 4.0f32;
-            let chars: Vec<char> = day_date_text.chars().collect();
-            let mut total_w = 0.0f32;
-            for (i, &ch) in chars.iter().enumerate() {
+            let mut cur_day_x = cx - total_day_w * 0.5;
+            let day_cy = cy - 66.0;
+            for (i, &ch) in day_chars.iter().enumerate() {
                 let s = ch.to_string();
-                total_w += self.font.measure_text(&s, 14.5, FontWeight::Bold);
-                if i < chars.len() - 1 {
-                    total_w += tracking;
-                }
-            }
-            let mut cur_x = cx - total_w * 0.5;
-            for (i, &ch) in chars.iter().enumerate() {
-                let s = ch.to_string();
-                let ch_w = self.font.measure_text(&s, 14.5, FontWeight::Bold);
+                let ch_w = self.font.measure_text(&s, 54.0, FontWeight::Bold);
                 self.font.draw_text_centered_y(
                     buf,
                     self.width,
                     self.height,
                     &s,
-                    cur_x,
-                    pill_cy,
-                    14.5,
+                    cur_day_x,
+                    day_cy,
+                    54.0,
                     col_day,
                     col_shadow,
                     FontWeight::Bold,
                 );
-                cur_x += ch_w;
-                if i < chars.len() - 1 {
-                    cur_x += tracking;
+                cur_day_x += ch_w;
+                if i < day_chars.len() - 1 {
+                    cur_day_x += day_tracking;
                 }
             }
 
-            // Delicate grounding optical streak below numerals (cy + 132)
-            let streak_w = 140.0f32;
-            let streak_x0 = (cx - streak_w * 0.5).max(0.0) as u32;
-            let streak_x1 = (cx + streak_w * 0.5).min(self.width as f32) as u32;
-            let streak_y = (cy + 132.0) as u32;
-            if streak_y < self.height {
-                let streak_base = if is_light { 0.0f32 } else { 255.0f32 };
-                for x in streak_x0..streak_x1 {
-                    let u = (x as f32 - (cx - streak_w * 0.5)) / streak_w;
-                    let fade = (u * std::f32::consts::PI).sin();
-                    let a_val = fade * (if is_light { 0.20 } else { 0.35 });
-                    let a = (a_val * 255.0) as u8;
-                    let col_val = (streak_base * a_val) as u8;
-                    let idx = ((streak_y * self.width + x) * 4) as usize;
-                    buf[idx] = col_val;
-                    buf[idx + 1] = col_val;
-                    buf[idx + 2] = col_val;
-                    buf[idx + 3] = a;
+            // ── 2. Refined Tracked Date ("NOVEMBER 11, 2026") ──
+            let date_tracking = 5.5f32;
+            let mut total_date_w = 0.0f32;
+            let date_chars: Vec<char> = date_full.chars().collect();
+            for (i, &ch) in date_chars.iter().enumerate() {
+                let s = ch.to_string();
+                total_date_w += self.font.measure_text(&s, 19.0, FontWeight::SemiBold);
+                if i < date_chars.len() - 1 {
+                    total_date_w += date_tracking;
                 }
             }
+            let mut cur_date_x = cx - total_date_w * 0.5;
+            let date_cy = cy - 10.0;
+            for (i, &ch) in date_chars.iter().enumerate() {
+                let s = ch.to_string();
+                let ch_w = self.font.measure_text(&s, 19.0, FontWeight::SemiBold);
+                self.font.draw_text_centered_y(
+                    buf,
+                    self.width,
+                    self.height,
+                    &s,
+                    cur_date_x,
+                    date_cy,
+                    19.0,
+                    col_date,
+                    col_shadow,
+                    FontWeight::SemiBold,
+                );
+                cur_date_x += ch_w;
+                if i < date_chars.len() - 1 {
+                    cur_date_x += date_tracking;
+                }
+            }
+
+            // ── 3. The Classic Hero Time ("09:08 PM") - Old Design Itself ──
+            let (hour_12, ampm) = match now.hour12() {
+                (true, h) => (h, "PM"),
+                (false, h) => (h, "AM"),
+            };
+            let time_str = format!("{:02}:{:02} {}", hour_12, now.minute(), ampm);
+            let time_w = self.font.measure_text(&time_str, 84.0, FontWeight::Bold);
+            let time_x = cx - time_w * 0.5;
+            let time_cy = cy + 68.0;
+            let col_time = if is_light {
+                [18, 22, 32, 255]
+            } else {
+                [255, 255, 255, 255]
+            };
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                &time_str,
+                time_x,
+                time_cy,
+                84.0,
+                col_time,
+                col_shadow,
+                FontWeight::Bold,
+            );
         }
     }
 
@@ -478,72 +468,9 @@ impl CenterHeroClock {
                 .bounds(0.0, 0.0, 1.0, 1.0)
                 .element_type(42.0); // Pure Frameless Overlay Pass!
 
-            if self.show_time {
-                let now = Local::now();
-                let (hour_12, _ampm) = match now.hour12() {
-                    (true, h) => (h, "PM"),
-                    (false, h) => (h, "AM"),
-                };
-
-                let liquid_text = GlassSurface::new()
-                    .material(Material::LiquidGlass)
-                    .shape(Shape::RoundedRectangle { radius: 0.0 })
-                    .bounds(0.0, 0.0, 1.0, 1.0)
-                    .curvature(18.0)
-                    .bevel(14.0)
-                    .refraction(22.0)
-                    .dispersion(0.14)
-                    .blur(0.0)
-                    .specular(1.30)
-                    .fresnel(0.65)
-                    .style_mode(2.0)
-                    .tint(
-                        hour_12 as f32,
-                        now.minute() as f32,
-                        now.second() as f32,
-                        is_light_f32,
-                    )
-                    .element_type(40.0)
-                    .deformation(0.0);
-
-                if self.show_glass_card {
-                    let card_w = 980.0f32;
-                    let card_h = 350.0f32;
-                    let cx = (self.width as f32) * 0.5;
-                    let cy = (self.height as f32) * 0.5;
-                    let card_left = cx - card_w * 0.5;
-                    let card_top = cy - card_h * 0.5;
-
-                    let x_norm = card_left / (self.width as f32);
-                    let y_norm = card_top / (self.height as f32);
-                    let w_norm = card_w / (self.width as f32);
-                    let h_norm = card_h / (self.height as f32);
-
-                    let hero_card = GlassSurface::new()
-                        .material(Material::LiquidGlass)
-                        .shape(Shape::RoundedRectangle {
-                            radius: Tokens::RADIUS_OUTER,
-                        })
-                        .bounds(x_norm, y_norm, w_norm, h_norm)
-                        .curvature(18.0)
-                        .bevel(12.0)
-                        .refraction(14.0)
-                        .dispersion(0.12)
-                        .blur(self.blur_radius)
-                        .specular(1.05)
-                        .fresnel(0.60)
-                        .style_mode(self.style_mode)
-                        .tint(0.0, 0.0, 1.0, is_light_f32)
-                        .element_type(24.0)
-                        .deformation(0.0);
-
-                    let _ = renderer.render(&[hero_card, liquid_text]);
-                } else {
-                    let _ = renderer.render(&[liquid_text]);
-                }
-            } else if self.show_glass_card {
+            if self.show_glass_card {
                 let card_w = 980.0f32;
-                let card_h = 240.0f32;
+                let card_h = if self.show_time { 350.0f32 } else { 240.0f32 };
                 let cx = (self.width as f32) * 0.5;
                 let cy = (self.height as f32) * 0.5;
                 let card_left = cx - card_w * 0.5;
@@ -574,7 +501,6 @@ impl CenterHeroClock {
 
                 let _ = renderer.render(&[hero_card, frameless_overlay]);
             } else {
-                // Pure frameless Day & Date floating on wallpaper
                 let _ = renderer.render(&[frameless_overlay]);
             }
             true
