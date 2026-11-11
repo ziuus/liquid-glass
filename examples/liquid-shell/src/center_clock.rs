@@ -274,7 +274,7 @@ impl CenterHeroClock {
         let now = Local::now();
         let wday_full = now.format("%A").to_string().to_uppercase();
         let date_full = now.format("%B %d, %Y").to_string().to_uppercase();
-        let (_hour_12, ampm) = match now.hour12() {
+        let (hour_12, ampm) = match now.hour12() {
             (true, h) => (h, "PM"),
             (false, h) => (h, "AM"),
         };
@@ -365,7 +365,7 @@ impl CenterHeroClock {
                 }
             }
             let mut cur_day_x = cx - total_day_w * 0.5;
-            let day_cy = cy - 90.0;
+            let day_cy = cy - 88.0;
             for (i, &ch) in day_chars.iter().enumerate() {
                 let s = ch.to_string();
                 let ch_w = self.font.measure_text(&s, 30.0, FontWeight::Bold);
@@ -398,7 +398,7 @@ impl CenterHeroClock {
                 }
             }
             let mut cur_date_x = cx - total_date_w * 0.5;
-            let date_cy = cy - 54.0;
+            let date_cy = cy - 48.0;
             for (i, &ch) in date_chars.iter().enumerate() {
                 let s = ch.to_string();
                 let ch_w = self.font.measure_text(&s, 17.0, FontWeight::Medium);
@@ -420,9 +420,10 @@ impl CenterHeroClock {
                 }
             }
 
-            // AM/PM Crystalline Badge
-            let ampm_x = cx + 242.0;
-            let ampm_cy = cy + 36.0;
+            // AM/PM Crystalline Badge aligned with optical digits
+            let has_h_tens = (hour_12 / 10) > 0;
+            let ampm_x = if has_h_tens { cx + 265.0 } else { cx + 216.0 };
+            let ampm_cy = cy + 54.0;
             self.font.draw_text_centered_y(
                 buf,
                 self.width,
@@ -430,7 +431,7 @@ impl CenterHeroClock {
                 ampm,
                 ampm_x,
                 ampm_cy,
-                15.0,
+                14.5,
                 col_ampm,
                 col_shadow,
                 FontWeight::Bold,

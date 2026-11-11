@@ -747,13 +747,17 @@ fn eval_liquid_text_sdf(p: vec2<f32>, tint: vec4<f32>) -> f32 {
     // Scale 13.5 produces heroic Apple OS lockscreen proportions (~140px tall digits)
     let scale = 13.5;
     let sp = 92.0;
-    let y_off = 36.0;
+    let y_off = 54.0; // Proper optical gap below Date (eliminates collision)
 
-    let d_h0 = select(999.0, draw_apple_digit(p - vec2<f32>(-2.15 * sp, y_off), h_tens, scale), h_tens > 0u);
-    let d_h1 = draw_apple_digit(p - vec2<f32>(-1.08 * sp, y_off), h_ones, scale);
-    let d_col = draw_colon(p - vec2<f32>(0.0, y_off), scale * 1.1);
-    let d_m0 = draw_apple_digit(p - vec2<f32>(1.08 * sp, y_off), m_tens, scale);
-    let d_m1 = draw_apple_digit(p - vec2<f32>(2.15 * sp, y_off), m_ones, scale);
+    // Dynamic optical centering: shift left when hour is single-digit so 9:15 is perfectly centered
+    let x_shift = select(0.0, -sp * 0.53, h_tens == 0u);
+    let p_c = p - vec2<f32>(x_shift, y_off);
+
+    let d_h0 = select(999.0, draw_apple_digit(p_c - vec2<f32>(-2.15 * sp, 0.0), h_tens, scale), h_tens > 0u);
+    let d_h1 = draw_apple_digit(p_c - vec2<f32>(-1.08 * sp, 0.0), h_ones, scale);
+    let d_col = draw_colon(p_c - vec2<f32>(0.0, 0.0), scale * 1.1);
+    let d_m0 = draw_apple_digit(p_c - vec2<f32>(1.08 * sp, 0.0), m_tens, scale);
+    let d_m1 = draw_apple_digit(p_c - vec2<f32>(2.15 * sp, 0.0), m_ones, scale);
 
     // Thick rounded cylindrical liquid glass cross-section (11.5px radius)
     let d_time = min(min(d_h0, d_h1), min(d_col, min(d_m0, d_m1))) - 11.5;
@@ -1731,7 +1735,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         // ── DARK / VIBRANT BACKDROP (e.g. Ferns): LIT SPECULAR + 18% AMBIENT RIM FLOOR ──
         let dark_spec = spec_line * 0.60;
         let dark_rim = smoothstep(1.2, 0.0, depth) * mix(0.18, 0.40, light_facing) * top_flush;
-        base_surface = col + vec3<f32>(dark_spec + dark_rim);
+        let liquid_lift = select(0.0, smoothstep(2.0, 0.0, depth) * 0.28, is_liquid_text);
+        base_surface = col + vec3<f32>(dark_spec + dark_rim + liquid_lift);
     }
 
     let app = render_element_appearance(local_px, half_size, params.padding, params.tint.y, params.time, params.tint, effective_light);
