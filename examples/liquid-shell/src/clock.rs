@@ -17,7 +17,7 @@ use smithay_client_toolkit::shell::wlr_layer::{
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::process::Command;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use wayland_backend::client::ObjectId;
 use wayland_client::protocol::{wl_region, wl_surface};
 use wayland_client::{Dispatch, Proxy, QueueHandle};
@@ -104,6 +104,10 @@ pub struct ClockWidget {
     pub page_spring: Spring,
     pub hovered_tab: Option<usize>,
     pub hovered_row: Option<usize>,
+
+    pub is_window_overlapping: bool,
+    pub last_window_check: Instant,
+    pub is_hidden_by_window: bool,
 }
 
 impl ClockWidget {
@@ -213,7 +217,7 @@ impl ClockWidget {
             anim_speed: 1.0,
             enabled: true,
 
-            is_docked: false,
+            is_docked: true,
             is_compact: true,
             hover_to_expand: true,
             current_w: COMPACT_W,
@@ -221,7 +225,7 @@ impl ClockWidget {
             current_h: COMPACT_H,
             target_h: COMPACT_H,
             size_spring: Spring::with_params(0.0, spring_params),
-            fillet_radius: 12.0,
+            fillet_radius: 18.0,
             last_hover_time: Instant::now(),
             needs_input_region_update: true,
 
@@ -229,10 +233,53 @@ impl ClockWidget {
             page_spring: Spring::with_params(0.0, page_params),
             hovered_tab: None,
             hovered_row: None,
+
+            is_window_overlapping: false,
+            last_window_check: Instant::now() - Duration::from_secs(60),
+            is_hidden_by_window: false,
         };
 
         widget.load_config();
+        widget.check_window_overlap();
         widget
+    }
+
+    pub fn check_window_overlap(&mut self) {
+        if self.last_window_check.elapsed() < Duration::from_millis(500) {
+            return;
+        }
+        self.last_window_check = Instant::now();
+
+        let check_x = self.pos_x;
+        let check_y = 0i32;
+        let check_w = self.current_w as i32;
+        let check_h = 45i32;
+
+        let overlapping =
+            crate::island::IslandWidget::query_hyprland_overlap(check_x, check_y, check_w, check_h);
+        if overlapping != self.is_window_overlapping {
+            self.is_window_overlapping = overlapping;
+            self.needs_input_region_update = true;
+        }
+
+        if !overlapping {
+            // Empty desktop: always show status pill on wallpaper
+            self.is_hidden_by_window = false;
+        } else {
+            // Window overlapping: check cursor
+            if let Some((cx, cy)) = crate::island::IslandWidget::query_hyprland_cursor() {
+                let is_at_top_edge = (check_x..=(check_x + check_w)).contains(&cx) && cy <= 6;
+                if is_at_top_edge || self.is_hovered || !self.is_compact {
+                    self.is_hidden_by_window = false;
+                    self.last_hover_time = Instant::now();
+                } else if self.last_hover_time.elapsed() >= Duration::from_millis(1200) {
+                    // Auto-hide behind top bezel so app titlebar is clear
+                    self.is_hidden_by_window = true;
+                }
+            } else if !self.is_hovered && self.is_compact {
+                self.is_hidden_by_window = true;
+            }
+        }
     }
 
     pub fn load_config(&mut self) {
@@ -309,6 +356,7 @@ impl ClockWidget {
     }
 
     pub fn expand(&mut self) {
+        self.is_hidden_by_window = false;
         if self.is_compact {
             self.is_compact = false;
             self.size_spring.set_target(1.0);
@@ -382,7 +430,7 @@ impl ClockWidget {
     {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
-        if !self.enabled {
+        if !self.enabled || (self.is_hidden_by_window && self.is_compact) {
             self.surface.set_input_region(Some(&region));
             region.destroy();
             self.surface.commit();
@@ -1601,7 +1649,7 @@ impl ClockWidget {
     }
 
     pub fn draw(&mut self) -> bool {
-        if !self.enabled {
+        if !self.enabled || (self.is_hidden_by_window && self.is_compact) {
             if let Some(renderer) = &mut self.renderer {
                 self.overlay_buffer.fill(0);
                 renderer.update_overlay(self.width, self.height, &self.overlay_buffer);
@@ -1656,8 +1704,8 @@ impl ClockWidget {
                 .style_mode(self.style_mode)
                 .tint(0.0, 0.0, 1.0, is_light_f32)
                 .roughness(self.sys_stats.bat_pct as f32)
-                .element_type(0.0)
-                .deformation(0.0)
+                .element_type(25.0)
+                .deformation(if self.is_docked { 2.0 } else { 0.0 })
                 .pointer_pos(px, py);
 
             let surfaces = vec![control_hub_card];

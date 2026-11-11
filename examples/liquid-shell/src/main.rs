@@ -757,6 +757,8 @@ fn main() {
         }
         app.island.check_music();
         app.island.check_window_overlap();
+        app.dock.check_window_overlap();
+        app.clock.check_window_overlap();
         app.todo.check_todos();
         app.todo.check_calendar();
 

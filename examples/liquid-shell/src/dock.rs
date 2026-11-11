@@ -215,6 +215,9 @@ pub struct DockWidget {
     pub items: Vec<DockItem>,
     pub last_client_poll: Instant,
     pub pressed_item: Option<usize>,
+
+    pub is_window_overlapping: bool,
+    pub last_window_check: Instant,
 }
 
 impl DockWidget {
@@ -308,10 +311,55 @@ impl DockWidget {
             items: DockItem::defaults(),
             last_client_poll: Instant::now() - Duration::from_secs(60),
             pressed_item: None,
+
+            is_window_overlapping: false,
+            last_window_check: Instant::now() - Duration::from_secs(60),
         };
 
         widget.load_config();
+        widget.check_window_overlap();
         widget
+    }
+
+    pub fn check_window_overlap(&mut self) {
+        if self.last_window_check.elapsed() < Duration::from_millis(500) {
+            return;
+        }
+        self.last_window_check = Instant::now();
+
+        let check_w = DOCK_EXPANDED_W as i32;
+        let check_x = 960 - check_w / 2;
+        let check_y = 1080 - 110;
+        let check_h = 110;
+
+        let overlapping =
+            crate::island::IslandWidget::query_hyprland_overlap(check_x, check_y, check_w, check_h);
+        if overlapping != self.is_window_overlapping {
+            self.is_window_overlapping = overlapping;
+            self.needs_input_region_update = true;
+        }
+
+        if !overlapping {
+            // Empty desktop: dock should always show in all its glory!
+            if self.is_compact {
+                self.expand();
+            }
+        } else {
+            // Windows are overlapping underneath the dock
+            if let Some((_cx, cy)) = crate::island::IslandWidget::query_hyprland_cursor() {
+                // If cursor is at bottom edge (y >= 1074) or inside dock, keep expanded
+                if cy >= 1074 || self.is_hovered {
+                    if self.is_compact {
+                        self.expand();
+                    }
+                    return;
+                }
+            }
+            // Outside dock while an app window overlaps: auto-hide so it doesn't block the app!
+            if !self.is_hovered && !self.is_compact {
+                self.collapse();
+            }
+        }
     }
 
     pub fn load_config(&mut self) {
@@ -558,7 +606,9 @@ impl DockWidget {
                 self.cursor_pos = [-10.0, -10.0];
                 self.last_hover_time = Instant::now();
                 self.pressed_item = None;
-                if !self.is_compact {
+                // Only collapse on leave if windows are overlapping underneath!
+                // On empty desktop, the dock always stays showing!
+                if self.is_window_overlapping && !self.is_compact {
                     self.collapse();
                 }
                 true
@@ -658,8 +708,10 @@ impl DockWidget {
         self.current_h = self.compact_h + (DOCK_EXPANDED_H - self.compact_h) * t;
         self.current_y = DOCK_COMPACT_Y + (target_y - DOCK_COMPACT_Y) * t;
 
-        // Auto-collapse after inactivity (2.5 seconds unhovered)
-        if !self.is_compact
+        // Auto-collapse after inactivity (2.5s unhovered) ONLY when an app window is overlapping!
+        // On an empty desktop, the dock stays permanently open and showing!
+        if self.is_window_overlapping
+            && !self.is_compact
             && !self.is_hovered
             && self.last_hover_time.elapsed().as_secs_f32() > 2.5
         {

@@ -1721,7 +1721,7 @@ impl IslandWidget {
         }
     }
 
-    fn query_hyprland_cursor() -> Option<(i32, i32)> {
+    pub fn query_hyprland_cursor() -> Option<(i32, i32)> {
         use std::io::{Read, Write};
         use std::os::unix::net::UnixStream;
 
@@ -1745,7 +1745,12 @@ impl IslandWidget {
         }
     }
 
-    fn query_hyprland_overlap(island_x: i32, island_y: i32, island_w: i32, island_h: i32) -> bool {
+    pub fn query_hyprland_overlap(
+        island_x: i32,
+        island_y: i32,
+        island_w: i32,
+        island_h: i32,
+    ) -> bool {
         use std::io::{Read, Write};
         use std::os::unix::net::UnixStream;
 
