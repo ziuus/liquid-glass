@@ -462,7 +462,7 @@ impl CenterHeroClock {
             };
             let shifted_right = m1_right - x_shift;
 
-            let ampm_x = cx + shifted_right + 14.0;
+            let ampm_x = cx + shifted_right + 22.0;
             let ampm_cy = cy + 50.0;
             self.font.draw_text_centered_y(
                 buf,

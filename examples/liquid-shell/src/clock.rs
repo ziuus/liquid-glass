@@ -213,7 +213,7 @@ impl ClockWidget {
             anim_speed: 1.0,
             enabled: true,
 
-            is_docked: true,
+            is_docked: false,
             is_compact: true,
             hover_to_expand: true,
             current_w: COMPACT_W,
@@ -1603,24 +1603,30 @@ impl ClockWidget {
             let w_norm = self.current_w / (self.width as f32);
             let h_norm = self.current_h / (self.height as f32);
 
+            let pill_radius = if self.is_compact {
+                15.0
+            } else {
+                Tokens::RADIUS_OUTER
+            };
+
             let control_hub_card = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(Shape::RoundedRectangle {
-                    radius: Tokens::RADIUS_OUTER,
+                    radius: pill_radius,
                 })
                 .bounds(x_norm, y_norm, w_norm, h_norm)
                 .curvature(self.fillet_radius)
-                .bevel(22.0)
-                .refraction(20.0)
-                .dispersion(0.14)
+                .bevel(16.0)
+                .refraction(16.0)
+                .dispersion(0.12)
                 .blur(self.blur_radius)
                 .specular(1.10)
                 .fresnel(0.60)
                 .style_mode(self.style_mode)
                 .tint(0.0, 0.0, 1.0, is_light_f32)
                 .roughness(self.sys_stats.bat_pct as f32)
-                .element_type(25.0)
-                .deformation(if self.is_docked { 2.0 } else { 0.0 })
+                .element_type(0.0)
+                .deformation(0.0)
                 .pointer_pos(px, py);
 
             let surfaces = vec![control_hub_card];
