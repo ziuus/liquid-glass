@@ -475,15 +475,14 @@ impl DockWidget {
     pub fn is_inside(&self, px: f32, py: f32) -> bool {
         let cx = (self.width as f32) * 0.5;
         if self.is_compact {
-            // Generous hover trigger zone across bottom 36px
-            let half_w = (self.compact_w * 0.5 + 40.0).max(90.0);
+            let half_w = self.compact_w * 0.5;
             px >= (cx - half_w)
                 && px <= (cx + half_w)
-                && py >= (DOCK_COMPACT_Y - 24.0)
+                && py >= DOCK_COMPACT_Y
                 && py <= (self.height as f32)
         } else {
-            let half_w = (DOCK_EXPANDED_W + 32.0) * 0.5;
-            let top = (DOCK_EXPANDED_Y - 16.0).max(0.0);
+            let half_w = DOCK_EXPANDED_W * 0.5;
+            let top = DOCK_EXPANDED_Y.max(0.0);
             let bottom = self.height as f32;
             px >= (cx - half_w) && px <= (cx + half_w) && py >= top && py <= bottom
         }
@@ -496,18 +495,17 @@ impl DockWidget {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
         let cx = self.width as i32 / 2;
-        if self.is_compact && self.size_spring.value < 0.1 {
-            let pill_w = (self.compact_w + 80.0) as i32;
-            let pill_h = 28i32;
+        if self.is_compact {
+            let pill_w = self.compact_w as i32;
+            let pill_h = (self.height as i32 - DOCK_COMPACT_Y as i32).max(10);
             let pill_x = cx - pill_w / 2;
-            let pill_y = (DOCK_COMPACT_Y - 20.0) as i32;
+            let pill_y = DOCK_COMPACT_Y as i32;
             region.add(pill_x, pill_y, pill_w, pill_h);
         } else {
-            // Immediately open full expanded bounds to receive all mouse clicks without clipping
-            let card_w = (DOCK_EXPANDED_W + 48.0) as i32;
-            let card_h = (DOCK_EXPANDED_H + 40.0) as i32;
+            let card_w = DOCK_EXPANDED_W as i32;
+            let card_h = (self.height as i32 - DOCK_EXPANDED_Y as i32).max(10);
             let card_x = cx - card_w / 2;
-            let card_y = (DOCK_EXPANDED_Y - 16.0).max(0.0) as i32;
+            let card_y = DOCK_EXPANDED_Y as i32;
             region.add(card_x, card_y, card_w, card_h);
         }
         self.surface.set_input_region(Some(&region));
@@ -584,6 +582,9 @@ impl DockWidget {
                 self.cursor_pos = [-10.0, -10.0];
                 self.last_hover_time = Instant::now();
                 self.pressed_item = None;
+                if !self.is_compact {
+                    self.collapse();
+                }
                 true
             }
             PointerEventKind::Motion { .. } => {

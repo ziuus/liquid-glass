@@ -662,21 +662,25 @@ impl IslandWidget {
             return false;
         }
         let island_cx = (self.width as f32) * 0.5;
-        let island_top = self.current_y;
-        let active_fillet = self.current_fillet_radius();
-        let flare = if self.dock_mode.is_curved() && ly <= active_fillet {
-            active_fillet
+        let is_compact = self.mode == IslandMode::CompactPill;
+        let half_w = if is_compact {
+            Tokens::ISLAND_COMPACT_W * 0.5
         } else {
-            0.0
+            self.target_w * 0.5
         };
-        let half_w = self.current_w * 0.5 + flare;
-        let h = self.current_h;
+        let h = if is_compact {
+            Tokens::ISLAND_COMPACT_H
+        } else {
+            self.target_h
+        };
+        let top = if is_compact {
+            self.target_y
+        } else {
+            self.current_y
+        };
 
-        // Cover from very top screen edge (ly >= 0.0) down through the pill
-        lx >= (island_cx - half_w)
-            && lx <= (island_cx + half_w)
-            && ly >= 0.0
-            && ly <= (island_top + h + 6.0)
+        // Cover strictly the island bounds without bleeding into adjacent apps
+        lx >= (island_cx - half_w) && lx <= (island_cx + half_w) && (0.0..=(top + h)).contains(&ly)
     }
 
     pub fn apply_input_region<D>(&mut self, compositor: &CompositorState, qh: &QueueHandle<D>)
@@ -685,23 +689,17 @@ impl IslandWidget {
     {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
-        let flare = if self.dock_mode.is_curved() {
-            self.current_fillet_radius() as i32
-        } else {
-            0
-        };
         if self.mode != IslandMode::Hidden && self.current_alpha > 0.01 {
             match self.mode {
                 IslandMode::CompactPill => {
-                    let pill_w = self.target_w as i32 + flare * 2;
-                    let pill_h = (self.target_y + self.target_h + 6.0) as i32;
+                    let pill_w = Tokens::ISLAND_COMPACT_W as i32;
+                    let pill_h = (self.target_y + Tokens::ISLAND_COMPACT_H) as i32;
                     let pill_x = (self.width as i32 - pill_w) / 2;
-                    // Intercept from top edge y=0 down to bottom of pill
                     region.add(pill_x, 0, pill_w, pill_h);
                 }
                 _ => {
-                    let card_w = self.target_w as i32 + flare * 2;
-                    let card_h = (self.target_y + self.target_h + 10.0) as i32;
+                    let card_w = self.target_w as i32;
+                    let card_h = (self.target_y + self.target_h) as i32;
                     let card_x = (self.width as i32 - card_w) / 2;
                     region.add(card_x, 0, card_w, card_h);
                 }
@@ -785,6 +783,9 @@ impl IslandWidget {
                 self.hover_dwell_start = None;
                 self.cursor_pos = [-1.0, -1.0];
                 self.last_interaction = Instant::now();
+                if self.mode != IslandMode::CompactPill && self.mode != IslandMode::Hidden {
+                    self.set_mode(IslandMode::CompactPill);
+                }
                 true
             }
             PointerEventKind::Motion { .. } => {
@@ -805,7 +806,7 @@ impl IslandWidget {
                     self.last_interaction = Instant::now();
                     if self.hover_to_expand && self.mode == IslandMode::CompactPill {
                         if let Some(start) = self.hover_dwell_start {
-                            if start.elapsed() >= Duration::from_millis(150) {
+                            if start.elapsed() >= Duration::from_millis(350) {
                                 self.set_mode(IslandMode::MusicExpanded);
                                 self.hover_dwell_start = None;
                             }

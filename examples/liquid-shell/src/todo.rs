@@ -360,14 +360,16 @@ impl TodoWidget {
     }
 
     pub fn is_inside(&self, px: f32, py: f32) -> bool {
-        let flare = if self.is_docked && py <= self.fillet_radius {
-            self.fillet_radius
-        } else {
-            0.0
-        };
         let cx = (self.width as f32) * 0.5;
-        let half_w = self.current_w * 0.5 + flare;
-        px >= (cx - half_w) && px <= (cx + half_w) && py >= 0.0 && py <= (self.current_h + 6.0)
+        if self.is_compact {
+            let half_w = COMPACT_W * 0.5;
+            px >= (cx - half_w) && px <= (cx + half_w) && (0.0..=COMPACT_H).contains(&py)
+        } else {
+            let half_w = CARD_W * 0.5;
+            px >= (cx - half_w)
+                && px <= (cx + half_w)
+                && (0.0..=(self.target_h + 6.0)).contains(&py)
+        }
     }
 
     pub fn apply_input_region<D>(&mut self, compositor: &CompositorState, qh: &QueueHandle<D>)
@@ -376,20 +378,15 @@ impl TodoWidget {
     {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
-        let flare = if self.is_docked {
-            self.fillet_radius as i32
-        } else {
-            0
-        };
         let cx = self.width as i32 / 2;
-        if self.is_compact && self.size_spring.value < 0.1 {
-            let pill_w = COMPACT_W as i32 + flare * 2;
-            let pill_h = (COMPACT_H + 6.0) as i32;
+        if self.is_compact {
+            let pill_w = COMPACT_W as i32;
+            let pill_h = COMPACT_H as i32;
             let pill_x = cx - pill_w / 2;
             region.add(pill_x, 0, pill_w, pill_h);
         } else {
-            let card_w = CARD_W as i32 + flare * 2;
-            let card_h = (self.target_h + 10.0) as i32;
+            let card_w = CARD_W as i32;
+            let card_h = (self.target_h + 6.0) as i32;
             let card_x = cx - card_w / 2;
             region.add(card_x, 0, card_w, card_h);
         }
@@ -417,6 +414,9 @@ impl TodoWidget {
                 self.is_hovered = false;
                 self.cursor_pos = [-10.0, -10.0];
                 self.last_hover_time = Instant::now();
+                if !self.is_compact {
+                    self.collapse();
+                }
                 true
             }
             PointerEventKind::Motion { .. } => {
