@@ -1090,6 +1090,16 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
     }
 
     // ─────────────────────────────────────────────────────────────
+    // 28. Apple Liquid Glass Bottom Dock Canvas
+    // ─────────────────────────────────────────────────────────────
+    if el_type >= 27.5 && el_type <= 28.5 {
+        // Pure Liquid Glass Dock Canvas:
+        // App tiles, icons, tooltips, and active indicator dots are rendered
+        // via the subpixel-perfect UIFont vector overlay.
+        return app;
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // 30. Minimalist Liquid Glass Square Box with Center Action Button
     // ─────────────────────────────────────────────────────────────
     // ─────────────────────────────────────────────────────────────
@@ -1409,7 +1419,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     //   0.0 = Floating (symmetric capsule / rounded rect)
     //   1.0 = Attached Straight (top flush against screen, sharp 90-degree corners)
     //   2.0 = Attached Curved/Notch (top flush against screen, smooth outward fillet wings)
-    let is_dockable = (params.padding >= 24.9 && params.padding <= 27.1);
+    let is_dockable = (params.padding >= 24.9 && params.padding <= 28.5);
     let edge_style = params.deformation;
     let is_attached = (is_dockable && edge_style >= 0.9);
     let is_curved = (is_dockable && edge_style >= 1.5);
@@ -1617,7 +1627,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     fin = fin * (1.0 - overlay.a) + overlay.rgb;
 
     var fin_a = 1.0;
-    if params.padding >= 24.9 && params.padding <= 27.1 {
+    if params.padding >= 24.9 && params.padding <= 28.5 {
         // Dynamic Island & edge widgets: smooth spring alpha fade during toggle/hide
         let tint_z = params.tint.z;
         if tint_z > 0.001 {

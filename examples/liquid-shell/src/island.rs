@@ -334,6 +334,7 @@ pub enum IslandIpcEvent {
     ShowMode(IslandMode),
     ToggleTodo,
     ToggleClock,
+    ToggleAppDock,
     Notification(NotificationData),
     NextMenu,
     PrevMenu,
@@ -1293,12 +1294,13 @@ impl IslandWidget {
         }
     }
 
-    pub fn check_ipc(&mut self) -> (Option<f32>, Option<u32>, Option<f32>, bool, bool) {
+    pub fn check_ipc(&mut self) -> (Option<f32>, Option<u32>, Option<f32>, bool, bool, bool) {
         let mut style_changed = None;
         let mut theme_changed = None;
         let mut blur_changed = None;
         let mut toggle_todo = false;
         let mut toggle_clock = false;
+        let mut toggle_dock = false;
         while let Ok(evt) = self.ipc_rx.try_recv() {
             match evt {
                 IslandIpcEvent::Toggle => self.toggle(),
@@ -1314,6 +1316,9 @@ impl IslandWidget {
                 }
                 IslandIpcEvent::ToggleClock => {
                     toggle_clock = true;
+                }
+                IslandIpcEvent::ToggleAppDock => {
+                    toggle_dock = true;
                 }
                 IslandIpcEvent::NextMenu => self.cycle_mode_forward(),
                 IslandIpcEvent::PrevMenu => self.cycle_mode_backward(),
@@ -1378,6 +1383,7 @@ impl IslandWidget {
             blur_changed,
             toggle_todo,
             toggle_clock,
+            toggle_dock,
         )
     }
 
@@ -3229,6 +3235,8 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>, wakeup_fd: Option<i32>) {
                         send_evt(IslandIpcEvent::ToggleTodo);
                     } else if trimmed == "clock" {
                         send_evt(IslandIpcEvent::ToggleClock);
+                    } else if trimmed == "dock" || trimmed == "bar" {
+                        send_evt(IslandIpcEvent::ToggleAppDock);
                     } else if trimmed == "next" {
                         send_evt(IslandIpcEvent::NextMenu);
                     } else if trimmed == "prev" {

@@ -22,9 +22,11 @@ use wayland_client::protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_s
 use wayland_client::{Connection, Proxy, QueueHandle};
 
 mod clock;
+mod dock;
 mod island;
 mod todo;
 use clock::ClockWidget;
+use dock::DockWidget;
 use island::{IslandMode, IslandWidget};
 use todo::TodoWidget;
 
@@ -45,6 +47,7 @@ struct ShellApp {
     clock: ClockWidget,
     island: IslandWidget,
     todo: TodoWidget,
+    dock: DockWidget,
 
     exit: bool,
     first_configure_count: u32,
@@ -147,6 +150,14 @@ impl LayerShellHandler for ShellApp {
                 self.todo.apply_input_region(&self.compositor_state, _qh);
             }
             self.todo.draw();
+            self.first_configure_count += 1;
+        } else if sid == self.dock.surface_id() {
+            self.dock.configure(configure);
+            if self.dock.renderer.is_none() {
+                self.dock.init_gpu(&self.gpu);
+                self.dock.apply_input_region(&self.compositor_state, _qh);
+            }
+            self.dock.draw();
             self.first_configure_count += 1;
         }
     }
@@ -283,6 +294,11 @@ impl PointerHandler for ShellApp {
                     self.todo.apply_input_region(&self.compositor_state, _qh);
                 }
                 self.todo.draw();
+            } else if sid == self.dock.surface_id() && self.dock.on_pointer_event(event) {
+                if self.dock.needs_input_region_update {
+                    self.dock.apply_input_region(&self.compositor_state, _qh);
+                }
+                self.dock.draw();
             }
         }
     }
@@ -345,6 +361,7 @@ impl ShellApp {
                     self.clock.theme_mode = t;
                     self.island.theme_mode = t;
                     self.todo.theme_mode = t;
+                    self.dock.theme_mode = t;
                 }
                 if let Some(s) = val
                     .get("style_mode")
@@ -354,6 +371,7 @@ impl ShellApp {
                     self.clock.style_mode = s as f32;
                     self.island.style_mode = s as f32;
                     self.todo.style_mode = s as f32;
+                    self.dock.style_mode = s as f32;
                 }
                 if let Some(b) = val
                     .get("blur_radius")
@@ -363,6 +381,7 @@ impl ShellApp {
                     self.clock.blur_radius = b as f32;
                     self.island.blur_radius = b as f32;
                     self.todo.blur_radius = b as f32;
+                    self.dock.blur_radius = b as f32;
                 }
 
                 if let Some(clk) = val.get("clock") {
@@ -497,12 +516,16 @@ fn main() {
         Some(wakeup_write_fd),
     );
     let mut todo = TodoWidget::new(&qh, &compositor_state, &layer_shell, display_ptr);
+    let mut dock = DockWidget::new(&qh, &compositor_state, &layer_shell, display_ptr);
     clock.style_mode = island.style_mode;
     clock.theme_mode = island.theme_mode;
     clock.blur_radius = island.blur_radius;
     todo.style_mode = island.style_mode;
     todo.theme_mode = island.theme_mode;
     todo.blur_radius = island.blur_radius;
+    dock.style_mode = island.style_mode;
+    dock.theme_mode = island.theme_mode;
+    dock.blur_radius = island.blur_radius;
 
     let home = std::env::var("HOME").unwrap_or_default();
     let conf_path = format!("{}/.config/liquid-glass/config.json", home);
@@ -534,6 +557,15 @@ fn main() {
             todo.height,
         );
         todo.update_wallpaper(todo_crop);
+
+        let dock_crop = WallpaperManager::get_wallpaper_crop(
+            cache,
+            dock.pos_x.max(0) as u32,
+            dock.pos_y.max(0) as u32,
+            dock.width,
+            dock.height,
+        );
+        dock.update_wallpaper(dock_crop);
     }
     wallpaper_mgr.release_full_buffer();
 
@@ -551,6 +583,7 @@ fn main() {
         clock,
         island,
         todo,
+        dock,
 
         exit: false,
         first_configure_count: 0,
@@ -599,7 +632,8 @@ fn main() {
             }
         }
 
-        let (new_style, new_theme, new_blur, toggle_todo, toggle_clock) = app.island.check_ipc();
+        let (new_style, new_theme, new_blur, toggle_todo, toggle_clock, toggle_dock) =
+            app.island.check_ipc();
         if toggle_todo {
             app.todo.toggle_expand();
             app.todo.draw();
@@ -608,47 +642,63 @@ fn main() {
             app.clock.toggle_expand();
             app.clock.draw();
         }
+        if toggle_dock {
+            app.dock.toggle_expand();
+            app.dock.draw();
+        }
         if let Some(s) = new_style {
             app.clock.style_mode = s;
             app.todo.style_mode = s;
+            app.dock.style_mode = s;
             app.clock.draw();
             app.todo.draw();
+            app.dock.draw();
             app.island.draw();
         }
         if let Some(t) = new_theme {
             app.clock.theme_mode = t;
             app.todo.theme_mode = t;
+            app.dock.theme_mode = t;
             app.clock.draw();
             app.todo.draw();
+            app.dock.draw();
             app.island.draw();
         }
         if let Some(b) = new_blur {
             app.clock.blur_radius = b;
             app.todo.blur_radius = b;
+            app.dock.blur_radius = b;
             app.clock.draw();
             app.todo.draw();
+            app.dock.draw();
             app.island.draw();
         }
         if app.clock.style_mode != app.island.style_mode {
             let s = app.island.style_mode;
             app.clock.style_mode = s;
             app.todo.style_mode = s;
+            app.dock.style_mode = s;
             app.clock.draw();
             app.todo.draw();
+            app.dock.draw();
         }
         if app.clock.theme_mode != app.island.theme_mode {
             let t = app.island.theme_mode;
             app.clock.theme_mode = t;
             app.todo.theme_mode = t;
+            app.dock.theme_mode = t;
             app.clock.draw();
             app.todo.draw();
+            app.dock.draw();
         }
         if app.clock.blur_radius != app.island.blur_radius {
             let b = app.island.blur_radius;
             app.clock.blur_radius = b;
             app.todo.blur_radius = b;
+            app.dock.blur_radius = b;
             app.clock.draw();
             app.todo.draw();
+            app.dock.draw();
         }
         app.island.check_music();
         app.island.check_window_overlap();
@@ -658,6 +708,7 @@ fn main() {
         let island_active = app.island.update_physics(dt);
         let todo_active = app.todo.update_physics(dt);
         let clock_active = app.clock.update_physics(dt);
+        let dock_active = app.dock.update_physics(dt);
 
         if app.island.needs_input_region_update {
             app.island.apply_input_region(&app.compositor_state, &qh);
@@ -667,6 +718,9 @@ fn main() {
         }
         if app.clock.needs_input_region_update {
             app.clock.apply_input_region(&app.compositor_state, &qh);
+        }
+        if app.dock.needs_input_region_update {
+            app.dock.apply_input_region(&app.compositor_state, &qh);
         }
 
         // Check wallpaper updates across all widgets
@@ -701,6 +755,16 @@ fn main() {
                 );
                 app.todo.update_wallpaper(t);
                 app.todo.draw();
+
+                let d = WallpaperManager::get_wallpaper_crop(
+                    cache,
+                    app.dock.pos_x.max(0) as u32,
+                    app.dock.pos_y.max(0) as u32,
+                    app.dock.width,
+                    app.dock.height,
+                );
+                app.dock.update_wallpaper(d);
+                app.dock.draw();
             }
             app.wallpaper_mgr.release_full_buffer();
         }
@@ -724,17 +788,25 @@ fn main() {
             let _ = conn.flush();
         }
 
+        if dock_active || app.dock.is_hovered {
+            app.dock.draw();
+            let _ = conn.flush();
+        }
+
         let animating = island_active
             || todo_active
             || clock_active
+            || dock_active
             || app.clock.is_hovered
             || app.island.is_hovered
-            || app.todo.is_hovered;
+            || app.todo.is_hovered
+            || app.dock.is_hovered;
 
         let timeout_ms = if animating {
             16
         } else if !app.clock.is_compact
             || !app.todo.is_compact
+            || !app.dock.is_compact
             || (app.island.mode != IslandMode::CompactPill && app.island.mode != IslandMode::Hidden)
         {
             50
