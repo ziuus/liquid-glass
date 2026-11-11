@@ -25,7 +25,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::ZwlrL
 
 pub const CARD_PAD: f32 = 24.0;
 pub const CARD_W: f32 = 340.0;
-pub const CARD_H: f32 = 280.0;
+pub const CARD_H: f32 = 286.0;
 pub const COMPACT_W: f32 = 230.0;
 pub const COMPACT_H: f32 = 36.0;
 
@@ -99,8 +99,11 @@ pub struct ClockWidget {
     pub last_hover_time: Instant,
     pub needs_input_region_update: bool,
 
-    pub hovered_launcher: Option<usize>,
-    pub hovered_power: Option<usize>,
+    // Multi-page sliding carousel
+    pub current_page: usize,
+    pub page_spring: Spring,
+    pub hovered_tab: Option<usize>,
+    pub hovered_row: Option<usize>,
 }
 
 impl ClockWidget {
@@ -124,7 +127,7 @@ impl ClockWidget {
             + 'static,
     {
         let width = (CARD_W + CARD_PAD * 2.0) as u32; // 388
-        let height = (CARD_H + CARD_PAD * 2.0) as u32; // 328
+        let height = (CARD_H + CARD_PAD * 2.0) as u32; // 334
         let pos_x = 24i32;
         let pos_y = 0i32; // Flush against top screen edge
 
@@ -150,9 +153,17 @@ impl ClockWidget {
         });
 
         let spring_params = SpringParams {
-            stiffness: 220.0,
+            stiffness: 240.0,
             damping: 24.0,
             mass: 1.0,
+            initial_velocity: 0.0,
+            epsilon: 0.001,
+        };
+
+        let page_params = SpringParams {
+            stiffness: 260.0,
+            damping: 26.0,
+            mass: 0.9,
             initial_velocity: 0.0,
             epsilon: 0.001,
         };
@@ -198,8 +209,10 @@ impl ClockWidget {
             last_hover_time: Instant::now(),
             needs_input_region_update: true,
 
-            hovered_launcher: None,
-            hovered_power: None,
+            current_page: 0,
+            page_spring: Spring::with_params(0.0, page_params),
+            hovered_tab: None,
+            hovered_row: None,
         };
 
         widget.load_config();
@@ -284,14 +297,13 @@ impl ClockWidget {
     pub fn collapse(&mut self) {
         if !self.is_compact {
             self.is_compact = true;
-            self.hovered_launcher = None;
-            self.hovered_power = None;
+            self.hovered_tab = None;
+            self.hovered_row = None;
             self.size_spring.set_target(0.0);
             self.needs_input_region_update = true;
         }
     }
 
-    #[allow(dead_code)]
     pub fn toggle_expand(&mut self) {
         if self.is_compact {
             self.expand();
@@ -311,34 +323,30 @@ impl ClockWidget {
         }
     }
 
-    fn hit_test_launcher(&self, px: f32, py: f32) -> Option<usize> {
-        let start_y = 162.0;
-        let end_y = 198.0;
-        if py < start_y || py > end_y {
+    fn hit_test_tab(&self, px: f32, py: f32) -> Option<usize> {
+        if py < 14.0 || py > 44.0 {
             return None;
         }
         let cx = (self.width as f32) * 0.5;
-        let start_x = cx - 140.0;
-        for i in 0..4 {
-            let bx = start_x + (i as f32) * 72.0;
-            if px >= bx && px <= bx + 64.0 {
+        let tab_w = 86.0;
+        let start_x = cx - 129.0;
+        for i in 0..3 {
+            let bx = start_x + (i as f32) * tab_w;
+            if px >= bx && px <= bx + tab_w {
                 return Some(i);
             }
         }
         None
     }
 
-    fn hit_test_power(&self, px: f32, py: f32) -> Option<usize> {
-        let start_y = 224.0;
-        let end_y = 258.0;
-        if py < start_y || py > end_y {
+    fn hit_test_row(&self, px: f32, py: f32) -> Option<usize> {
+        let cx = (self.width as f32) * 0.5;
+        if px < (cx - 150.0) || px > (cx + 150.0) {
             return None;
         }
-        let cx = (self.width as f32) * 0.5;
-        let start_x = cx - 140.0;
         for i in 0..4 {
-            let bx = start_x + (i as f32) * 72.0;
-            if px >= bx && px <= bx + 64.0 {
+            let row_cy = 78.0 + (i as f32) * 44.0;
+            if (py - row_cy).abs() <= 20.0 {
                 return Some(i);
             }
         }
@@ -392,8 +400,8 @@ impl ClockWidget {
             PointerEventKind::Leave { .. } => {
                 self.is_hovered = false;
                 self.cursor_pos = [-10.0, -10.0];
-                self.hovered_launcher = None;
-                self.hovered_power = None;
+                self.hovered_tab = None;
+                self.hovered_row = None;
                 self.last_hover_time = Instant::now();
                 if !self.is_compact {
                     self.collapse();
@@ -415,13 +423,26 @@ impl ClockWidget {
                 }
 
                 if !self.is_compact {
-                    self.hovered_launcher = self.hit_test_launcher(px, py);
-                    self.hovered_power = self.hit_test_power(px, py);
+                    self.hovered_tab = self.hit_test_tab(px, py);
+                    self.hovered_row = self.hit_test_row(px, py);
                 } else {
-                    self.hovered_launcher = None;
-                    self.hovered_power = None;
+                    self.hovered_tab = None;
+                    self.hovered_row = None;
                 }
                 true
+            }
+            PointerEventKind::Axis { vertical, .. } => {
+                if !self.is_compact && vertical.absolute != 0.0 {
+                    if vertical.absolute > 0.0 {
+                        self.current_page = (self.current_page + 1) % 3;
+                    } else {
+                        self.current_page = (self.current_page + 2) % 3;
+                    }
+                    self.page_spring.set_target(self.current_page as f32);
+                    self.last_hover_time = Instant::now();
+                    return true;
+                }
+                false
             }
             PointerEventKind::Press { .. } => {
                 let px = event.position.0 as f32;
@@ -431,44 +452,80 @@ impl ClockWidget {
                 }
                 if self.is_compact {
                     self.expand();
-                } else if py <= COMPACT_H {
-                    self.collapse();
-                } else if let Some(idx) = self.hit_test_launcher(px, py) {
-                    match idx {
-                        0 => {
-                            let _ = Command::new("foot").spawn();
+                    return true;
+                }
+
+                self.last_hover_time = Instant::now();
+
+                // Check tab switcher clicks
+                if let Some(tab_idx) = self.hit_test_tab(px, py) {
+                    self.current_page = tab_idx;
+                    self.page_spring.set_target(tab_idx as f32);
+                    return true;
+                }
+
+                // Check pagination dot clicks at bottom
+                let cx = (self.width as f32) * 0.5;
+                if (254.0..=276.0).contains(&py) {
+                    for i in 0..3 {
+                        let dot_x = cx - 24.0 + (i as f32) * 24.0;
+                        if (px - dot_x).abs() <= 16.0 {
+                            self.current_page = i;
+                            self.page_spring.set_target(i as f32);
+                            return true;
                         }
+                    }
+                }
+
+                // Check action row clicks based on active page
+                if let Some(row_idx) = self.hit_test_row(px, py) {
+                    match self.current_page {
                         1 => {
-                            let _ = Command::new("brave").spawn();
+                            // Applications Page
+                            match row_idx {
+                                0 => {
+                                    let _ = Command::new("foot").spawn();
+                                }
+                                1 => {
+                                    let _ = Command::new("brave").spawn();
+                                }
+                                2 => {
+                                    let _ = Command::new("code").spawn();
+                                }
+                                3 => {
+                                    let _ = Command::new("thunar").spawn();
+                                }
+                                _ => {}
+                            }
+                            self.collapse();
                         }
                         2 => {
-                            let _ = Command::new("code").spawn();
+                            // Power Page
+                            match row_idx {
+                                0 => {
+                                    let _ = Command::new("/home/zius/.local/bin/hyprlock")
+                                        .spawn()
+                                        .or_else(|_| Command::new("hyprlock").spawn());
+                                }
+                                1 => {
+                                    let _ = Command::new("systemctl").arg("suspend").spawn();
+                                }
+                                2 => {
+                                    let _ = Command::new("systemctl").arg("reboot").spawn();
+                                }
+                                3 => {
+                                    let _ = Command::new("systemctl").arg("poweroff").spawn();
+                                }
+                                _ => {}
+                            }
+                            self.collapse();
                         }
-                        3 => {
-                            let _ = Command::new("thunar").spawn();
+                        _ => {
+                            // Vitals Page: click cycles to next page
+                            self.current_page = 1;
+                            self.page_spring.set_target(1.0);
                         }
-                        _ => {}
                     }
-                    self.collapse();
-                } else if let Some(idx) = self.hit_test_power(px, py) {
-                    match idx {
-                        0 => {
-                            let _ = Command::new("/home/zius/.local/bin/hyprlock")
-                                .spawn()
-                                .or_else(|_| Command::new("hyprlock").spawn());
-                        }
-                        1 => {
-                            let _ = Command::new("systemctl").arg("suspend").spawn();
-                        }
-                        2 => {
-                            let _ = Command::new("systemctl").arg("reboot").spawn();
-                        }
-                        3 => {
-                            let _ = Command::new("systemctl").arg("poweroff").spawn();
-                        }
-                        _ => {}
-                    }
-                    self.collapse();
                 }
                 true
             }
@@ -479,6 +536,7 @@ impl ClockWidget {
     pub fn update_physics(&mut self, dt: f32) -> bool {
         let eff_dt = dt * self.anim_speed;
         self.size_spring.update(eff_dt);
+        self.page_spring.update(eff_dt);
 
         let t = self.size_spring.value.clamp(0.0, 1.0);
         self.target_w = CARD_W;
@@ -489,27 +547,15 @@ impl ClockWidget {
         // Auto-collapse after inactivity
         if !self.is_compact
             && !self.is_hovered
-            && self.last_hover_time.elapsed().as_secs_f32() > 3.0
+            && self.last_hover_time.elapsed().as_secs_f32() > 4.0
         {
             self.collapse();
         }
 
-        !self.size_spring.is_at_rest()
+        !self.size_spring.is_at_rest() || !self.page_spring.is_at_rest()
     }
 
     pub fn render_ui_overlay(&mut self, buf: &mut [u8]) {
-        let is_light = self.effective_is_light();
-
-        let (text_col, subtle_col, track_bg) = if is_light {
-            ([18, 24, 38, 255], [95, 110, 130, 200], [0, 0, 0, 24])
-        } else {
-            (
-                [245, 248, 255, 255],
-                [160, 175, 200, 200],
-                [255, 255, 255, 25],
-            )
-        };
-
         let col_shadow = [0, 0, 0, 0];
         let cx = (self.width as f32) * 0.5;
         let t = self.size_spring.value.clamp(0.0, 1.0);
@@ -527,13 +573,8 @@ impl ClockWidget {
         if t < 0.35 {
             let comp_alpha = ((0.35 - t) / 0.35).clamp(0.0, 1.0);
             let alpha_u8 = (255.0 * comp_alpha) as u8;
-            let ink_col = [text_col[0], text_col[1], text_col[2], alpha_u8];
-            let sub_ink = [
-                subtle_col[0],
-                subtle_col[1],
-                subtle_col[2],
-                (subtle_col[3] as f32 * comp_alpha) as u8,
-            ];
+            let ink_col = [255, 255, 255, alpha_u8];
+            let sub_ink = [180, 195, 220, (180.0 * comp_alpha) as u8];
 
             let pill_cy = 18.0;
 
@@ -624,492 +665,765 @@ impl ClockWidget {
         }
 
         // ══════════════════════════════════════════════════════════════
-        // 2. EXPANDED CONTROL HUB CARD (t > 0.05)
+        // 2. EXPANDED SLIDING CONTROL HUB (t > 0.05)
         // ══════════════════════════════════════════════════════════════
         if t > 0.05 {
             let exp_alpha = ((t - 0.1) / 0.9).clamp(0.0, 1.0);
             let alpha_u8 = (255.0 * exp_alpha) as u8;
-            let slide_y = (1.0 - t) * -22.0;
+            let slide_y = (1.0 - t) * -24.0;
 
-            let col_ink = [text_col[0], text_col[1], text_col[2], alpha_u8];
-            let col_sub = [
-                subtle_col[0],
-                subtle_col[1],
-                subtle_col[2],
-                (subtle_col[3] as f32 * exp_alpha) as u8,
-            ];
+            let col_white = [255, 255, 255, alpha_u8];
 
-            // ── A. HEADER BAR ──
-            let header_cy = 28.0 + slide_y;
-            self.font.draw_text_centered_y(
+            // ── SOLID OBSIDIAN BACKING CARD (100% High Visibility) ──
+            let card_cy = (CARD_H * 0.5) + slide_y;
+            UIFont::draw_rounded_rect_fill(
                 buf,
                 self.width,
                 self.height,
-                "CONTROL HUB",
-                54.0,
-                header_cy,
+                cx,
+                card_cy,
+                (CARD_W - 8.0) * 0.5,
+                (CARD_H - 8.0) * 0.5,
+                20.0,
+                [10, 14, 22, (232.0 * exp_alpha) as u8],
+            );
+            UIFont::draw_rounded_rect_stroke(
+                buf,
+                self.width,
+                self.height,
+                cx,
+                card_cy,
+                (CARD_W - 8.0) * 0.5,
+                (CARD_H - 8.0) * 0.5,
+                20.0,
+                1.2,
+                [255, 255, 255, (45.0 * exp_alpha) as u8],
+            );
+
+            // ── SEGMENTED TOP TAB SWITCHER (VITALS | APPS | POWER) ──
+            let tab_y = 28.0 + slide_y;
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                cx,
+                tab_y,
+                130.0,
+                12.5,
+                9.0,
+                [255, 255, 255, (18.0 * exp_alpha) as u8],
+            );
+
+            // Smooth spring sliding indicator pill
+            let ind_x = (cx - 86.0) + self.page_spring.value * 86.0;
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                ind_x,
+                tab_y,
+                42.0,
                 11.5,
-                col_sub,
-                col_shadow,
-                FontWeight::Bold,
+                8.0,
+                [255, 255, 255, (65.0 * exp_alpha) as u8],
             );
-
-            let up_str = format!(
-                "UPTIME {}h {}m",
-                self.sys_stats.uptime_hrs, self.sys_stats.uptime_mins
-            );
-            let up_w = self.font.measure_text(&up_str, 10.5, FontWeight::Medium);
-            self.font.draw_text_centered_y(
+            UIFont::draw_rounded_rect_stroke(
                 buf,
                 self.width,
                 self.height,
-                &up_str,
-                334.0 - up_w,
-                header_cy,
-                10.5,
-                col_sub,
-                col_shadow,
-                FontWeight::Medium,
-            );
-
-            // Subtle divider separator
-            UIFont::draw_segment(
-                buf,
-                self.width,
-                self.height,
-                (54.0, 40.0 + slide_y),
-                (334.0, 40.0 + slide_y),
+                ind_x,
+                tab_y,
+                42.0,
+                11.5,
+                8.0,
                 1.0,
-                [255, 255, 255, (22.0 * exp_alpha) as u8],
+                [255, 255, 255, (110.0 * exp_alpha) as u8],
             );
 
-            let track_w = 280.0;
-            let bar_cx = 54.0 + track_w * 0.5;
-            let track_col = [
-                track_bg[0],
-                track_bg[1],
-                track_bg[2],
-                (track_bg[3] as f32 * exp_alpha) as u8,
-            ];
-
-            // ── B. TELEMETRY: CPU ──
-            let cpu_cy = 56.0 + slide_y;
-            UIFont::draw_cpu_icon(buf, self.width, self.height, 62.0, cpu_cy, col_ink);
-            self.font.draw_text_centered_y(
-                buf,
-                self.width,
-                self.height,
-                "CPU LOAD",
-                76.0,
-                cpu_cy,
-                11.0,
-                col_ink,
-                col_shadow,
-                FontWeight::Bold,
-            );
-            let cpu_val = format!("{}%", self.sys_stats.cpu_pct);
-            let cpu_vw = self.font.measure_text(&cpu_val, 11.0, FontWeight::Bold);
-            self.font.draw_text_centered_y(
-                buf,
-                self.width,
-                self.height,
-                &cpu_val,
-                334.0 - cpu_vw,
-                cpu_cy,
-                11.0,
-                col_ink,
-                col_shadow,
-                FontWeight::Bold,
-            );
-
-            let cpu_track_y = 68.0 + slide_y;
-            UIFont::draw_rounded_rect_fill(
-                buf,
-                self.width,
-                self.height,
-                bar_cx,
-                cpu_track_y,
-                track_w * 0.5,
-                2.0,
-                2.0,
-                track_col,
-            );
-            let cpu_fill_w = track_w * (self.sys_stats.cpu_pct as f32 / 100.0).clamp(0.02, 1.0);
-            let cpu_fill_cx = 54.0 + cpu_fill_w * 0.5;
-            let cpu_color = if self.sys_stats.cpu_pct > 80 {
-                [235, 87, 87, alpha_u8]
-            } else {
-                [86, 178, 255, alpha_u8]
-            };
-            UIFont::draw_rounded_rect_fill(
-                buf,
-                self.width,
-                self.height,
-                cpu_fill_cx,
-                cpu_track_y,
-                cpu_fill_w * 0.5,
-                2.0,
-                2.0,
-                cpu_color,
-            );
-
-            // ── C. TELEMETRY: MEMORY ──
-            let ram_cy = 86.0 + slide_y;
-            UIFont::draw_ram_icon(buf, self.width, self.height, 62.0, ram_cy, col_ink);
-            self.font.draw_text_centered_y(
-                buf,
-                self.width,
-                self.height,
-                "MEMORY",
-                76.0,
-                ram_cy,
-                11.0,
-                col_ink,
-                col_shadow,
-                FontWeight::Bold,
-            );
-            let ram_val = format!(
-                "{:.1} / {:.1} GB ({}%)",
-                self.sys_stats.ram_used_gb, self.sys_stats.ram_total_gb, ram_pct
-            );
-            let ram_vw = self.font.measure_text(&ram_val, 11.0, FontWeight::Bold);
-            self.font.draw_text_centered_y(
-                buf,
-                self.width,
-                self.height,
-                &ram_val,
-                334.0 - ram_vw,
-                ram_cy,
-                11.0,
-                col_ink,
-                col_shadow,
-                FontWeight::Bold,
-            );
-
-            let ram_track_y = 98.0 + slide_y;
-            UIFont::draw_rounded_rect_fill(
-                buf,
-                self.width,
-                self.height,
-                bar_cx,
-                ram_track_y,
-                track_w * 0.5,
-                2.0,
-                2.0,
-                track_col,
-            );
-            let ram_fill_w = track_w * (ram_pct as f32 / 100.0).clamp(0.02, 1.0);
-            let ram_fill_cx = 54.0 + ram_fill_w * 0.5;
-            UIFont::draw_rounded_rect_fill(
-                buf,
-                self.width,
-                self.height,
-                ram_fill_cx,
-                ram_track_y,
-                ram_fill_w * 0.5,
-                2.0,
-                2.0,
-                [168, 110, 255, alpha_u8],
-            );
-
-            // ── D. TELEMETRY: BATTERY ──
-            let bat_cy = 116.0 + slide_y;
-            UIFont::draw_battery_icon(
-                buf,
-                self.width,
-                self.height,
-                62.0,
-                bat_cy,
-                self.sys_stats.bat_pct,
-                self.sys_stats.bat_charging,
-                col_ink,
-            );
-            self.font.draw_text_centered_y(
-                buf,
-                self.width,
-                self.height,
-                "BATTERY",
-                76.0,
-                bat_cy,
-                11.0,
-                col_ink,
-                col_shadow,
-                FontWeight::Bold,
-            );
-            let bat_val = format!(
-                "{}%{}",
-                self.sys_stats.bat_pct,
-                if self.sys_stats.bat_charging {
-                    " [CHARGING]"
+            // Tab Labels
+            let tabs = [("VITALS", cx - 86.0), ("APPS", cx), ("POWER", cx + 86.0)];
+            for (idx, (label, tx)) in tabs.iter().enumerate() {
+                let is_active = self.current_page == idx;
+                let text_col = if is_active {
+                    col_white
                 } else {
-                    ""
-                }
-            );
-            let bat_vw = self.font.measure_text(&bat_val, 11.0, FontWeight::Bold);
-            self.font.draw_text_centered_y(
-                buf,
-                self.width,
-                self.height,
-                &bat_val,
-                334.0 - bat_vw,
-                bat_cy,
-                11.0,
-                col_ink,
-                col_shadow,
-                FontWeight::Bold,
-            );
-
-            let bat_track_y = 128.0 + slide_y;
-            UIFont::draw_rounded_rect_fill(
-                buf,
-                self.width,
-                self.height,
-                bar_cx,
-                bat_track_y,
-                track_w * 0.5,
-                2.0,
-                2.0,
-                track_col,
-            );
-            let bat_fill_w = track_w * (self.sys_stats.bat_pct as f32 / 100.0).clamp(0.02, 1.0);
-            let bat_fill_cx = 54.0 + bat_fill_w * 0.5;
-            let bat_fill_col = if self.sys_stats.bat_charging {
-                [78, 216, 138, alpha_u8]
-            } else if self.sys_stats.bat_pct <= 20 {
-                [242, 153, 74, alpha_u8]
-            } else {
-                [235, 240, 255, alpha_u8]
-            };
-            UIFont::draw_rounded_rect_fill(
-                buf,
-                self.width,
-                self.height,
-                bat_fill_cx,
-                bat_track_y,
-                bat_fill_w * 0.5,
-                2.0,
-                2.0,
-                bat_fill_col,
-            );
-
-            // ── E. QUICK LAUNCHERS ──
-            let ql_label_y = 150.0 + slide_y;
-            self.font.draw_text_centered_y(
-                buf,
-                self.width,
-                self.height,
-                "APPLICATIONS",
-                54.0,
-                ql_label_y,
-                10.0,
-                col_sub,
-                col_shadow,
-                FontWeight::Bold,
-            );
-
-            let btn_y = 180.0 + slide_y;
-            let app_labels = ["TERM", "WEB", "CODE", "FILES"];
-            for (i, label) in app_labels.iter().enumerate() {
-                let btn_cx = 54.0 + 32.0 + (i as f32) * 72.0;
-                let is_hover = self.hovered_launcher == Some(i);
-                let btn_bg = if is_hover {
-                    [255, 255, 255, (55.0 * exp_alpha) as u8]
-                } else {
-                    [255, 255, 255, (16.0 * exp_alpha) as u8]
+                    [160, 175, 205, (160.0 * exp_alpha) as u8]
                 };
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    btn_cx,
-                    btn_y,
-                    32.0,
-                    16.0,
-                    8.0,
-                    btn_bg,
-                );
-                UIFont::draw_rounded_rect_stroke(
-                    buf,
-                    self.width,
-                    self.height,
-                    btn_cx,
-                    btn_y,
-                    32.0,
-                    16.0,
-                    8.0,
-                    1.0,
-                    [
-                        255,
-                        255,
-                        255,
-                        (if is_hover { 110.0 } else { 30.0 } * exp_alpha) as u8,
-                    ],
-                );
-
-                match i {
-                    0 => UIFont::draw_terminal_icon(
-                        buf,
-                        self.width,
-                        self.height,
-                        btn_cx,
-                        btn_y - 4.0,
-                        col_ink,
-                    ),
-                    1 => UIFont::draw_browser_icon(
-                        buf,
-                        self.width,
-                        self.height,
-                        btn_cx,
-                        btn_y - 4.0,
-                        col_ink,
-                    ),
-                    2 => UIFont::draw_editor_icon(
-                        buf,
-                        self.width,
-                        self.height,
-                        btn_cx,
-                        btn_y - 4.0,
-                        col_ink,
-                    ),
-                    _ => UIFont::draw_folder_icon(
-                        buf,
-                        self.width,
-                        self.height,
-                        btn_cx,
-                        btn_y - 4.0,
-                        col_ink,
-                    ),
-                }
-
-                let tw = self.font.measure_text(label, 8.5, FontWeight::Bold);
+                let tw = self.font.measure_text(label, 10.0, FontWeight::Bold);
                 self.font.draw_text_centered_y(
                     buf,
                     self.width,
                     self.height,
                     label,
-                    btn_cx - tw * 0.5,
-                    btn_y + 8.5,
-                    8.5,
-                    col_ink,
+                    tx - tw * 0.5,
+                    tab_y,
+                    10.0,
+                    text_col,
                     col_shadow,
                     FontWeight::Bold,
                 );
             }
 
-            // ── F. POWER & SESSION CONTROLS ──
-            let pwr_label_y = 214.0 + slide_y;
-            self.font.draw_text_centered_y(
-                buf,
-                self.width,
-                self.height,
-                "POWER & SESSION",
-                54.0,
-                pwr_label_y,
-                10.0,
-                col_sub,
-                col_shadow,
-                FontWeight::Bold,
-            );
+            // ── ACTIVE SLIDING PAGE CONTENT ──
+            // Render pages with horizontal translation based on page_spring
+            let cur_p = self.page_spring.value;
 
-            let pwr_y = 241.0 + slide_y;
-            let pwr_labels = ["LOCK", "SLEEP", "REBOOT", "OFF"];
-            for (i, label) in pwr_labels.iter().enumerate() {
-                let pwr_cx = 54.0 + 32.0 + (i as f32) * 72.0;
-                let is_hover = self.hovered_power == Some(i);
-                let pwr_bg = if is_hover {
-                    if i == 3 {
-                        [235, 87, 87, (75.0 * exp_alpha) as u8]
-                    } else {
-                        [255, 255, 255, (55.0 * exp_alpha) as u8]
-                    }
-                } else {
-                    [255, 255, 255, (16.0 * exp_alpha) as u8]
-                };
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    pwr_cx,
-                    pwr_y,
-                    32.0,
-                    15.0,
-                    8.0,
-                    pwr_bg,
-                );
-                UIFont::draw_rounded_rect_stroke(
-                    buf,
-                    self.width,
-                    self.height,
-                    pwr_cx,
-                    pwr_y,
-                    32.0,
-                    15.0,
-                    8.0,
-                    1.0,
-                    [
-                        255,
-                        255,
-                        255,
-                        (if is_hover { 110.0 } else { 30.0 } * exp_alpha) as u8,
-                    ],
-                );
+            // ─────────────────────────────────────────────────────────
+            // PAGE 0: HARDWARE TELEMETRY
+            // ─────────────────────────────────────────────────────────
+            let off0 = (0.0 - cur_p) * CARD_W;
+            if off0.abs() < CARD_W {
+                let px_c = cx + off0;
+                let page_alpha = (1.0 - (off0.abs() / CARD_W)).clamp(0.0, 1.0) * exp_alpha;
+                let a8 = (255.0 * page_alpha) as u8;
+                let col_p = [255, 255, 255, a8];
+                let col_p_sub = [170, 185, 215, (190.0 * page_alpha) as u8];
 
-                match i {
-                    0 => UIFont::draw_lock_icon(
-                        buf,
-                        self.width,
-                        self.height,
-                        pwr_cx,
-                        pwr_y - 4.0,
-                        col_ink,
-                    ),
-                    1 => UIFont::draw_moon_icon(
-                        buf,
-                        self.width,
-                        self.height,
-                        pwr_cx,
-                        pwr_y - 4.0,
-                        col_ink,
-                    ),
-                    2 => UIFont::draw_restart_icon(
-                        buf,
-                        self.width,
-                        self.height,
-                        pwr_cx,
-                        pwr_y - 4.0,
-                        col_ink,
-                    ),
-                    _ => UIFont::draw_power_icon(
-                        buf,
-                        self.width,
-                        self.height,
-                        pwr_cx,
-                        pwr_y - 4.0,
-                        if is_hover {
-                            [235, 87, 87, alpha_u8]
-                        } else {
-                            col_ink
-                        },
-                    ),
-                }
-
-                let tw = self.font.measure_text(label, 8.0, FontWeight::Bold);
+                // Subtitle Header
+                let sub_y = 52.0 + slide_y;
                 self.font.draw_text_centered_y(
                     buf,
                     self.width,
                     self.height,
-                    label,
-                    pwr_cx - tw * 0.5,
-                    pwr_y + 8.5,
-                    8.0,
-                    if is_hover && i == 3 {
-                        [255, 200, 200, alpha_u8]
-                    } else {
-                        col_ink
-                    },
+                    "SYSTEM HEALTH",
+                    px_c - 146.0,
+                    sub_y,
+                    10.5,
+                    col_p_sub,
                     col_shadow,
                     FontWeight::Bold,
                 );
+                let up_str = format!(
+                    "UPTIME {}h {}m",
+                    self.sys_stats.uptime_hrs, self.sys_stats.uptime_mins
+                );
+                let up_w = self.font.measure_text(&up_str, 10.5, FontWeight::Bold);
+                self.font.draw_text_centered_y(
+                    buf,
+                    self.width,
+                    self.height,
+                    &up_str,
+                    px_c + 146.0 - up_w,
+                    sub_y,
+                    10.5,
+                    col_p_sub,
+                    col_shadow,
+                    FontWeight::Bold,
+                );
+
+                // Row 1: CPU Metric Tile
+                let cpu_y = 90.0 + slide_y;
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    px_c,
+                    cpu_y,
+                    146.0,
+                    22.0,
+                    10.0,
+                    [255, 255, 255, (14.0 * page_alpha) as u8],
+                );
+                UIFont::draw_cpu_icon(
+                    buf,
+                    self.width,
+                    self.height,
+                    px_c - 128.0,
+                    cpu_y - 4.0,
+                    col_p,
+                );
+                self.font.draw_text_centered_y(
+                    buf,
+                    self.width,
+                    self.height,
+                    "CPU UTILIZATION",
+                    px_c - 110.0,
+                    cpu_y - 4.0,
+                    11.5,
+                    col_p,
+                    col_shadow,
+                    FontWeight::Bold,
+                );
+                let cpu_val = format!("{}%", self.sys_stats.cpu_pct);
+                let cpu_w = self.font.measure_text(&cpu_val, 13.5, FontWeight::Bold);
+                let cpu_col = if self.sys_stats.cpu_pct > 80 {
+                    [255, 85, 85, a8]
+                } else {
+                    [86, 185, 255, a8]
+                };
+                self.font.draw_text_centered_y(
+                    buf,
+                    self.width,
+                    self.height,
+                    &cpu_val,
+                    px_c + 138.0 - cpu_w,
+                    cpu_y - 4.0,
+                    13.5,
+                    cpu_col,
+                    col_shadow,
+                    FontWeight::Bold,
+                );
+                // CPU Bar Track & Fill
+                let track_y = cpu_y + 11.0;
+                let track_w = 260.0;
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    px_c,
+                    track_y,
+                    track_w * 0.5,
+                    2.5,
+                    2.5,
+                    [255, 255, 255, (25.0 * page_alpha) as u8],
+                );
+                let cpu_fw = track_w * (self.sys_stats.cpu_pct as f32 / 100.0).clamp(0.02, 1.0);
+                let cpu_fcx = (px_c - track_w * 0.5) + cpu_fw * 0.5;
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    cpu_fcx,
+                    track_y,
+                    cpu_fw * 0.5,
+                    2.5,
+                    2.5,
+                    cpu_col,
+                );
+
+                // Row 2: MEMORY Metric Tile
+                let ram_y = 146.0 + slide_y;
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    px_c,
+                    ram_y,
+                    146.0,
+                    22.0,
+                    10.0,
+                    [255, 255, 255, (14.0 * page_alpha) as u8],
+                );
+                UIFont::draw_ram_icon(
+                    buf,
+                    self.width,
+                    self.height,
+                    px_c - 128.0,
+                    ram_y - 4.0,
+                    col_p,
+                );
+                self.font.draw_text_centered_y(
+                    buf,
+                    self.width,
+                    self.height,
+                    "MEMORY ALLOCATION",
+                    px_c - 110.0,
+                    ram_y - 4.0,
+                    11.5,
+                    col_p,
+                    col_shadow,
+                    FontWeight::Bold,
+                );
+                let ram_val = format!(
+                    "{:.1} / {:.1} GB",
+                    self.sys_stats.ram_used_gb, self.sys_stats.ram_total_gb
+                );
+                let ram_w = self.font.measure_text(&ram_val, 12.5, FontWeight::Bold);
+                self.font.draw_text_centered_y(
+                    buf,
+                    self.width,
+                    self.height,
+                    &ram_val,
+                    px_c + 138.0 - ram_w,
+                    ram_y - 4.0,
+                    12.5,
+                    [178, 135, 255, a8],
+                    col_shadow,
+                    FontWeight::Bold,
+                );
+                let ram_track_y = ram_y + 11.0;
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    px_c,
+                    ram_track_y,
+                    track_w * 0.5,
+                    2.5,
+                    2.5,
+                    [255, 255, 255, (25.0 * page_alpha) as u8],
+                );
+                let ram_fw = track_w * (ram_pct as f32 / 100.0).clamp(0.02, 1.0);
+                let ram_fcx = (px_c - track_w * 0.5) + ram_fw * 0.5;
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    ram_fcx,
+                    ram_track_y,
+                    ram_fw * 0.5,
+                    2.5,
+                    2.5,
+                    [178, 135, 255, a8],
+                );
+
+                // Row 3: BATTERY Metric Tile
+                let bat_y = 202.0 + slide_y;
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    px_c,
+                    bat_y,
+                    146.0,
+                    22.0,
+                    10.0,
+                    [255, 255, 255, (14.0 * page_alpha) as u8],
+                );
+                UIFont::draw_battery_icon(
+                    buf,
+                    self.width,
+                    self.height,
+                    px_c - 128.0,
+                    bat_y - 4.0,
+                    self.sys_stats.bat_pct,
+                    self.sys_stats.bat_charging,
+                    col_p,
+                );
+                self.font.draw_text_centered_y(
+                    buf,
+                    self.width,
+                    self.height,
+                    "BATTERY STATUS",
+                    px_c - 110.0,
+                    bat_y - 4.0,
+                    11.5,
+                    col_p,
+                    col_shadow,
+                    FontWeight::Bold,
+                );
+                let bat_val = format!(
+                    "{}%{}",
+                    self.sys_stats.bat_pct,
+                    if self.sys_stats.bat_charging {
+                        " [CHARGING]"
+                    } else {
+                        ""
+                    }
+                );
+                let bat_w = self.font.measure_text(&bat_val, 12.5, FontWeight::Bold);
+                let bat_col = if self.sys_stats.bat_charging {
+                    [78, 216, 138, a8]
+                } else if self.sys_stats.bat_pct <= 20 {
+                    [255, 159, 10, a8]
+                } else {
+                    [245, 248, 255, a8]
+                };
+                self.font.draw_text_centered_y(
+                    buf,
+                    self.width,
+                    self.height,
+                    &bat_val,
+                    px_c + 138.0 - bat_w,
+                    bat_y - 4.0,
+                    12.5,
+                    bat_col,
+                    col_shadow,
+                    FontWeight::Bold,
+                );
+                let bat_track_y = bat_y + 11.0;
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    px_c,
+                    bat_track_y,
+                    track_w * 0.5,
+                    2.5,
+                    2.5,
+                    [255, 255, 255, (25.0 * page_alpha) as u8],
+                );
+                let bat_fw = track_w * (self.sys_stats.bat_pct as f32 / 100.0).clamp(0.02, 1.0);
+                let bat_fcx = (px_c - track_w * 0.5) + bat_fw * 0.5;
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    bat_fcx,
+                    bat_track_y,
+                    bat_fw * 0.5,
+                    2.5,
+                    2.5,
+                    bat_col,
+                );
+            }
+
+            // ─────────────────────────────────────────────────────────
+            // PAGE 1: APPLICATIONS (QUICK LAUNCHERS)
+            // ─────────────────────────────────────────────────────────
+            let off1 = (1.0 - cur_p) * CARD_W;
+            if off1.abs() < CARD_W {
+                let px_c = cx + off1;
+                let page_alpha = (1.0 - (off1.abs() / CARD_W)).clamp(0.0, 1.0) * exp_alpha;
+                let a8 = (255.0 * page_alpha) as u8;
+                let col_p = [255, 255, 255, a8];
+                let col_p_sub = [170, 185, 215, (190.0 * page_alpha) as u8];
+
+                let sub_y = 52.0 + slide_y;
+                self.font.draw_text_centered_y(
+                    buf,
+                    self.width,
+                    self.height,
+                    "QUICK LAUNCH",
+                    px_c - 146.0,
+                    sub_y,
+                    10.5,
+                    col_p_sub,
+                    col_shadow,
+                    FontWeight::Bold,
+                );
+                self.font.draw_text_centered_y(
+                    buf,
+                    self.width,
+                    self.height,
+                    "CLICK TO LAUNCH",
+                    px_c + 54.0,
+                    sub_y,
+                    10.5,
+                    col_p_sub,
+                    col_shadow,
+                    FontWeight::Bold,
+                );
+
+                let apps = [
+                    ("Terminal", "foot command shell", 0),
+                    ("Browser", "brave web browser", 1),
+                    ("Editor", "visual studio code", 2),
+                    ("Files", "thunar file manager", 3),
+                ];
+
+                for (idx, (title, sub, icon_idx)) in apps.iter().enumerate() {
+                    let row_y = 78.0 + (idx as f32) * 44.0 + slide_y;
+                    let is_hover = self.current_page == 1 && self.hovered_row == Some(idx);
+                    let row_bg = if is_hover {
+                        [255, 255, 255, (45.0 * page_alpha) as u8]
+                    } else {
+                        [255, 255, 255, (14.0 * page_alpha) as u8]
+                    };
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        px_c,
+                        row_y,
+                        146.0,
+                        18.0,
+                        10.0,
+                        row_bg,
+                    );
+                    if is_hover {
+                        UIFont::draw_rounded_rect_stroke(
+                            buf,
+                            self.width,
+                            self.height,
+                            px_c,
+                            row_y,
+                            146.0,
+                            18.0,
+                            10.0,
+                            1.0,
+                            [255, 255, 255, (120.0 * page_alpha) as u8],
+                        );
+                    }
+
+                    let icon_x = px_c - 128.0;
+                    match icon_idx {
+                        0 => UIFont::draw_terminal_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            icon_x,
+                            row_y,
+                            col_p,
+                        ),
+                        1 => UIFont::draw_browser_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            icon_x,
+                            row_y,
+                            col_p,
+                        ),
+                        2 => UIFont::draw_editor_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            icon_x,
+                            row_y,
+                            col_p,
+                        ),
+                        _ => UIFont::draw_folder_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            icon_x,
+                            row_y,
+                            col_p,
+                        ),
+                    }
+
+                    self.font.draw_text_centered_y(
+                        buf,
+                        self.width,
+                        self.height,
+                        title,
+                        px_c - 108.0,
+                        row_y - 6.0,
+                        12.5,
+                        col_p,
+                        col_shadow,
+                        FontWeight::Bold,
+                    );
+                    self.font.draw_text_centered_y(
+                        buf,
+                        self.width,
+                        self.height,
+                        sub,
+                        px_c - 108.0,
+                        row_y + 7.5,
+                        9.5,
+                        col_p_sub,
+                        col_shadow,
+                        FontWeight::Medium,
+                    );
+
+                    let hint_col = if is_hover {
+                        [86, 185, 255, a8]
+                    } else {
+                        col_p_sub
+                    };
+                    let hint_w = self.font.measure_text("LAUNCH ↵", 10.0, FontWeight::Bold);
+                    self.font.draw_text_centered_y(
+                        buf,
+                        self.width,
+                        self.height,
+                        "LAUNCH ↵",
+                        px_c + 140.0 - hint_w,
+                        row_y,
+                        10.0,
+                        hint_col,
+                        col_shadow,
+                        FontWeight::Bold,
+                    );
+                }
+            }
+
+            // ─────────────────────────────────────────────────────────
+            // PAGE 2: POWER & SESSION
+            // ─────────────────────────────────────────────────────────
+            let off2 = (2.0 - cur_p) * CARD_W;
+            if off2.abs() < CARD_W {
+                let px_c = cx + off2;
+                let page_alpha = (1.0 - (off2.abs() / CARD_W)).clamp(0.0, 1.0) * exp_alpha;
+                let a8 = (255.0 * page_alpha) as u8;
+                let col_p = [255, 255, 255, a8];
+                let col_p_sub = [170, 185, 215, (190.0 * page_alpha) as u8];
+
+                let sub_y = 52.0 + slide_y;
+                self.font.draw_text_centered_y(
+                    buf,
+                    self.width,
+                    self.height,
+                    "SYSTEM CONTROLS",
+                    px_c - 146.0,
+                    sub_y,
+                    10.5,
+                    col_p_sub,
+                    col_shadow,
+                    FontWeight::Bold,
+                );
+                self.font.draw_text_centered_y(
+                    buf,
+                    self.width,
+                    self.height,
+                    "SESSION POWER",
+                    px_c + 60.0,
+                    sub_y,
+                    10.5,
+                    col_p_sub,
+                    col_shadow,
+                    FontWeight::Bold,
+                );
+
+                let power_ops = [
+                    ("Lock Session", "secure display with hyprlock", "LOCK", 0),
+                    ("Suspend", "low-power system sleep", "SLEEP", 1),
+                    ("Reboot", "restart operating system", "RESTART", 2),
+                    ("Power Off", "shut down system hardware", "SHUTDOWN", 3),
+                ];
+
+                for (idx, (title, sub, action, icon_idx)) in power_ops.iter().enumerate() {
+                    let row_y = 78.0 + (idx as f32) * 44.0 + slide_y;
+                    let is_hover = self.current_page == 2 && self.hovered_row == Some(idx);
+                    let row_bg = if is_hover {
+                        if idx == 3 {
+                            [255, 60, 60, (55.0 * page_alpha) as u8]
+                        } else {
+                            [255, 255, 255, (45.0 * page_alpha) as u8]
+                        }
+                    } else {
+                        [255, 255, 255, (14.0 * page_alpha) as u8]
+                    };
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        px_c,
+                        row_y,
+                        146.0,
+                        18.0,
+                        10.0,
+                        row_bg,
+                    );
+                    if is_hover {
+                        let stroke_col = if idx == 3 {
+                            [255, 90, 90, a8]
+                        } else {
+                            [255, 255, 255, (120.0 * page_alpha) as u8]
+                        };
+                        UIFont::draw_rounded_rect_stroke(
+                            buf,
+                            self.width,
+                            self.height,
+                            px_c,
+                            row_y,
+                            146.0,
+                            18.0,
+                            10.0,
+                            1.0,
+                            stroke_col,
+                        );
+                    }
+
+                    let icon_x = px_c - 128.0;
+                    match icon_idx {
+                        0 => UIFont::draw_lock_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            icon_x,
+                            row_y,
+                            col_p,
+                        ),
+                        1 => UIFont::draw_moon_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            icon_x,
+                            row_y,
+                            col_p,
+                        ),
+                        2 => UIFont::draw_restart_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            icon_x,
+                            row_y,
+                            col_p,
+                        ),
+                        _ => UIFont::draw_power_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            icon_x,
+                            row_y,
+                            if is_hover { [255, 90, 90, a8] } else { col_p },
+                        ),
+                    }
+
+                    let title_col = if is_hover && idx == 3 {
+                        [255, 140, 140, a8]
+                    } else {
+                        col_p
+                    };
+                    self.font.draw_text_centered_y(
+                        buf,
+                        self.width,
+                        self.height,
+                        title,
+                        px_c - 108.0,
+                        row_y - 6.0,
+                        12.5,
+                        title_col,
+                        col_shadow,
+                        FontWeight::Bold,
+                    );
+                    self.font.draw_text_centered_y(
+                        buf,
+                        self.width,
+                        self.height,
+                        sub,
+                        px_c - 108.0,
+                        row_y + 7.5,
+                        9.5,
+                        col_p_sub,
+                        col_shadow,
+                        FontWeight::Medium,
+                    );
+
+                    let act_col = if is_hover && idx == 3 {
+                        [255, 90, 90, a8]
+                    } else if is_hover {
+                        [86, 185, 255, a8]
+                    } else {
+                        col_p_sub
+                    };
+                    let act_w = self.font.measure_text(action, 10.0, FontWeight::Bold);
+                    self.font.draw_text_centered_y(
+                        buf,
+                        self.width,
+                        self.height,
+                        action,
+                        px_c + 140.0 - act_w,
+                        row_y,
+                        10.0,
+                        act_col,
+                        col_shadow,
+                        FontWeight::Bold,
+                    );
+                }
+            }
+
+            // ── PAGINATION DOTS (BOTTOM CAROUSEL INDICATOR) ──
+            let dot_y = 265.0 + slide_y;
+            for i in 0..3 {
+                let dx = cx - 24.0 + (i as f32) * 24.0;
+                let is_cur = self.current_page == i;
+                if is_cur {
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        dx,
+                        dot_y,
+                        10.0,
+                        2.5,
+                        2.5,
+                        col_white,
+                    );
+                } else {
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        dx,
+                        dot_y,
+                        2.5,
+                        2.5,
+                        2.5,
+                        [255, 255, 255, (70.0 * exp_alpha) as u8],
+                    );
+                }
             }
         }
     }
