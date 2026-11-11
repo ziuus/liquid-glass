@@ -644,7 +644,291 @@ impl GlassTextInput {
     }
 }
 
-/// A high-level Widget Container holding cards, buttons, sliders, and toggles.
+/// A floating glass tooltip overlay primitive with spring-animated transitions and high blur.
+#[derive(Debug, Clone)]
+pub struct GlassTooltip {
+    pub target_pos: [f32; 2],
+    pub text: String,
+    pub width: f32,
+    pub height: f32,
+    pub offset: [f32; 2],
+    pub is_visible: bool,
+    pub transition_spring: Spring,
+    pub blur_radius: f32,
+}
+
+impl GlassTooltip {
+    pub fn new(x: f32, y: f32, text: &str) -> Self {
+        let char_count = text.chars().count();
+        let est_w = (char_count as f32 * 8.5 + 24.0).clamp(60.0, 320.0);
+        let est_h = 32.0;
+
+        Self {
+            target_pos: [x, y],
+            text: text.to_string(),
+            width: est_w,
+            height: est_h,
+            offset: [0.0, -42.0],
+            is_visible: false,
+            transition_spring: Spring::with_params(0.0, SpringParams::smooth()),
+            blur_radius: 36.0,
+        }
+    }
+
+    pub fn with_size(mut self, width: f32, height: f32) -> Self {
+        self.width = width;
+        self.height = height;
+        self
+    }
+
+    pub fn with_offset(mut self, dx: f32, dy: f32) -> Self {
+        self.offset = [dx, dy];
+        self
+    }
+
+    pub fn with_blur(mut self, blur: f32) -> Self {
+        self.blur_radius = blur;
+        self
+    }
+
+    pub fn show(&mut self) {
+        self.is_visible = true;
+        self.transition_spring.set_target(1.0);
+    }
+
+    pub fn hide(&mut self) {
+        self.is_visible = false;
+        self.transition_spring.set_target(0.0);
+    }
+
+    pub fn set_target(&mut self, x: f32, y: f32) {
+        self.target_pos = [x, y];
+    }
+
+    pub fn update(&mut self, dt: f32) {
+        self.transition_spring.update(dt);
+    }
+
+    pub fn to_surface(&self) -> Option<GlassSurface> {
+        let t = self.transition_spring.value.clamp(0.0, 1.0);
+        if t <= 0.005 && !self.is_visible {
+            return None;
+        }
+
+        let scale = 0.85 + t * 0.15;
+        let w = self.width * scale;
+        let h = self.height * scale;
+        let x = self.target_pos[0] + self.offset[0] - w * 0.5;
+        let y = self.target_pos[1] + self.offset[1] - (1.0 - t) * 6.0;
+
+        Some(
+            GlassSurface::new()
+                .material(Material::LiquidGlass)
+                .shape(Shape::Capsule)
+                .bounds(x, y, w, h)
+                .blur(self.blur_radius)
+                .refraction(0.70)
+                .fresnel(0.65)
+                .bevel(6.0)
+                .specular(0.90)
+                .tint(0.12, 0.15, 0.22, 0.50 * t),
+        )
+    }
+}
+
+/// A menu item entry for `GlassContextMenu`.
+#[derive(Debug, Clone)]
+pub struct GlassMenuItem {
+    pub id: String,
+    pub label: String,
+    pub enabled: bool,
+    pub icon: Option<String>,
+}
+
+impl GlassMenuItem {
+    pub fn new(id: &str, label: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            label: label.to_string(),
+            enabled: true,
+            icon: None,
+        }
+    }
+
+    pub fn disabled(mut self) -> Self {
+        self.enabled = false;
+        self
+    }
+
+    pub fn with_icon(mut self, icon: &str) -> Self {
+        self.icon = Some(icon.to_string());
+        self
+    }
+}
+
+/// A floating glass popover context menu primitive with high blur and spring-animated items.
+#[derive(Debug, Clone)]
+pub struct GlassContextMenu {
+    pub position: [f32; 2],
+    pub width: f32,
+    pub item_height: f32,
+    pub items: Vec<GlassMenuItem>,
+    pub hovered_index: Option<usize>,
+    pub is_open: bool,
+    pub open_spring: Spring,
+    pub hover_spring: Spring,
+    pub blur_radius: f32,
+}
+
+impl GlassContextMenu {
+    pub fn new(x: f32, y: f32, width: f32) -> Self {
+        Self {
+            position: [x, y],
+            width,
+            item_height: 36.0,
+            items: Vec::new(),
+            hovered_index: None,
+            is_open: false,
+            open_spring: Spring::with_params(0.0, SpringParams::smooth()),
+            hover_spring: Spring::with_params(0.0, SpringParams::snappy()),
+            blur_radius: 40.0,
+        }
+    }
+
+    pub fn add_item(&mut self, item: GlassMenuItem) -> &mut Self {
+        self.items.push(item);
+        self
+    }
+
+    pub fn with_item(mut self, item: GlassMenuItem) -> Self {
+        self.items.push(item);
+        self
+    }
+
+    pub fn open(&mut self, x: f32, y: f32) {
+        self.position = [x, y];
+        self.is_open = true;
+        self.hovered_index = None;
+        self.open_spring.set_target(1.0);
+    }
+
+    pub fn close(&mut self) {
+        self.is_open = false;
+        self.hovered_index = None;
+        self.open_spring.set_target(0.0);
+    }
+
+    pub fn total_height(&self) -> f32 {
+        let pad = 12.0;
+        self.items.len() as f32 * self.item_height + pad
+    }
+
+    pub fn contains(&self, px: f32, py: f32) -> bool {
+        if !self.is_open && self.open_spring.value < 0.05 {
+            return false;
+        }
+        let [x, y] = self.position;
+        let h = self.total_height();
+        px >= x && px <= x + self.width && py >= y && py <= y + h
+    }
+
+    pub fn on_pointer_move(&mut self, px: f32, py: f32) {
+        if !self.is_open {
+            return;
+        }
+        let [x, y] = self.position;
+        if px >= x && px <= x + self.width {
+            let rel_y = py - (y + 6.0);
+            if rel_y >= 0.0 {
+                let idx = (rel_y / self.item_height) as usize;
+                if idx < self.items.len() && self.items[idx].enabled {
+                    if self.hovered_index != Some(idx) {
+                        self.hovered_index = Some(idx);
+                        self.hover_spring.set_target(idx as f32);
+                    }
+                    return;
+                }
+            }
+        }
+        self.hovered_index = None;
+    }
+
+    pub fn on_pointer_down(&mut self, px: f32, py: f32) -> Option<String> {
+        if !self.is_open {
+            return None;
+        }
+        if !self.contains(px, py) {
+            self.close();
+            return None;
+        }
+
+        let [_x, y] = self.position;
+        let rel_y = py - (y + 6.0);
+        if rel_y >= 0.0 {
+            let idx = (rel_y / self.item_height) as usize;
+            if idx < self.items.len() && self.items[idx].enabled {
+                let id = self.items[idx].id.clone();
+                self.close();
+                return Some(id);
+            }
+        }
+        None
+    }
+
+    pub fn update(&mut self, dt: f32) {
+        self.open_spring.update(dt);
+        self.hover_spring.update(dt);
+    }
+
+    pub fn to_surfaces(&self) -> Vec<GlassSurface> {
+        let t = self.open_spring.value.clamp(0.0, 1.0);
+        if t <= 0.005 && !self.is_open {
+            return Vec::new();
+        }
+
+        let scale = 0.90 + t * 0.10;
+        let total_h = self.total_height();
+        let [x0, y0] = self.position;
+        let w = self.width * scale;
+        let h = total_h * scale;
+
+        let panel = GlassSurface::new()
+            .material(Material::LiquidGlass)
+            .shape(Shape::RoundedRectangle { radius: 16.0 })
+            .bounds(x0, y0, w, h)
+            .blur(self.blur_radius)
+            .refraction(0.65)
+            .fresnel(0.70)
+            .bevel(7.0)
+            .specular(0.92)
+            .tint(0.10, 0.12, 0.18, 0.55 * t);
+
+        let mut surfaces = vec![panel];
+
+        if let Some(hov_idx) = self.hovered_index {
+            let item_y = y0 + 6.0 + hov_idx as f32 * self.item_height;
+            let item_pad_x = 6.0;
+            let highlight = GlassSurface::new()
+                .material(Material::Acrylic)
+                .shape(Shape::RoundedRectangle { radius: 8.0 })
+                .bounds(
+                    x0 + item_pad_x,
+                    item_y,
+                    w - item_pad_x * 2.0,
+                    self.item_height - 2.0,
+                )
+                .blur(16.0)
+                .refraction(0.50)
+                .specular(0.95)
+                .tint(0.35, 0.75, 1.0, 0.25 * t);
+            surfaces.push(highlight);
+        }
+
+        surfaces
+    }
+}
+
+/// A high-level Widget Container holding cards, buttons, sliders, toggles, text inputs, tooltips, and context menus.
 #[derive(Debug, Default)]
 pub struct GlassWidget {
     pub cards: Vec<GlassCard>,
@@ -652,6 +936,8 @@ pub struct GlassWidget {
     pub toggles: Vec<GlassToggle>,
     pub sliders: Vec<GlassSlider>,
     pub inputs: Vec<GlassTextInput>,
+    pub tooltips: Vec<GlassTooltip>,
+    pub context_menus: Vec<GlassContextMenu>,
 }
 
 impl GlassWidget {
@@ -679,6 +965,14 @@ impl GlassWidget {
         self.inputs.push(input);
     }
 
+    pub fn add_tooltip(&mut self, tooltip: GlassTooltip) {
+        self.tooltips.push(tooltip);
+    }
+
+    pub fn add_context_menu(&mut self, menu: GlassContextMenu) {
+        self.context_menus.push(menu);
+    }
+
     pub fn on_pointer_move(&mut self, px: f32, py: f32) {
         for btn in &mut self.buttons {
             btn.on_pointer_move(px, py);
@@ -689,10 +983,18 @@ impl GlassWidget {
         for input in &mut self.inputs {
             input.on_pointer_move(px, py);
         }
+        for menu in &mut self.context_menus {
+            menu.on_pointer_move(px, py);
+        }
     }
 
     pub fn on_pointer_down(&mut self, px: f32, py: f32) -> bool {
         let mut handled = false;
+        for menu in &mut self.context_menus {
+            if menu.on_pointer_down(px, py).is_some() {
+                handled = true;
+            }
+        }
         for btn in &mut self.buttons {
             if btn.on_pointer_down(px, py) {
                 handled = true;
@@ -739,6 +1041,12 @@ impl GlassWidget {
         for input in &mut self.inputs {
             input.update(dt);
         }
+        for tooltip in &mut self.tooltips {
+            tooltip.update(dt);
+        }
+        for menu in &mut self.context_menus {
+            menu.update(dt);
+        }
     }
 
     pub fn collect_surfaces(&self) -> Vec<GlassSurface> {
@@ -757,6 +1065,14 @@ impl GlassWidget {
         }
         for input in &self.inputs {
             surfaces.extend(input.to_surfaces());
+        }
+        for menu in &self.context_menus {
+            surfaces.extend(menu.to_surfaces());
+        }
+        for tooltip in &self.tooltips {
+            if let Some(s) = tooltip.to_surface() {
+                surfaces.push(s);
+            }
         }
         surfaces
     }
@@ -869,6 +1185,78 @@ mod tests {
     }
 
     #[test]
+    fn test_glass_tooltip_lifecycle() {
+        let mut tooltip = GlassTooltip::new(100.0, 100.0, "Sample Tooltip")
+            .with_size(120.0, 32.0)
+            .with_offset(0.0, -20.0)
+            .with_blur(32.0);
+
+        assert!(!tooltip.is_visible);
+        assert!(tooltip.to_surface().is_none());
+
+        tooltip.show();
+        assert!(tooltip.is_visible);
+
+        // Step spring physics
+        for _ in 0..10 {
+            tooltip.update(0.05);
+        }
+
+        let surface = tooltip.to_surface();
+        assert!(surface.is_some());
+        let surf = surface.unwrap();
+        assert_eq!(surf.custom_params.as_ref().unwrap().blur_radius, 32.0);
+
+        tooltip.hide();
+        assert!(!tooltip.is_visible);
+        for _ in 0..20 {
+            tooltip.update(0.05);
+        }
+        assert!(tooltip.to_surface().is_none());
+    }
+
+    #[test]
+    fn test_glass_context_menu_interaction() {
+        let mut menu = GlassContextMenu::new(100.0, 100.0, 160.0)
+            .with_item(GlassMenuItem::new("copy", "Copy"))
+            .with_item(GlassMenuItem::new("paste", "Paste"))
+            .with_item(GlassMenuItem::new("delete", "Delete").disabled());
+
+        assert!(!menu.is_open);
+        assert_eq!(menu.to_surfaces().len(), 0);
+
+        menu.open(100.0, 100.0);
+        assert!(menu.is_open);
+
+        for _ in 0..10 {
+            menu.update(0.05);
+        }
+
+        // Surfaces include panel
+        assert_eq!(menu.to_surfaces().len(), 1);
+
+        // Hover over second item ("paste", y = 100 + 6 + 36 = 142)
+        menu.on_pointer_move(120.0, 145.0);
+        assert_eq!(menu.hovered_index, Some(1));
+        assert_eq!(menu.to_surfaces().len(), 2); // panel + highlight
+
+        // Hover over disabled item ("delete", idx 2) -> should not hover
+        menu.on_pointer_move(120.0, 180.0);
+        assert_eq!(menu.hovered_index, None);
+
+        // Click outside dismisses menu
+        let outside = menu.on_pointer_down(500.0, 500.0);
+        assert_eq!(outside, None);
+        assert!(!menu.is_open);
+
+        // Reopen and click item
+        menu.open(100.0, 100.0);
+        let action = menu.on_pointer_down(120.0, 115.0); // item 0 ("copy")
+        assert_eq!(action, Some("copy".to_string()));
+        assert!(!menu.is_open);
+    }
+
+    #[test]
     fn test_widget_collection() {
         let mut widget = GlassWidget::new();
         widget.add_card(GlassCard::new(0.0, 0.0, 1.0, 1.0));
@@ -876,8 +1264,23 @@ mod tests {
         widget.add_toggle(GlassToggle::new(0.4, 0.1, 0.1, 0.05, true));
         widget.add_input(GlassTextInput::new(0.6, 0.1, 0.3, 0.05, "Type..."));
 
+        let mut tip = GlassTooltip::new(50.0, 50.0, "Info");
+        tip.show();
+        for _ in 0..10 {
+            tip.update(0.05);
+        }
+        widget.add_tooltip(tip);
+
+        let mut menu = GlassContextMenu::new(10.0, 10.0, 140.0)
+            .with_item(GlassMenuItem::new("item1", "Item 1"));
+        menu.open(10.0, 10.0);
+        for _ in 0..10 {
+            menu.update(0.05);
+        }
+        widget.add_context_menu(menu);
+
         let surfaces = widget.collect_surfaces();
-        // 1 card + 2 toggle + 1 button + 1 input base (unfocused) = 5
-        assert_eq!(surfaces.len(), 5);
+        // 1 card + 2 toggle + 1 button + 1 input + 1 tooltip + 1 context menu = 7
+        assert_eq!(surfaces.len(), 7);
     }
 }
