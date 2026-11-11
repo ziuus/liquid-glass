@@ -750,15 +750,16 @@ fn eval_liquid_text_sdf(p: vec2<f32>, tint: vec4<f32>) -> f32 {
     let scale = 12.0;
     let y_off = 50.0;
 
-    // Optical spacing: 104px adjacent digit centers, 64px colon to inner digits
-    let w_dig = 104.0;
-    let m0_x = 64.0;
+    // Optical spacing: 88px adjacent digit centers, 55px colon to inner digits
+    // Guaranteed >= 6.0px clear non-overlapping gap between outer liquid glass envelopes
+    let w_dig = 88.0;
+    let m0_x = 55.0;
     let m1_x = m0_x + w_dig;
-    let h1_x = -64.0;
+    let h1_x = -55.0;
     let h0_x = h1_x - w_dig;
 
-    // Optical centering: shift left by 52.0px when hour is single-digit (e.g. 9:08)
-    let x_shift = select(0.0, -52.0, h_tens == 0u);
+    // Optical centering: shift left by 44.0px when hour is single-digit (e.g. 9:08)
+    let x_shift = select(0.0, -44.0, h_tens == 0u);
     let p_c = p - vec2<f32>(x_shift, y_off);
 
     let d_h0 = select(999.0, draw_apple_digit(p_c - vec2<f32>(h0_x, 0.0), h_tens, scale), h_tens > 0u);
