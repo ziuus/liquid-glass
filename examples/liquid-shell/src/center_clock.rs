@@ -420,9 +420,47 @@ impl CenterHeroClock {
                 }
             }
 
-            // AM/PM Crystalline Badge aligned with optical digits
-            let has_h_tens = (hour_12 / 10) > 0;
-            let ampm_x = if has_h_tens { cx + 200.0 } else { cx + 156.0 };
+            // AM/PM Crystalline Badge snuggly aligned with proportional optical digits
+            let get_dig_bounds = |d: u32| -> (f32, f32) {
+                if d == 1 {
+                    (-1.8, 0.3)
+                } else {
+                    (-2.4, 2.4)
+                }
+            };
+            let scale = 12.0f32;
+            let cyl_r = 11.0f32;
+            let gap = 8.0f32;
+            let gap_col = 10.0f32;
+            let col_r = 8.0f32;
+
+            let h_tens = hour_12 / 10;
+            let h_ones = hour_12 % 10;
+            let m_tens = now.minute() / 10;
+            let m_ones = now.minute() % 10;
+
+            let b_m0 = get_dig_bounds(m_tens);
+            let m0_x = col_r + gap_col + cyl_r - (b_m0.0 * scale);
+            let m0_right = m0_x + b_m0.1 * scale + cyl_r;
+
+            let b_m1 = get_dig_bounds(m_ones);
+            let m1_x = m0_right + gap + cyl_r - (b_m1.0 * scale);
+            let m1_right = m1_x + b_m1.1 * scale + cyl_r;
+
+            let b_h1 = get_dig_bounds(h_ones);
+            let h1_x = -col_r - gap_col - cyl_r - (b_h1.1 * scale);
+            let h1_left = h1_x + b_h1.0 * scale - cyl_r;
+
+            let b_h0 = get_dig_bounds(h_tens);
+            let h0_x = h1_left - gap - cyl_r - (b_h0.1 * scale);
+            let h0_left = h0_x + b_h0.0 * scale - cyl_r;
+
+            let leftmost = if h_tens > 0 { h0_left } else { h1_left };
+            let rightmost = m1_right;
+            let x_shift = (rightmost + leftmost) * 0.5;
+            let shifted_right = rightmost - x_shift;
+
+            let ampm_x = cx + shifted_right + 12.0;
             let ampm_cy = cy + 50.0;
             self.font.draw_text_centered_y(
                 buf,

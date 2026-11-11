@@ -733,6 +733,13 @@ fn draw_apple_digit(p: vec2<f32>, dig: u32, scale: f32) -> f32 {
 }
 
 // ── Physical Liquid Glass 3D Text SDF (Pure 3D Snell Refraction Numerals) ──
+fn get_liquid_digit_bounds(dig: u32) -> vec2<f32> {
+    if dig == 1u {
+        return vec2<f32>(-1.8, 0.3);
+    }
+    return vec2<f32>(-2.4, 2.4);
+}
+
 fn eval_liquid_text_sdf(p: vec2<f32>, tint: vec4<f32>) -> f32 {
     let hr = tint.x;
     let mn = tint.y;
@@ -748,28 +755,46 @@ fn eval_liquid_text_sdf(p: vec2<f32>, tint: vec4<f32>) -> f32 {
 
     // Scale 12.0 produces heroic Apple OS lockscreen proportions (~120px tall digits)
     let scale = 12.0;
+    let cyl_r = 11.0;
+    let gap = 8.0;
+    let gap_col = 10.0;
+    let col_r = 8.0;
     let y_off = 50.0;
 
-    // Optical spacing: 88px adjacent digit centers, 55px colon to inner digits
-    // Guaranteed >= 6.0px clear non-overlapping gap between outer liquid glass envelopes
-    let w_dig = 88.0;
-    let m0_x = 55.0;
-    let m1_x = m0_x + w_dig;
-    let h1_x = -55.0;
-    let h0_x = h1_x - w_dig;
+    // m0 (tens of minutes)
+    let b_m0 = get_liquid_digit_bounds(m_tens);
+    let m0_x = col_r + gap_col + cyl_r - (b_m0.x * scale);
+    let m0_right = m0_x + b_m0.y * scale + cyl_r;
 
-    // Optical centering: shift left by 44.0px when hour is single-digit (e.g. 9:08)
-    let x_shift = select(0.0, -44.0, h_tens == 0u);
+    // m1 (ones of minutes)
+    let b_m1 = get_liquid_digit_bounds(m_ones);
+    let m1_x = m0_right + gap + cyl_r - (b_m1.x * scale);
+    let m1_right = m1_x + b_m1.y * scale + cyl_r;
+
+    // h1 (ones of hours)
+    let b_h1 = get_liquid_digit_bounds(h_ones);
+    let h1_x = -col_r - gap_col - cyl_r - (b_h1.y * scale);
+    let h1_left = h1_x + b_h1.x * scale - cyl_r;
+
+    // h0 (tens of hours)
+    let b_h0 = get_liquid_digit_bounds(h_tens);
+    let h0_x = h1_left - gap - cyl_r - (b_h0.y * scale);
+    let h0_left = h0_x + b_h0.x * scale - cyl_r;
+
+    let leftmost = select(h1_left, h0_left, h_tens > 0u);
+    let rightmost = m1_right;
+    let x_shift = (rightmost + leftmost) * 0.5;
+
     let p_c = p - vec2<f32>(x_shift, y_off);
 
     let d_h0 = select(999.0, draw_apple_digit(p_c - vec2<f32>(h0_x, 0.0), h_tens, scale), h_tens > 0u);
     let d_h1 = draw_apple_digit(p_c - vec2<f32>(h1_x, 0.0), h_ones, scale);
-    let d_col = draw_colon(p_c - vec2<f32>(0.0, 0.0), scale * 0.95);
+    let d_col = draw_colon(p_c - vec2<f32>(0.0, 0.0), scale * 0.85);
     let d_m0 = draw_apple_digit(p_c - vec2<f32>(m0_x, 0.0), m_tens, scale);
     let d_m1 = draw_apple_digit(p_c - vec2<f32>(m1_x, 0.0), m_ones, scale);
 
     // Thick rounded cylindrical liquid glass cross-section (11.0px radius)
-    let d_time = min(min(d_h0, d_h1), min(d_col, min(d_m0, d_m1))) - 11.0;
+    let d_time = min(min(d_h0, d_h1), min(d_col, min(d_m0, d_m1))) - cyl_r;
     return d_time;
 }
 

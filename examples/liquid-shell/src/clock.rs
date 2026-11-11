@@ -26,8 +26,8 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::ZwlrL
 pub const CARD_PAD: f32 = 24.0;
 pub const CARD_W: f32 = 340.0;
 pub const CARD_H: f32 = 286.0;
-pub const COMPACT_W: f32 = 230.0;
-pub const COMPACT_H: f32 = 36.0;
+pub const COMPACT_W: f32 = 176.0;
+pub const COMPACT_H: f32 = 30.0;
 
 pub struct WaylandWindow {
     pub surface: wl_surface::WlSurface,
@@ -151,7 +151,7 @@ impl ClockWidget {
         let layer_surface = layer_shell.create_layer_surface(
             qh,
             surface.clone(),
-            Layer::Top,
+            Layer::Bottom,
             Some("liquid-glass-control-hub"),
             None,
         );
@@ -297,10 +297,7 @@ impl ClockWidget {
             let pill_h = 40.min(self.height) as usize;
             let row_bytes = (self.width * 4) as usize;
             let sub_len = (pill_h * row_bytes).min(crop.len());
-            WallpaperManager::is_buffer_light_hysteresis(
-                &crop[..sub_len],
-                self.is_wallpaper_light,
-            )
+            WallpaperManager::is_buffer_light_hysteresis(&crop[..sub_len], self.is_wallpaper_light)
         } else {
             WallpaperManager::is_buffer_light_hysteresis(&crop, self.is_wallpaper_light)
         };
@@ -606,27 +603,27 @@ impl ClockWidget {
                 [255, 255, 255, alpha_u8]
             };
             let sub_ink = if is_light {
-                [60, 75, 95, (200.0 * comp_alpha) as u8]
+                [60, 75, 95, (190.0 * comp_alpha) as u8]
             } else {
-                [180, 195, 220, (180.0 * comp_alpha) as u8]
+                [180, 195, 220, (170.0 * comp_alpha) as u8]
             };
 
-            let pill_cy = 18.0;
+            let pill_cy = 15.0;
 
             // CPU Segment
-            UIFont::draw_cpu_icon(buf, self.width, self.height, cx - 82.0, pill_cy, ink_col);
+            UIFont::draw_cpu_icon(buf, self.width, self.height, cx - 72.0, pill_cy, ink_col);
             let cpu_str = format!("{}%", self.sys_stats.cpu_pct);
             self.font.draw_text_centered_y(
                 buf,
                 self.width,
                 self.height,
                 &cpu_str,
-                cx - 72.0,
+                cx - 62.0,
                 pill_cy,
-                11.5,
+                10.5,
                 ink_col,
                 col_shadow,
-                FontWeight::Bold,
+                FontWeight::SemiBold,
             );
 
             // Divider 1
@@ -634,29 +631,29 @@ impl ClockWidget {
                 buf,
                 self.width,
                 self.height,
-                "•",
-                cx - 36.0,
+                "·",
+                cx - 28.0,
                 pill_cy,
-                11.0,
+                9.0,
                 sub_ink,
                 col_shadow,
                 FontWeight::Bold,
             );
 
             // RAM Segment
-            UIFont::draw_ram_icon(buf, self.width, self.height, cx - 20.0, pill_cy, ink_col);
+            UIFont::draw_ram_icon(buf, self.width, self.height, cx - 16.0, pill_cy, ink_col);
             let ram_str = format!("{}%", ram_pct);
             self.font.draw_text_centered_y(
                 buf,
                 self.width,
                 self.height,
                 &ram_str,
-                cx - 10.0,
+                cx - 6.0,
                 pill_cy,
-                11.5,
+                10.5,
                 ink_col,
                 col_shadow,
-                FontWeight::Bold,
+                FontWeight::SemiBold,
             );
 
             // Divider 2
@@ -664,10 +661,10 @@ impl ClockWidget {
                 buf,
                 self.width,
                 self.height,
-                "•",
-                cx + 26.0,
+                "·",
+                cx + 28.0,
                 pill_cy,
-                11.0,
+                9.0,
                 sub_ink,
                 col_shadow,
                 FontWeight::Bold,
@@ -678,7 +675,7 @@ impl ClockWidget {
                 buf,
                 self.width,
                 self.height,
-                cx + 42.0,
+                cx + 40.0,
                 pill_cy,
                 self.sys_stats.bat_pct,
                 self.sys_stats.bat_charging,
@@ -690,12 +687,12 @@ impl ClockWidget {
                 self.width,
                 self.height,
                 &bat_str,
-                cx + 56.0,
+                cx + 52.0,
                 pill_cy,
-                11.5,
+                10.5,
                 ink_col,
                 col_shadow,
-                FontWeight::Bold,
+                FontWeight::SemiBold,
             );
         }
 
