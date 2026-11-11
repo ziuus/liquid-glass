@@ -126,7 +126,7 @@ mod tests {
     #[test]
     fn test_wayland_context_capabilities_and_kde_blur() {
         let mut ctx = WaylandContext::default();
-        assert_eq!(ctx.layer_shell_available, true);
+        assert!(ctx.layer_shell_available);
         assert_eq!(ctx.active_blur_protocol(), BlurCompositorProtocol::None);
 
         let caps = ctx.check_capabilities();

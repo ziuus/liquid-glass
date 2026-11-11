@@ -469,10 +469,11 @@ impl GlassTextInput {
     }
 
     pub fn insert_char(&mut self, c: char) {
-        if let Some(max) = self.max_length {
-            if self.text.chars().count() >= max {
-                return;
-            }
+        if self
+            .max_length
+            .is_some_and(|max| self.text.chars().count() >= max)
+        {
+            return;
         }
         let byte_pos = self
             .text
