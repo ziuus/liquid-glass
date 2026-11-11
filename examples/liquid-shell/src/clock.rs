@@ -611,14 +611,14 @@ impl ClockWidget {
             let pill_cy = 15.0;
 
             // CPU Segment
-            UIFont::draw_cpu_icon(buf, self.width, self.height, cx - 72.0, pill_cy, ink_col);
+            UIFont::draw_cpu_icon(buf, self.width, self.height, cx - 68.0, pill_cy, ink_col);
             let cpu_str = format!("{}%", self.sys_stats.cpu_pct);
             self.font.draw_text_centered_y(
                 buf,
                 self.width,
                 self.height,
                 &cpu_str,
-                cx - 62.0,
+                cx - 58.0,
                 pill_cy,
                 10.5,
                 ink_col,
@@ -632,23 +632,23 @@ impl ClockWidget {
                 self.width,
                 self.height,
                 "·",
-                cx - 28.0,
+                cx - 26.0,
                 pill_cy,
-                9.0,
+                9.5,
                 sub_ink,
                 col_shadow,
                 FontWeight::Bold,
             );
 
             // RAM Segment
-            UIFont::draw_ram_icon(buf, self.width, self.height, cx - 16.0, pill_cy, ink_col);
+            UIFont::draw_ram_icon(buf, self.width, self.height, cx - 15.0, pill_cy, ink_col);
             let ram_str = format!("{}%", ram_pct);
             self.font.draw_text_centered_y(
                 buf,
                 self.width,
                 self.height,
                 &ram_str,
-                cx - 6.0,
+                cx - 5.0,
                 pill_cy,
                 10.5,
                 ink_col,
@@ -662,9 +662,9 @@ impl ClockWidget {
                 self.width,
                 self.height,
                 "·",
-                cx + 28.0,
+                cx + 26.0,
                 pill_cy,
-                9.0,
+                9.5,
                 sub_ink,
                 col_shadow,
                 FontWeight::Bold,
@@ -675,7 +675,7 @@ impl ClockWidget {
                 buf,
                 self.width,
                 self.height,
-                cx + 40.0,
+                cx + 37.0,
                 pill_cy,
                 self.sys_stats.bat_pct,
                 self.sys_stats.bat_charging,
@@ -687,7 +687,7 @@ impl ClockWidget {
                 self.width,
                 self.height,
                 &bat_str,
-                cx + 52.0,
+                cx + 49.0,
                 pill_cy,
                 10.5,
                 ink_col,

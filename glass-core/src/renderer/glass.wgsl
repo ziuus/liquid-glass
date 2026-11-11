@@ -756,8 +756,8 @@ fn eval_liquid_text_sdf(p: vec2<f32>, tint: vec4<f32>) -> f32 {
     // Scale 12.0 produces heroic Apple OS lockscreen proportions (~120px tall digits)
     let scale = 12.0;
     let cyl_r = 11.0;
-    let gap = 8.0;
-    let gap_col = 10.0;
+    let gap = 10.0;
+    let gap_col = 14.0;
     let col_r = 8.0;
     let y_off = 50.0;
 
@@ -781,9 +781,8 @@ fn eval_liquid_text_sdf(p: vec2<f32>, tint: vec4<f32>) -> f32 {
     let h0_x = h1_left - gap - cyl_r - (b_h0.y * scale);
     let h0_left = h0_x + b_h0.x * scale - cyl_r;
 
-    let leftmost = select(h1_left, h0_left, h_tens > 0u);
-    let rightmost = m1_right;
-    let x_shift = (rightmost + leftmost) * 0.5;
+    // Anchor colon at 0.0 when 2-digit hour; center only for single-digit hour
+    let x_shift = select((m1_right + h1_left) * 0.5, 0.0, h_tens > 0u);
 
     let p_c = p - vec2<f32>(x_shift, y_off);
 

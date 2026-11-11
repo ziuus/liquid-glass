@@ -430,8 +430,8 @@ impl CenterHeroClock {
             };
             let scale = 12.0f32;
             let cyl_r = 11.0f32;
-            let gap = 8.0f32;
-            let gap_col = 10.0f32;
+            let gap = 10.0f32;
+            let gap_col = 14.0f32;
             let col_r = 8.0f32;
 
             let h_tens = hour_12 / 10;
@@ -453,14 +453,16 @@ impl CenterHeroClock {
 
             let b_h0 = get_dig_bounds(h_tens);
             let h0_x = h1_left - gap - cyl_r - (b_h0.1 * scale);
-            let h0_left = h0_x + b_h0.0 * scale - cyl_r;
+            let _h0_left = h0_x + b_h0.0 * scale - cyl_r;
 
-            let leftmost = if h_tens > 0 { h0_left } else { h1_left };
-            let rightmost = m1_right;
-            let x_shift = (rightmost + leftmost) * 0.5;
-            let shifted_right = rightmost - x_shift;
+            let x_shift = if h_tens > 0 {
+                0.0f32 // Colon stays anchored at 0.0
+            } else {
+                (m1_right + h1_left) * 0.5
+            };
+            let shifted_right = m1_right - x_shift;
 
-            let ampm_x = cx + shifted_right + 12.0;
+            let ampm_x = cx + shifted_right + 14.0;
             let ampm_cy = cy + 50.0;
             self.font.draw_text_centered_y(
                 buf,
