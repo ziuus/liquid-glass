@@ -566,7 +566,7 @@ impl GlassRenderer {
             drop(render_pass);
         } else {
             for (layer_idx, layer) in layers.iter().enumerate() {
-                if layer_idx > 0 {
+                if layer_idx > 0 && output.texture.format() == self.bg_texture.format() {
                     // Copy swapchain content to background texture so the next layer refracts it
                     encoder.copy_texture_to_texture(
                         wgpu::ImageCopyTexture {

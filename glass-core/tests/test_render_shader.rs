@@ -350,6 +350,7 @@ async fn run_render_custom(
     cfg: &RenderTestConfig<'_>,
     padding: f32,
     tint: [f32; 4],
+    overlay_input: Option<&[u8]>,
 ) {
     let width = cfg.width;
     let height = cfg.height;
@@ -404,7 +405,8 @@ async fn run_render_custom(
         view_formats: &[],
     });
 
-    let overlay_empty = vec![0u8; (width * height * 4) as usize];
+    let empty_buf = vec![0u8; (width * height * 4) as usize];
+    let overlay_bytes = overlay_input.unwrap_or(&empty_buf);
     queue.write_texture(
         wgpu::ImageCopyTexture {
             texture: &overlay_texture,
@@ -412,7 +414,7 @@ async fn run_render_custom(
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
         },
-        &overlay_empty,
+        overlay_bytes,
         wgpu::ImageDataLayout {
             offset: 0,
             bytes_per_row: Some(width * 4),
@@ -1273,6 +1275,100 @@ fn test_render_calibration_snapshots() {
                 is_light: 0.0,
                 out_path: &format!("{}/liquid_glass_font_apple.png", out_dir),
             };
+            use glass_core::font::{FontWeight, UIFont};
+            let font = UIFont::new();
+            let mut overlay_buf = vec![0u8; (hero_w * hero_h * 4) as usize];
+            let cx = hero_w as f32 * 0.5;
+            let cy = hero_h as f32 * 0.5;
+            let col_day = [248, 250, 255, 245];
+            let col_date = [205, 220, 245, 210];
+            let col_ampm = [175, 195, 225, 200];
+            let col_shadow = [0, 0, 0, 180];
+
+            // Render Day
+            let day_text = "WEDNESDAY";
+            let day_tracking = 8.0f32;
+            let day_chars: Vec<char> = day_text.chars().collect();
+            let mut total_day_w = 0.0f32;
+            for (i, &ch) in day_chars.iter().enumerate() {
+                let s = ch.to_string();
+                total_day_w += font.measure_text(&s, 30.0, FontWeight::Bold);
+                if i < day_chars.len() - 1 {
+                    total_day_w += day_tracking;
+                }
+            }
+            let mut cur_day_x = cx - total_day_w * 0.5;
+            let day_cy = cy - 90.0;
+            for (i, &ch) in day_chars.iter().enumerate() {
+                let s = ch.to_string();
+                let ch_w = font.measure_text(&s, 30.0, FontWeight::Bold);
+                font.draw_text_centered_y(
+                    &mut overlay_buf,
+                    hero_w,
+                    hero_h,
+                    &s,
+                    cur_day_x,
+                    day_cy,
+                    30.0,
+                    col_day,
+                    col_shadow,
+                    FontWeight::Bold,
+                );
+                cur_day_x += ch_w;
+                if i < day_chars.len() - 1 {
+                    cur_day_x += day_tracking;
+                }
+            }
+
+            // Render Date
+            let date_text = "NOVEMBER 11, 2026";
+            let date_tracking = 4.5f32;
+            let mut total_date_w = 0.0f32;
+            let date_chars: Vec<char> = date_text.chars().collect();
+            for (i, &ch) in date_chars.iter().enumerate() {
+                let s = ch.to_string();
+                total_date_w += font.measure_text(&s, 17.0, FontWeight::Medium);
+                if i < date_chars.len() - 1 {
+                    total_date_w += date_tracking;
+                }
+            }
+            let mut cur_date_x = cx - total_date_w * 0.5;
+            let date_cy = cy - 54.0;
+            for (i, &ch) in date_chars.iter().enumerate() {
+                let s = ch.to_string();
+                let ch_w = font.measure_text(&s, 17.0, FontWeight::Medium);
+                font.draw_text_centered_y(
+                    &mut overlay_buf,
+                    hero_w,
+                    hero_h,
+                    &s,
+                    cur_date_x,
+                    date_cy,
+                    17.0,
+                    col_date,
+                    col_shadow,
+                    FontWeight::Medium,
+                );
+                cur_date_x += ch_w;
+                if i < date_chars.len() - 1 {
+                    cur_date_x += date_tracking;
+                }
+            }
+
+            // Render AM/PM
+            font.draw_text_centered_y(
+                &mut overlay_buf,
+                hero_w,
+                hero_h,
+                "PM",
+                cx + 242.0,
+                cy + 36.0,
+                15.0,
+                col_ampm,
+                col_shadow,
+                FontWeight::Bold,
+            );
+
             run_render_custom(
                 &device,
                 &queue,
@@ -1283,7 +1379,8 @@ fn test_render_calibration_snapshots() {
                 &hero_crop,
                 &cfg_hero_text,
                 40.0,                  // Liquid text element_type
-                [5.0, 53.0, 0.0, 0.0], // 05:53
+                [8.0, 36.0, 0.0, 0.0], // 08:36
+                Some(&overlay_buf),
             )
             .await;
         }

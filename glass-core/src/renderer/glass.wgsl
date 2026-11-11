@@ -1585,6 +1585,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Compact, intimate 7px contact shadow cast towards bottom-right (away from top-left key light).
     // Zero smear on lit/top edges; silky cubic smoothstep blend into desktop wallpaper.
     if sdf > 0.0 {
+        if is_liquid_text {
+            let overlay = textureSampleLevel(overlay_texture, background_sampler, uv, 0.0);
+            return overlay;
+        }
         let shadow_radius = 7.0;
         if sdf < shadow_radius && top_flush > 0.5 {
             let light_vec_2d = normalize(vec2<f32>(-0.45, -0.65));

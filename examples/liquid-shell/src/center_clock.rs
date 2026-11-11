@@ -142,7 +142,7 @@ impl CenterHeroClock {
 
             enabled: true,
             show_glass_card: false,
-            show_time: false,
+            show_time: true,
             style_mode: 2.0,
             theme_mode: 0,
             blur_radius: 20.0,
@@ -353,22 +353,22 @@ impl CenterHeroClock {
                 }
             }
         } else {
-            // Day & Date with Time numerals underneath
-            let day_tracking = 7.5f32;
+            // Day & Date with Liquid Glass Time Numerals underneath
+            let day_tracking = 8.0f32;
             let day_chars: Vec<char> = wday_full.chars().collect();
             let mut total_day_w = 0.0f32;
             for (i, &ch) in day_chars.iter().enumerate() {
                 let s = ch.to_string();
-                total_day_w += self.font.measure_text(&s, 24.0, FontWeight::Bold);
+                total_day_w += self.font.measure_text(&s, 30.0, FontWeight::Bold);
                 if i < day_chars.len() - 1 {
                     total_day_w += day_tracking;
                 }
             }
             let mut cur_day_x = cx - total_day_w * 0.5;
-            let day_cy = cy - 88.0;
+            let day_cy = cy - 90.0;
             for (i, &ch) in day_chars.iter().enumerate() {
                 let s = ch.to_string();
-                let ch_w = self.font.measure_text(&s, 24.0, FontWeight::Bold);
+                let ch_w = self.font.measure_text(&s, 30.0, FontWeight::Bold);
                 self.font.draw_text_centered_y(
                     buf,
                     self.width,
@@ -376,7 +376,7 @@ impl CenterHeroClock {
                     &s,
                     cur_day_x,
                     day_cy,
-                    24.0,
+                    30.0,
                     col_day,
                     col_shadow,
                     FontWeight::Bold,
@@ -387,12 +387,12 @@ impl CenterHeroClock {
                 }
             }
 
-            let date_tracking = 4.0f32;
+            let date_tracking = 4.5f32;
             let mut total_date_w = 0.0f32;
             let date_chars: Vec<char> = date_full.chars().collect();
             for (i, &ch) in date_chars.iter().enumerate() {
                 let s = ch.to_string();
-                total_date_w += self.font.measure_text(&s, 16.0, FontWeight::Medium);
+                total_date_w += self.font.measure_text(&s, 17.0, FontWeight::Medium);
                 if i < date_chars.len() - 1 {
                     total_date_w += date_tracking;
                 }
@@ -401,7 +401,7 @@ impl CenterHeroClock {
             let date_cy = cy - 54.0;
             for (i, &ch) in date_chars.iter().enumerate() {
                 let s = ch.to_string();
-                let ch_w = self.font.measure_text(&s, 16.0, FontWeight::Medium);
+                let ch_w = self.font.measure_text(&s, 17.0, FontWeight::Medium);
                 self.font.draw_text_centered_y(
                     buf,
                     self.width,
@@ -409,7 +409,7 @@ impl CenterHeroClock {
                     &s,
                     cur_date_x,
                     date_cy,
-                    16.0,
+                    17.0,
                     col_date,
                     col_shadow,
                     FontWeight::Medium,
@@ -430,7 +430,7 @@ impl CenterHeroClock {
                 ampm,
                 ampm_x,
                 ampm_cy,
-                16.0,
+                15.0,
                 col_ampm,
                 col_shadow,
                 FontWeight::Bold,
@@ -515,9 +515,9 @@ impl CenterHeroClock {
                         .element_type(24.0)
                         .deformation(0.0);
 
-                    let _ = renderer.render(&[hero_card, liquid_text, frameless_overlay]);
+                    let _ = renderer.render(&[hero_card, liquid_text]);
                 } else {
-                    let _ = renderer.render(&[liquid_text, frameless_overlay]);
+                    let _ = renderer.render(&[liquid_text]);
                 }
             } else if self.show_glass_card {
                 let card_w = 980.0f32;
