@@ -143,6 +143,14 @@ impl Spring {
             return;
         }
 
+        // Clamp huge frame deltas (debugger pauses, compositor hitches, tab
+        // suspends) so the explicit integrator cannot explode; non-positive
+        // deltas are skipped entirely.
+        let delta_time = delta_time.clamp(0.0, 1.0 / 30.0);
+        if delta_time <= 0.0 {
+            return;
+        }
+
         self.time += delta_time;
 
         let displacement = self.value - self.target;

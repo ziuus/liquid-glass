@@ -1,6 +1,16 @@
 use glass_core::animation::{Spring, SpringParams};
 use glass_core::geometry::{GlassSurface, Shape};
 use glass_core::material::Material;
+use glass_core::tokens::Tokens;
+
+/// Accent RGB derived from the shared design tokens. Alpha is applied per-widget.
+fn accent_rgb() -> [f32; 3] {
+    [
+        Tokens::ACCENT[0] as f32 / 255.0,
+        Tokens::ACCENT[1] as f32 / 255.0,
+        Tokens::ACCENT[2] as f32 / 255.0,
+    ]
+}
 
 /// A high-level glass container (window, card, HUD panel, or floating island).
 #[derive(Debug, Clone)]
@@ -162,8 +172,9 @@ impl GlassButton {
     pub fn on_pointer_up(&mut self, px: f32, py: f32) -> bool {
         let was_pressed = self.is_pressed;
         self.is_pressed = false;
-        self.scale_spring
-            .set_target(if self.is_hovered { 1.04 } else { 1.0 });
+        // The snappy spring is underdamped, so releasing from 0.94 naturally
+        // overshoots past 1.0 before settling — no need for a stuck 1.04 target.
+        self.scale_spring.set_target(1.0);
         was_pressed && self.contains(px, py) // Return true on successful click trigger
     }
 
@@ -242,11 +253,12 @@ impl GlassToggle {
     pub fn to_surfaces(&self) -> Vec<GlassSurface> {
         let t = self.knob_spring.value.clamp(0.0, 1.0);
 
-        // Background track (capsule)
+        // Background track (capsule): neutral slate blending into the accent when on
+        let accent = accent_rgb();
         let track_tint = [
-            0.2 + t * 0.66, // cyan/gold accent when active
-            0.3 + t * 0.67,
-            0.4 + t * -0.14,
+            0.2 + (accent[0] - 0.2) * t,
+            0.3 + (accent[1] - 0.3) * t,
+            0.4 + (accent[2] - 0.4) * t,
             0.15 + t * 0.25,
         ];
         let track = GlassSurface::new()
@@ -332,6 +344,8 @@ impl GlassSlider {
     }
 
     pub fn to_surfaces(&self) -> Vec<GlassSurface> {
+        let accent = accent_rgb();
+
         // Rail track
         let rail = GlassSurface::new()
             .material(Material::FrostedGlass)
@@ -357,7 +371,7 @@ impl GlassSlider {
                 self.bounds[3],
             )
             .refraction(0.60)
-            .tint(0.38, 0.85, 1.0, 0.35);
+            .tint(accent[0], accent[1], accent[2], 0.35);
 
         // Thumb knob
         let knob_r = self.bounds[3] * 1.6;
@@ -390,6 +404,11 @@ pub struct GlassTextInput {
     pub hover_spring: Spring,
     pub shape: Shape,
     pub max_length: Option<usize>,
+    /// Assumed glyph advance used for caret hit-testing and placement.
+    /// Set this to match the font/size your app renders with.
+    pub char_width: f32,
+    /// Horizontal inset between the field edge and the text origin.
+    pub pad_x: f32,
 }
 
 impl GlassTextInput {
@@ -407,6 +426,8 @@ impl GlassTextInput {
             hover_spring: Spring::with_params(0.0, SpringParams::smooth()),
             shape: Shape::RoundedRectangle { radius: 14.0 },
             max_length: None,
+            char_width: 9.0,
+            pad_x: 16.0,
         }
     }
 
@@ -456,10 +477,8 @@ impl GlassTextInput {
     pub fn on_pointer_down(&mut self, px: f32, py: f32) -> bool {
         if self.contains(px, py) {
             self.set_focused(true);
-            let char_width = 9.0;
-            let pad_x = 16.0;
-            let rel_x = (px - self.bounds[0] - pad_x).max(0.0);
-            let target_idx = (rel_x / char_width).round() as usize;
+            let rel_x = (px - self.bounds[0] - self.pad_x).max(0.0);
+            let target_idx = (rel_x / self.char_width).round() as usize;
             self.cursor_pos = target_idx.min(self.text.chars().count());
             true
         } else {
@@ -607,6 +626,7 @@ impl GlassTextInput {
 
         // 2. Focused accent meniscus rim / glow if active
         if f > 0.01 {
+            let accent = accent_rgb();
             let rim = GlassSurface::new()
                 .material(Material::LiquidGlass)
                 .shape(self.shape)
@@ -619,15 +639,14 @@ impl GlassTextInput {
                 .blur(8.0)
                 .refraction(0.70)
                 .specular(0.95)
-                .tint(0.38, 0.85, 1.0, f * 0.35);
+                .tint(accent[0], accent[1], accent[2], f * 0.35);
             surfaces.push(rim);
         }
 
         // 3. Blinking cursor indicator bar when focused and visible
         if self.is_focused && self.cursor_visible {
-            let char_width = 9.0;
-            let pad_x = 16.0;
-            let cursor_x = self.bounds[0] + pad_x + self.cursor_pos as f32 * char_width;
+            let accent = accent_rgb();
+            let cursor_x = self.bounds[0] + self.pad_x + self.cursor_pos as f32 * self.char_width;
             let cursor_h = self.bounds[3] * 0.55;
             let cursor_y = self.bounds[1] + (self.bounds[3] - cursor_h) * 0.5;
 
@@ -637,7 +656,7 @@ impl GlassTextInput {
                 .bounds(cursor_x, cursor_y, 2.0, cursor_h)
                 .refraction(0.80)
                 .specular(1.0)
-                .tint(0.4, 0.9, 1.0, 0.90);
+                .tint(accent[0], accent[1], accent[2], 0.90);
             surfaces.push(cursor);
         }
 
@@ -824,34 +843,58 @@ impl GlassContextMenu {
         self.items.len() as f32 * self.item_height + pad
     }
 
+    /// Current open/close animation scale (0.90 → 1.00).
+    fn anim_scale(&self) -> f32 {
+        0.90 + self.open_spring.value.clamp(0.0, 1.0) * 0.10
+    }
+
+    /// Rendered panel rect `(x, y, w, h)`. The panel scales around its
+    /// top-center, matching dropdown/menu convention.
+    fn panel_rect(&self) -> (f32, f32, f32, f32) {
+        let scale = self.anim_scale();
+        let [x0, y0] = self.position;
+        let w = self.width * scale;
+        let h = self.total_height() * scale;
+        (x0 + (self.width - w) * 0.5, y0, w, h)
+    }
+
+    /// Map a pointer Y into unscaled item-index space, accounting for the
+    /// panel's open/close scale animation.
+    fn item_index_at(&self, px: f32, py: f32) -> Option<usize> {
+        let (px0, y0, w, _h) = self.panel_rect();
+        if px < px0 || px > px0 + w {
+            return None;
+        }
+        let scale = self.anim_scale();
+        let rel_y = (py - y0) / scale - 6.0;
+        if rel_y < 0.0 {
+            return None;
+        }
+        let idx = (rel_y / self.item_height) as usize;
+        (idx < self.items.len()).then_some(idx)
+    }
+
     pub fn contains(&self, px: f32, py: f32) -> bool {
         if !self.is_open && self.open_spring.value < 0.05 {
             return false;
         }
-        let [x, y] = self.position;
-        let h = self.total_height();
-        px >= x && px <= x + self.width && py >= y && py <= y + h
+        let (x, y, w, h) = self.panel_rect();
+        px >= x && px <= x + w && py >= y && py <= y + h
     }
 
     pub fn on_pointer_move(&mut self, px: f32, py: f32) {
         if !self.is_open {
             return;
         }
-        let [x, y] = self.position;
-        if px >= x && px <= x + self.width {
-            let rel_y = py - (y + 6.0);
-            if rel_y >= 0.0 {
-                let idx = (rel_y / self.item_height) as usize;
-                if idx < self.items.len() && self.items[idx].enabled {
-                    if self.hovered_index != Some(idx) {
-                        self.hovered_index = Some(idx);
-                        self.hover_spring.set_target(idx as f32);
-                    }
-                    return;
+        match self.item_index_at(px, py) {
+            Some(idx) if self.items[idx].enabled => {
+                if self.hovered_index != Some(idx) {
+                    self.hovered_index = Some(idx);
+                    self.hover_spring.set_target(idx as f32);
                 }
             }
+            _ => self.hovered_index = None,
         }
-        self.hovered_index = None;
     }
 
     pub fn on_pointer_down(&mut self, px: f32, py: f32) -> Option<String> {
@@ -863,15 +906,12 @@ impl GlassContextMenu {
             return None;
         }
 
-        let [_x, y] = self.position;
-        let rel_y = py - (y + 6.0);
-        if rel_y >= 0.0 {
-            let idx = (rel_y / self.item_height) as usize;
-            if idx < self.items.len() && self.items[idx].enabled {
-                let id = self.items[idx].id.clone();
-                self.close();
-                return Some(id);
-            }
+        if let Some(idx) = self.item_index_at(px, py)
+            && self.items[idx].enabled
+        {
+            let id = self.items[idx].id.clone();
+            self.close();
+            return Some(id);
         }
         None
     }
@@ -887,16 +927,13 @@ impl GlassContextMenu {
             return Vec::new();
         }
 
-        let scale = 0.90 + t * 0.10;
-        let total_h = self.total_height();
-        let [x0, y0] = self.position;
-        let w = self.width * scale;
-        let h = total_h * scale;
+        let scale = self.anim_scale();
+        let (px0, y0, w, h) = self.panel_rect();
 
         let panel = GlassSurface::new()
             .material(Material::LiquidGlass)
             .shape(Shape::RoundedRectangle { radius: 16.0 })
-            .bounds(x0, y0, w, h)
+            .bounds(px0, y0, w, h)
             .blur(self.blur_radius)
             .refraction(0.65)
             .fresnel(0.70)
@@ -906,22 +943,22 @@ impl GlassContextMenu {
 
         let mut surfaces = vec![panel];
 
-        if let Some(hov_idx) = self.hovered_index {
-            let item_y = y0 + 6.0 + hov_idx as f32 * self.item_height;
-            let item_pad_x = 6.0;
+        if self.hovered_index.is_some() {
+            // hover_spring glides between item indices, giving a sliding highlight.
+            let max_idx = self.items.len().saturating_sub(1) as f32;
+            let hover_pos = self.hover_spring.value.clamp(0.0, max_idx);
+            let item_pad_x = 6.0 * scale;
+            let item_y = y0 + (6.0 + hover_pos * self.item_height) * scale;
+            let item_h = (self.item_height - 2.0) * scale;
+            let accent = accent_rgb();
             let highlight = GlassSurface::new()
                 .material(Material::Acrylic)
                 .shape(Shape::RoundedRectangle { radius: 8.0 })
-                .bounds(
-                    x0 + item_pad_x,
-                    item_y,
-                    w - item_pad_x * 2.0,
-                    self.item_height - 2.0,
-                )
+                .bounds(px0 + item_pad_x, item_y, w - item_pad_x * 2.0, item_h)
                 .blur(16.0)
                 .refraction(0.50)
                 .specular(0.95)
-                .tint(0.35, 0.75, 1.0, 0.25 * t);
+                .tint(accent[0], accent[1], accent[2], 0.25 * t);
             surfaces.push(highlight);
         }
 
@@ -939,6 +976,8 @@ pub struct GlassWidget {
     pub inputs: Vec<GlassTextInput>,
     pub tooltips: Vec<GlassTooltip>,
     pub context_menus: Vec<GlassContextMenu>,
+    /// Index into `inputs` of the field holding keyboard focus, if any.
+    pub focused_input: Option<usize>,
 }
 
 impl GlassWidget {
@@ -990,12 +1029,34 @@ impl GlassWidget {
     }
 
     pub fn on_pointer_down(&mut self, px: f32, py: f32) -> bool {
-        let mut handled = false;
+        self.on_pointer_down_ex(px, py).0
+    }
+
+    /// Dispatch a pointer press.
+    ///
+    /// Returns `(handled, menu_action)` where `menu_action` is the id of the
+    /// context-menu item activated by this press, if any. A press is consumed
+    /// by an open (or still-animating) context menu — whether it lands inside
+    /// or outside — so it never falls through to widgets beneath the menu.
+    pub fn on_pointer_down_ex(&mut self, px: f32, py: f32) -> (bool, Option<String>) {
+        let mut menu_action = None;
+        let menu_was_active = self
+            .context_menus
+            .iter()
+            .any(|m| m.is_open || m.open_spring.value > 0.05);
         for menu in &mut self.context_menus {
-            if menu.on_pointer_down(px, py).is_some() {
-                handled = true;
+            if let Some(id) = menu.on_pointer_down(px, py) {
+                menu_action = Some(id);
             }
         }
+        if menu_was_active {
+            // Dismissal click outside the menu also counts as an outside click
+            // for text inputs, matching platform focus conventions.
+            self.set_focused_input(None);
+            return (true, menu_action);
+        }
+
+        let mut handled = false;
         for btn in &mut self.buttons {
             if btn.on_pointer_down(px, py) {
                 handled = true;
@@ -1011,12 +1072,66 @@ impl GlassWidget {
                 handled = true;
             }
         }
-        for input in &mut self.inputs {
+        let mut focused = None;
+        for (i, input) in self.inputs.iter_mut().enumerate() {
             if input.on_pointer_down(px, py) {
                 handled = true;
+                focused = Some(i);
             }
         }
-        handled
+        self.focused_input = focused;
+        (handled, menu_action)
+    }
+
+    /// Move keyboard focus to `inputs[index]`, clearing all other inputs.
+    /// Pass `None` to unfocus everything.
+    pub fn set_focused_input(&mut self, index: Option<usize>) {
+        for (i, input) in self.inputs.iter_mut().enumerate() {
+            input.set_focused(Some(i) == index);
+        }
+        self.focused_input = index;
+    }
+
+    /// Insert text (typing, paste, IME commit) into the focused input.
+    /// Returns `true` if an input was focused.
+    pub fn input_text(&mut self, text: &str) -> bool {
+        if let Some(i) = self.focused_input {
+            self.inputs[i].insert_text(text);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Route a named editing key to the focused input.
+    /// Supported: `"backspace"`, `"delete"`, `"left"`, `"right"`, `"home"`, `"end"`.
+    /// Returns `true` if an input was focused and the key was recognized.
+    pub fn input_key(&mut self, key: &str) -> bool {
+        let Some(i) = self.focused_input else {
+            return false;
+        };
+        let input = &mut self.inputs[i];
+        match key {
+            "backspace" => input.delete_backward(),
+            "delete" => input.delete_forward(),
+            "left" => {
+                input.move_cursor_left();
+                true
+            }
+            "right" => {
+                input.move_cursor_right();
+                true
+            }
+            "home" => {
+                input.move_cursor_start();
+                true
+            }
+            "end" => {
+                input.move_cursor_end();
+                true
+            }
+            _ => false,
+        }
     }
 
     pub fn on_pointer_up(&mut self, px: f32, py: f32) -> Option<usize> {
@@ -1052,30 +1167,36 @@ impl GlassWidget {
 
     pub fn collect_surfaces(&self) -> Vec<GlassSurface> {
         let mut surfaces = Vec::new();
+        self.collect_surfaces_into(&mut surfaces);
+        surfaces
+    }
+
+    /// Append all widget surfaces to `out`. Callers rendering every frame can
+    /// reuse one buffer instead of paying for a fresh `Vec` per widget.
+    pub fn collect_surfaces_into(&self, out: &mut Vec<GlassSurface>) {
         for card in &self.cards {
-            surfaces.push(card.to_surface());
+            out.push(card.to_surface());
         }
         for tg in &self.toggles {
-            surfaces.extend(tg.to_surfaces());
+            out.extend(tg.to_surfaces());
         }
         for sl in &self.sliders {
-            surfaces.extend(sl.to_surfaces());
+            out.extend(sl.to_surfaces());
         }
         for btn in &self.buttons {
-            surfaces.push(btn.to_surface());
+            out.push(btn.to_surface());
         }
         for input in &self.inputs {
-            surfaces.extend(input.to_surfaces());
+            out.extend(input.to_surfaces());
         }
         for menu in &self.context_menus {
-            surfaces.extend(menu.to_surfaces());
+            out.extend(menu.to_surfaces());
         }
         for tooltip in &self.tooltips {
             if let Some(s) = tooltip.to_surface() {
-                surfaces.push(s);
+                out.push(s);
             }
         }
-        surfaces
     }
 }
 
