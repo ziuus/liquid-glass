@@ -422,7 +422,7 @@ impl CenterHeroClock {
 
             // AM/PM Crystalline Badge aligned with optical digits
             let has_h_tens = (hour_12 / 10) > 0;
-            let ampm_x = if has_h_tens { cx + 265.0 } else { cx + 216.0 };
+            let ampm_x = if has_h_tens { cx + 262.0 } else { cx + 208.0 };
             let ampm_cy = cy + 54.0;
             self.font.draw_text_centered_y(
                 buf,
