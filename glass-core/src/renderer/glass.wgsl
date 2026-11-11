@@ -781,10 +781,11 @@ fn eval_liquid_text_sdf(p: vec2<f32>, tint: vec4<f32>) -> f32 {
     let h0_x = h1_left - gap - cyl_r - (b_h0.y * scale);
     let h0_left = h0_x + b_h0.x * scale - cyl_r;
 
-    // Anchor colon at 0.0 when 2-digit hour; center only for single-digit hour
-    let x_shift = select((m1_right + h1_left) * 0.5, 0.0, h_tens > 0u);
+    // Optical centering for entire time glyph block under date header
+    let h_left = select(h1_left, h0_left, h_tens > 0u);
+    let x_shift = (m1_right + h_left) * 0.5;
 
-    let p_c = p - vec2<f32>(x_shift, y_off);
+    let p_c = vec2<f32>(p.x + x_shift, p.y - y_off);
 
     let d_h0 = select(999.0, draw_apple_digit(p_c - vec2<f32>(h0_x, 0.0), h_tens, scale), h_tens > 0u);
     let d_h1 = draw_apple_digit(p_c - vec2<f32>(h1_x, 0.0), h_ones, scale);
