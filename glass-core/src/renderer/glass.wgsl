@@ -1417,24 +1417,30 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     // Dynamic Island & edge-docked widget modes (params.deformation):
     //   0.0 = Floating (symmetric capsule / rounded rect)
-    //   1.0 = Attached Straight (top flush against screen, sharp 90-degree corners)
-    //   2.0 = Attached Curved/Notch (top flush against screen, smooth outward fillet wings)
+    //   1.0 = Attached Straight (flush against screen edge, sharp 90-degree corners)
+    //   2.0 = Attached Curved/Notch (flush against screen edge, smooth outward fillet wings)
     let is_dockable = (params.padding >= 24.9 && params.padding <= 28.5);
+    let is_bottom_dock = (params.padding >= 27.9 && params.padding <= 28.5);
     let edge_style = params.deformation;
     let is_attached = (is_dockable && edge_style >= 0.9);
     let is_curved = (is_dockable && edge_style >= 1.5);
     let r_bottom = r;
     let r_fillet = select(24.0, params.curvature, params.curvature >= 4.0);
 
+    // If bottom dock is attached, invert local Y so fillet wings attach to screen bottom bezel
+    let eval_px = select(local_px, vec2<f32>(local_px.x, -local_px.y), is_bottom_dock && is_attached);
+
     var sdf: f32;
     var grad_2d: vec2<f32>;
 
     if is_curved {
-        sdf = rr_sdf_notched(local_px, half_size, r_bottom, r_fillet);
-        grad_2d = rr_normal_fd_notched(local_px, half_size, r_bottom, r_fillet);
+        sdf = rr_sdf_notched(eval_px, half_size, r_bottom, r_fillet);
+        let g = rr_normal_fd_notched(eval_px, half_size, r_bottom, r_fillet);
+        grad_2d = select(g, vec2<f32>(g.x, -g.y), is_bottom_dock && is_attached);
     } else if is_attached {
-        sdf = rr_sdf_docked(local_px, half_size, 0.0, r_bottom);
-        grad_2d = rr_normal_fd_docked(local_px, half_size, 0.0, r_bottom);
+        sdf = rr_sdf_docked(eval_px, half_size, 0.0, r_bottom);
+        let g = rr_normal_fd_docked(eval_px, half_size, 0.0, r_bottom);
+        grad_2d = select(g, vec2<f32>(g.x, -g.y), is_bottom_dock && is_attached);
     } else {
         sdf = rr_sdf(local_px, half_size, r);
         grad_2d = rr_normal(local_px, half_size, r);
@@ -1442,7 +1448,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let style_mode = params._pad.x; // 0.0 = Obsidian (Clean), 1.0 = Glassmorphism (Frosted), 2.0 = Liquid Glass
     let is_light = params.is_light;
-    let top_flush = select(1.0, smoothstep(-half_size.y, -half_size.y + 4.0, local_px.y), is_attached);
+    let top_flush = select(1.0, smoothstep(-half_size.y, -half_size.y + 4.0, eval_px.y), is_attached);
     
     // ════════════════════════════════════════════
     // 1b. PHYSICAL 3D DIRECTIONAL AMBIENT CONTACT SHADOW

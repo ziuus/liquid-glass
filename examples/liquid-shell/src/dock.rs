@@ -143,6 +143,62 @@ impl DockItem {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BottomDockMode {
+    Floating,
+    AttachedStraight,
+    AttachedCurved,
+}
+
+impl BottomDockMode {
+    pub fn deformation(&self) -> f32 {
+        match self {
+            BottomDockMode::Floating => 0.0,
+            BottomDockMode::AttachedStraight => 1.0,
+            BottomDockMode::AttachedCurved => 2.0,
+        }
+    }
+
+    pub fn expanded_y(&self) -> f32 {
+        match self {
+            BottomDockMode::Floating => 18.0,
+            BottomDockMode::AttachedStraight | BottomDockMode::AttachedCurved => 32.0,
+        }
+    }
+
+    pub fn next(&self) -> Self {
+        match self {
+            BottomDockMode::AttachedCurved => BottomDockMode::AttachedStraight,
+            BottomDockMode::AttachedStraight => BottomDockMode::Floating,
+            BottomDockMode::Floating => BottomDockMode::AttachedCurved,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            BottomDockMode::Floating => "floating",
+            BottomDockMode::AttachedStraight => "straight",
+            BottomDockMode::AttachedCurved => "curved",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        let trimmed = s.trim().to_ascii_lowercase();
+        if trimmed == "straight" || trimmed == "flush" || trimmed == "attached_straight" {
+            BottomDockMode::AttachedStraight
+        } else if trimmed == "curved"
+            || trimmed == "notch"
+            || trimmed == "fillet"
+            || trimmed == "attached"
+            || trimmed == "attached_curved"
+        {
+            BottomDockMode::AttachedCurved
+        } else {
+            BottomDockMode::Floating
+        }
+    }
+}
+
 pub struct DockWidget {
     #[allow(dead_code)]
     pub layer_surface: Option<LayerSurface>,
@@ -170,6 +226,7 @@ pub struct DockWidget {
 
     pub is_compact: bool,
     pub hover_to_expand: bool,
+    pub dock_mode: BottomDockMode,
     pub current_w: f32,
     pub current_h: f32,
     pub current_y: f32,
@@ -262,6 +319,7 @@ impl DockWidget {
 
             is_compact: true,
             hover_to_expand: true,
+            dock_mode: BottomDockMode::Floating,
             current_w: DOCK_COMPACT_W,
             current_h: DOCK_COMPACT_H,
             current_y: DOCK_COMPACT_Y,
@@ -317,6 +375,31 @@ impl DockWidget {
                         if self.is_compact {
                             self.current_h = self.compact_h;
                         }
+                    }
+                    if let Some(m) = d
+                        .get("mode")
+                        .or_else(|| d.get("dock_mode"))
+                        .and_then(|v| v.as_str())
+                    {
+                        self.dock_mode = BottomDockMode::from_str(m);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn save_config(&self) {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let conf_path = format!("{}/.config/liquid-glass/config.json", home);
+        if let Ok(content) = std::fs::read_to_string(&conf_path) {
+            if let Ok(mut val) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(dock_obj) = val.get_mut("dock").and_then(|d| d.as_object_mut()) {
+                    dock_obj.insert(
+                        "mode".to_string(),
+                        serde_json::Value::String(self.dock_mode.as_str().to_string()),
+                    );
+                    if let Ok(formatted) = serde_json::to_string_pretty(&val) {
+                        let _ = std::fs::write(&conf_path, formatted);
                     }
                 }
             }
@@ -399,8 +482,8 @@ impl DockWidget {
                 && py >= (DOCK_COMPACT_Y - 24.0)
                 && py <= (self.height as f32)
         } else {
-            let half_w = self.current_w * 0.5 + 16.0;
-            let top = (self.current_y - 12.0).max(0.0);
+            let half_w = (DOCK_EXPANDED_W + 32.0) * 0.5;
+            let top = (DOCK_EXPANDED_Y - 16.0).max(0.0);
             let bottom = self.height as f32;
             px >= (cx - half_w) && px <= (cx + half_w) && py >= top && py <= bottom
         }
@@ -420,10 +503,11 @@ impl DockWidget {
             let pill_y = (DOCK_COMPACT_Y - 20.0) as i32;
             region.add(pill_x, pill_y, pill_w, pill_h);
         } else {
-            let card_w = (self.current_w + 24.0) as i32;
-            let card_h = (self.current_h + 30.0) as i32;
+            // Immediately open full expanded bounds to receive all mouse clicks without clipping
+            let card_w = (DOCK_EXPANDED_W + 48.0) as i32;
+            let card_h = (DOCK_EXPANDED_H + 40.0) as i32;
             let card_x = cx - card_w / 2;
-            let card_y = (self.current_y - 10.0).max(0.0) as i32;
+            let card_y = (DOCK_EXPANDED_Y - 16.0).max(0.0) as i32;
             region.add(card_x, card_y, card_w, card_h);
         }
         self.surface.set_input_region(Some(&region));
@@ -529,20 +613,20 @@ impl DockWidget {
                 }
                 self.last_hover_time = Instant::now();
 
-                // Detect item click
+                // Detect item click against target layout slots
                 let cx = (self.width as f32) * 0.5;
-                let dock_left = cx - self.current_w * 0.5;
+                let dock_left = cx - DOCK_EXPANDED_W * 0.5;
                 let item_count = self.items.len();
                 if item_count > 0 {
-                    let total_avail = self.current_w - 32.0;
+                    let total_avail = DOCK_EXPANDED_W - 32.0;
                     let slot_w = total_avail / (item_count as f32);
                     let start_x = dock_left + 16.0 + slot_w * 0.5;
 
                     for idx in 0..item_count {
                         let item_cx = start_x + (idx as f32) * slot_w;
-                        let item_cy = self.current_y + self.current_h * 0.5;
+                        let item_cy = DOCK_EXPANDED_Y + DOCK_EXPANDED_H * 0.5;
                         if (px - item_cx).abs() <= slot_w * 0.5
-                            && (py - item_cy).abs() <= self.current_h * 0.5
+                            && (py - item_cy).abs() <= (DOCK_EXPANDED_H * 0.5 + 16.0)
                         {
                             self.pressed_item = Some(idx);
                             break;
@@ -551,22 +635,29 @@ impl DockWidget {
                 }
                 true
             }
-            PointerEventKind::Release { .. } => {
+            PointerEventKind::Release { button, .. } => {
                 let px = event.position.0 as f32;
                 let py = event.position.1 as f32;
+
+                // Right click on dock toggles dock mode between Floating, Straight, and Curved!
+                if button == 273 {
+                    self.dock_mode = self.dock_mode.next();
+                    self.save_config();
+                    return true;
+                }
 
                 if let Some(idx) = self.pressed_item.take() {
                     if idx < self.items.len() {
                         let cx = (self.width as f32) * 0.5;
-                        let dock_left = cx - self.current_w * 0.5;
+                        let dock_left = cx - DOCK_EXPANDED_W * 0.5;
                         let item_count = self.items.len();
-                        let total_avail = self.current_w - 32.0;
+                        let total_avail = DOCK_EXPANDED_W - 32.0;
                         let slot_w = total_avail / (item_count as f32);
                         let item_cx = dock_left + 16.0 + slot_w * 0.5 + (idx as f32) * slot_w;
-                        let item_cy = self.current_y + self.current_h * 0.5;
+                        let item_cy = DOCK_EXPANDED_Y + DOCK_EXPANDED_H * 0.5;
 
                         if (px - item_cx).abs() <= slot_w * 0.5
-                            && (py - item_cy).abs() <= self.current_h * 0.5
+                            && (py - item_cy).abs() <= (DOCK_EXPANDED_H * 0.5 + 20.0)
                         {
                             let cmd = self.items[idx].command.clone();
                             let _ = Command::new("sh").args(["-c", &cmd]).spawn();
@@ -585,9 +676,10 @@ impl DockWidget {
         self.size_spring.update(eff_dt);
 
         let t = self.size_spring.value.clamp(0.0, 1.0);
+        let target_y = self.dock_mode.expanded_y();
         self.current_w = self.compact_w + (DOCK_EXPANDED_W - self.compact_w) * t;
         self.current_h = self.compact_h + (DOCK_EXPANDED_H - self.compact_h) * t;
-        self.current_y = DOCK_COMPACT_Y + (DOCK_EXPANDED_Y - DOCK_COMPACT_Y) * t;
+        self.current_y = DOCK_COMPACT_Y + (target_y - DOCK_COMPACT_Y) * t;
 
         // Auto-collapse after inactivity (2.5 seconds unhovered)
         if !self.is_compact
@@ -886,7 +978,11 @@ impl DockWidget {
                 .style_mode(self.style_mode)
                 .tint(0.0, 0.0, 1.0, is_light_f32)
                 .element_type(28.0)
-                .deformation(0.0) // Floating pill with 360-degree glass meniscus
+                .deformation(if t < 0.15 {
+                    0.0
+                } else {
+                    self.dock_mode.deformation()
+                })
                 .pointer_pos(self.cursor_pos[0], self.cursor_pos[1]);
 
             let _ = renderer.render(&[dock_card]);
