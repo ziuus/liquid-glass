@@ -179,7 +179,7 @@ impl TodoWidget {
         let layer_surface = layer_shell.create_layer_surface(
             qh,
             surface.clone(),
-            Layer::Bottom,
+            Layer::Top,
             Some("liquid-glass-todo"),
             None,
         );
