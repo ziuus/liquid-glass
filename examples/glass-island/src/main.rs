@@ -408,7 +408,8 @@ impl AppData {
     fn toggle(&mut self) {
         match self.mode {
             IslandMode::Hidden => self.set_mode(IslandMode::CompactPill),
-            _ => self.set_mode(IslandMode::Hidden),
+            IslandMode::CompactPill => self.set_mode(IslandMode::QuickAccess),
+            _ => self.set_mode(IslandMode::CompactPill),
         }
     }
 
@@ -416,7 +417,13 @@ impl AppData {
         while let Ok(evt) = self.ipc_rx.try_recv() {
             match evt {
                 IslandIpcEvent::Toggle => self.toggle(),
-                IslandIpcEvent::ShowMode(m) => self.set_mode(m),
+                IslandIpcEvent::ShowMode(m) => {
+                    if self.mode == m && m != IslandMode::CompactPill {
+                        self.set_mode(IslandMode::CompactPill);
+                    } else {
+                        self.set_mode(m);
+                    }
+                }
                 IslandIpcEvent::NextMenu => self.cycle_mode_forward(),
                 IslandIpcEvent::PrevMenu => self.cycle_mode_backward(),
                 IslandIpcEvent::Notification(notif) => {

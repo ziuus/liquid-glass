@@ -332,6 +332,8 @@ impl SysStats {
 pub enum IslandIpcEvent {
     Toggle,
     ShowMode(IslandMode),
+    ToggleTodo,
+    ToggleClock,
     Notification(NotificationData),
     NextMenu,
     PrevMenu,
@@ -1286,18 +1288,33 @@ impl IslandWidget {
     fn toggle(&mut self) {
         match self.mode {
             IslandMode::Hidden => self.set_mode(IslandMode::CompactPill),
-            _ => self.set_mode(IslandMode::Hidden),
+            IslandMode::CompactPill => self.set_mode(IslandMode::QuickAccess),
+            _ => self.set_mode(IslandMode::CompactPill),
         }
     }
 
-    pub fn check_ipc(&mut self) -> (Option<f32>, Option<u32>, Option<f32>) {
+    pub fn check_ipc(&mut self) -> (Option<f32>, Option<u32>, Option<f32>, bool, bool) {
         let mut style_changed = None;
         let mut theme_changed = None;
         let mut blur_changed = None;
+        let mut toggle_todo = false;
+        let mut toggle_clock = false;
         while let Ok(evt) = self.ipc_rx.try_recv() {
             match evt {
                 IslandIpcEvent::Toggle => self.toggle(),
-                IslandIpcEvent::ShowMode(m) => self.set_mode(m),
+                IslandIpcEvent::ShowMode(m) => {
+                    if self.mode == m && m != IslandMode::CompactPill {
+                        self.set_mode(IslandMode::CompactPill);
+                    } else {
+                        self.set_mode(m);
+                    }
+                }
+                IslandIpcEvent::ToggleTodo => {
+                    toggle_todo = true;
+                }
+                IslandIpcEvent::ToggleClock => {
+                    toggle_clock = true;
+                }
                 IslandIpcEvent::NextMenu => self.cycle_mode_forward(),
                 IslandIpcEvent::PrevMenu => self.cycle_mode_backward(),
                 IslandIpcEvent::SetStyle(s) => {
@@ -1355,7 +1372,13 @@ impl IslandWidget {
                 IslandIpcEvent::ReloadConfig => self.reload_config(),
             }
         }
-        (style_changed, theme_changed, blur_changed)
+        (
+            style_changed,
+            theme_changed,
+            blur_changed,
+            toggle_todo,
+            toggle_clock,
+        )
     }
 
     pub fn update_physics(&mut self, dt: f32) -> bool {
@@ -3192,6 +3215,10 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>, wakeup_fd: Option<i32>) {
                         send_evt(IslandIpcEvent::ShowMode(IslandMode::PowerMenu));
                     } else if trimmed == "apps" || trimmed == "quick" {
                         send_evt(IslandIpcEvent::ShowMode(IslandMode::QuickAccess));
+                    } else if trimmed == "todo" || trimmed == "tasks" {
+                        send_evt(IslandIpcEvent::ToggleTodo);
+                    } else if trimmed == "clock" {
+                        send_evt(IslandIpcEvent::ToggleClock);
                     } else if trimmed == "next" {
                         send_evt(IslandIpcEvent::NextMenu);
                     } else if trimmed == "prev" {

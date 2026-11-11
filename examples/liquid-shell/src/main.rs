@@ -599,7 +599,15 @@ fn main() {
             }
         }
 
-        let (new_style, new_theme, new_blur) = app.island.check_ipc();
+        let (new_style, new_theme, new_blur, toggle_todo, toggle_clock) = app.island.check_ipc();
+        if toggle_todo {
+            app.todo.toggle_expand();
+            app.todo.draw();
+        }
+        if toggle_clock {
+            app.clock.toggle_expand();
+            app.clock.draw();
+        }
         if let Some(s) = new_style {
             app.clock.style_mode = s;
             app.todo.style_mode = s;
