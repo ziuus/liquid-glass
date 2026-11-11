@@ -140,7 +140,7 @@ impl CenterHeroClock {
             is_wallpaper_light: false,
 
             enabled: true,
-            show_glass_card: true,
+            show_glass_card: false,
             style_mode: 2.0,
             theme_mode: 0,
             blur_radius: 20.0,
@@ -233,287 +233,6 @@ impl CenterHeroClock {
         false
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn draw_cyber_char(
-        buf: &mut [u8],
-        width: u32,
-        height: u32,
-        ch: char,
-        cx: f32,
-        cy: f32,
-        w: f32,
-        h: f32,
-        stroke: f32,
-        col: [u8; 4],
-    ) {
-        let hw = w * 0.5;
-        let hh = h * 0.5;
-        let l = cx - hw;
-        let r = cx + hw;
-        let t = cy - hh;
-        let b = cy + hh;
-
-        match ch {
-            'W' => {
-                UIFont::draw_segment(buf, width, height, (l, t), (l + w * 0.28, b), stroke, col);
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (l + w * 0.48, b),
-                    (cx + w * 0.12, t),
-                    stroke,
-                    col,
-                );
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (cx + w * 0.12, t),
-                    (r - w * 0.15, b),
-                    stroke,
-                    col,
-                );
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (r - w * 0.15, b),
-                    (r, t + h * 0.2),
-                    stroke,
-                    col,
-                );
-            }
-            'E' => {
-                UIFont::draw_segment(buf, width, height, (l, t), (r, t), stroke, col);
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (l + w * 0.15, cy),
-                    (r - w * 0.15, cy),
-                    stroke,
-                    col,
-                );
-                UIFont::draw_segment(buf, width, height, (l, b), (r, b), stroke, col);
-                UIFont::draw_segment(buf, width, height, (l, t), (l, t + h * 0.35), stroke, col);
-                UIFont::draw_segment(buf, width, height, (l, b - h * 0.35), (l, b), stroke, col);
-            }
-            'D' => {
-                UIFont::draw_segment(buf, width, height, (l, t), (l, b), stroke, col);
-                UIFont::draw_segment(buf, width, height, (l, t), (r - w * 0.3, t), stroke, col);
-                UIFont::draw_segment(buf, width, height, (r - w * 0.3, t), (r, cy), stroke, col);
-                UIFont::draw_segment(buf, width, height, (r, cy), (r - w * 0.3, b), stroke, col);
-                UIFont::draw_segment(buf, width, height, (r - w * 0.3, b), (l, b), stroke, col);
-            }
-            'N' => {
-                UIFont::draw_segment(buf, width, height, (l, t), (l, b), stroke, col);
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (l + w * 0.1, t + h * 0.1),
-                    (r - w * 0.1, b - h * 0.1),
-                    stroke,
-                    col,
-                );
-                UIFont::draw_segment(buf, width, height, (r, t), (r, b), stroke, col);
-            }
-            'S' => {
-                UIFont::draw_segment(buf, width, height, (r, t), (l + w * 0.2, t), stroke, col);
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (l + w * 0.2, t),
-                    (l, cy - hh * 0.2),
-                    stroke,
-                    col,
-                );
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (l, cy - hh * 0.2),
-                    (r, cy + hh * 0.2),
-                    stroke,
-                    col,
-                );
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (r, cy + hh * 0.2),
-                    (r - w * 0.2, b),
-                    stroke,
-                    col,
-                );
-                UIFont::draw_segment(buf, width, height, (r - w * 0.2, b), (l, b), stroke, col);
-            }
-            'A' => {
-                UIFont::draw_segment(buf, width, height, (l, b), (cx, t), stroke, col);
-                UIFont::draw_segment(buf, width, height, (cx, t), (r, b), stroke, col);
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (cx - w * 0.22, cy + hh * 0.25),
-                    (cx + w * 0.22, cy + hh * 0.25),
-                    stroke,
-                    col,
-                );
-            }
-            'Y' => {
-                UIFont::draw_segment(buf, width, height, (l, t), (cx, cy), stroke, col);
-                UIFont::draw_segment(buf, width, height, (r, t), (l + w * 0.1, b), stroke, col);
-            }
-            'T' => {
-                UIFont::draw_segment(buf, width, height, (l, t), (r, t), stroke, col);
-                UIFont::draw_segment(buf, width, height, (cx, t), (cx, b), stroke, col);
-            }
-            'H' => {
-                UIFont::draw_segment(buf, width, height, (l, t), (l, b), stroke, col);
-                UIFont::draw_segment(buf, width, height, (l, cy), (r, cy), stroke, col);
-                UIFont::draw_segment(buf, width, height, (r, t), (r, b), stroke, col);
-            }
-            'U' => {
-                UIFont::draw_segment(buf, width, height, (l, t), (l, b - h * 0.2), stroke, col);
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (l, b - h * 0.2),
-                    (l + w * 0.2, b),
-                    stroke,
-                    col,
-                );
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (l + w * 0.2, b),
-                    (r - w * 0.2, b),
-                    stroke,
-                    col,
-                );
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (r - w * 0.2, b),
-                    (r, b - h * 0.2),
-                    stroke,
-                    col,
-                );
-                UIFont::draw_segment(buf, width, height, (r, b - h * 0.2), (r, t), stroke, col);
-            }
-            'R' => {
-                UIFont::draw_segment(buf, width, height, (l, t), (l, b), stroke, col);
-                UIFont::draw_segment(buf, width, height, (l, t), (r - w * 0.3, t), stroke, col);
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (r - w * 0.3, t),
-                    (r, cy - hh * 0.1),
-                    stroke,
-                    col,
-                );
-                UIFont::draw_segment(buf, width, height, (r, cy - hh * 0.1), (l, cy), stroke, col);
-                UIFont::draw_segment(buf, width, height, (l + w * 0.3, cy), (r, b), stroke, col);
-            }
-            'F' => {
-                UIFont::draw_segment(buf, width, height, (l, t), (r, t), stroke, col);
-                UIFont::draw_segment(buf, width, height, (l, cy), (r - w * 0.2, cy), stroke, col);
-                UIFont::draw_segment(buf, width, height, (l, t), (l, b), stroke, col);
-            }
-            'I' => {
-                UIFont::draw_segment(buf, width, height, (cx, t), (cx, b), stroke, col);
-            }
-            'M' => {
-                UIFont::draw_segment(buf, width, height, (l, t), (l, b), stroke, col);
-                UIFont::draw_segment(buf, width, height, (l, t), (cx, cy), stroke, col);
-                UIFont::draw_segment(buf, width, height, (cx, cy), (r, t), stroke, col);
-                UIFont::draw_segment(buf, width, height, (r, t), (r, b), stroke, col);
-            }
-            'O' => {
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (l, t + h * 0.2),
-                    (l, b - h * 0.2),
-                    stroke,
-                    col,
-                );
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (l, t + h * 0.2),
-                    (l + w * 0.2, t),
-                    stroke,
-                    col,
-                );
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (l + w * 0.2, t),
-                    (r - w * 0.2, t),
-                    stroke,
-                    col,
-                );
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (r - w * 0.2, t),
-                    (r, t + h * 0.2),
-                    stroke,
-                    col,
-                );
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (r, t + h * 0.2),
-                    (r, b - h * 0.2),
-                    stroke,
-                    col,
-                );
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (r, b - h * 0.2),
-                    (r - w * 0.2, b),
-                    stroke,
-                    col,
-                );
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (r - w * 0.2, b),
-                    (l + w * 0.2, b),
-                    stroke,
-                    col,
-                );
-                UIFont::draw_segment(
-                    buf,
-                    width,
-                    height,
-                    (l + w * 0.2, b),
-                    (l, b - h * 0.2),
-                    stroke,
-                    col,
-                );
-            }
-            _ => {}
-        }
-    }
-
     fn render_ui_overlay(&mut self) {
         let buf_len = (self.width * self.height * 4) as usize;
         if self.overlay_buffer.len() != buf_len {
@@ -527,78 +246,88 @@ impl CenterHeroClock {
 
         let is_light = self.effective_is_light();
         let col_day = if is_light {
-            [22, 28, 38, 255]
+            [18, 22, 32, 245]
         } else {
-            [245, 248, 255, 255]
+            [248, 250, 255, 245]
         };
         let col_date = if is_light {
-            [70, 85, 110, 220]
+            [55, 68, 88, 210]
         } else {
-            [190, 205, 230, 220]
+            [205, 220, 245, 210]
         };
-        let col_time = if is_light {
-            [12, 16, 24, 255]
+        let col_ampm = if is_light {
+            [90, 105, 128, 200]
         } else {
-            [255, 255, 255, 255]
+            [175, 195, 225, 200]
         };
         let col_shadow = if is_light {
-            [255, 255, 255, 60]
+            [255, 255, 255, 75]
         } else {
-            [0, 0, 0, 160]
+            [0, 0, 0, 180]
         };
 
         let now = Local::now();
         let wday_full = now.format("%A").to_string().to_uppercase();
         let date_full = now.format("%B %d, %Y").to_string().to_uppercase();
-        let (hour_12, ampm) = match now.hour12() {
+        let (_hour_12, ampm) = match now.hour12() {
             (true, h) => (h, "PM"),
             (false, h) => (h, "AM"),
         };
-        let time_str = format!("{:02}:{:02} {}", hour_12, now.minute(), ampm);
 
         let cx = (self.width as f32) * 0.5;
         let cy = (self.height as f32) * 0.5;
         let buf = &mut self.overlay_buffer;
 
-        // ── 1. Cyber Day ("W E D N E S D A Y") ──
-        let chars: Vec<char> = wday_full.chars().collect();
-        let spacing = 96.0f32;
-        let day_w = (chars.len() as f32) * spacing;
-        let start_x = cx - day_w * 0.5 + spacing * 0.5;
-        let day_cy = cy - 85.0;
-
-        for (i, &ch) in chars.iter().enumerate() {
-            let item_cx = start_x + (i as f32) * spacing;
-            Self::draw_cyber_char(
+        // ── 1. Apple-Grade Tracked Day ("W E D N E S D A Y") ──
+        let day_tracking = 7.5f32;
+        let day_chars: Vec<char> = wday_full.chars().collect();
+        let mut total_day_w = 0.0f32;
+        for (i, &ch) in day_chars.iter().enumerate() {
+            let s = ch.to_string();
+            total_day_w += self.font.measure_text(&s, 24.0, FontWeight::Bold);
+            if i < day_chars.len() - 1 {
+                total_day_w += day_tracking;
+            }
+        }
+        let mut cur_day_x = cx - total_day_w * 0.5;
+        let day_cy = cy - 88.0;
+        for (i, &ch) in day_chars.iter().enumerate() {
+            let s = ch.to_string();
+            let ch_w = self.font.measure_text(&s, 24.0, FontWeight::Bold);
+            self.font.draw_text_centered_y(
                 buf,
                 self.width,
                 self.height,
-                ch,
-                item_cx,
+                &s,
+                cur_day_x,
                 day_cy,
-                52.0,
-                64.0,
-                5.5,
+                24.0,
                 col_day,
+                col_shadow,
+                FontWeight::Bold,
             );
+            cur_day_x += ch_w;
+            if i < day_chars.len() - 1 {
+                cur_day_x += day_tracking;
+            }
         }
 
-        // ── 2. Spaced Date ("N O V E M B E R   1 1 ,   2 0 2 6") ──
-        let date_tracking = 5.0f32;
+        // ── 2. Apple-Grade Tracked Date ("NOVEMBER 11, 2026") ──
+        let date_tracking = 4.0f32;
         let mut total_date_w = 0.0f32;
         let date_chars: Vec<char> = date_full.chars().collect();
         for (i, &ch) in date_chars.iter().enumerate() {
             let s = ch.to_string();
-            total_date_w += self.font.measure_text(&s, 18.0, FontWeight::SemiBold);
+            total_date_w += self.font.measure_text(&s, 16.0, FontWeight::Medium);
             if i < date_chars.len() - 1 {
                 total_date_w += date_tracking;
             }
         }
         let mut cur_date_x = cx - total_date_w * 0.5;
-        let date_cy = cy + 12.0;
+        let date_cy = cy - 54.0;
         for (i, &ch) in date_chars.iter().enumerate() {
             let s = ch.to_string();
-            let ch_w = self.font.measure_text(&s, 18.0, FontWeight::SemiBold);
+            let ch_w = self.font.measure_text(&s, 16.0, FontWeight::Medium);
             self.font.draw_text_centered_y(
                 buf,
                 self.width,
@@ -606,10 +335,10 @@ impl CenterHeroClock {
                 &s,
                 cur_date_x,
                 date_cy,
-                18.0,
+                16.0,
                 col_date,
                 col_shadow,
-                FontWeight::SemiBold,
+                FontWeight::Medium,
             );
             cur_date_x += ch_w;
             if i < date_chars.len() - 1 {
@@ -617,22 +346,19 @@ impl CenterHeroClock {
             }
         }
 
-        // ── 3. Hero Time ("07:25 PM") ──
-        let time_cy = cy + 96.0;
-        let time_baseline = self
-            .font
-            .vertical_center_baseline(time_cy, 88.0, FontWeight::Bold);
-        let time_w = self.font.measure_text(&time_str, 88.0, FontWeight::Bold);
-        let time_x = cx - time_w * 0.5;
-        self.font.draw_text_with_shadow(
+        // ── 3. AM / PM Crystalline Badge ──
+        // Positioned next to the monumental liquid numerals
+        let ampm_x = cx + 242.0;
+        let ampm_cy = cy + 36.0;
+        self.font.draw_text_centered_y(
             buf,
             self.width,
             self.height,
-            &time_str,
-            time_x,
-            time_baseline,
-            88.0,
-            col_time,
+            ampm,
+            ampm_x,
+            ampm_cy,
+            16.0,
+            col_ampm,
             col_shadow,
             FontWeight::Bold,
         );
@@ -649,6 +375,35 @@ impl CenterHeroClock {
 
         if let Some(renderer) = &mut self.renderer {
             renderer.update_overlay(self.width, self.height, &self.overlay_buffer);
+
+            let now = Local::now();
+            let (hour_12, _ampm) = match now.hour12() {
+                (true, h) => (h, "PM"),
+                (false, h) => (h, "AM"),
+            };
+
+            // Literal 3D Liquid Glass Text Lens:
+            // Extruded volumetric glass tubes with Snell refraction, Cauchy dispersion & specular glints
+            let liquid_text = GlassSurface::new()
+                .material(Material::LiquidGlass)
+                .shape(Shape::RoundedRectangle { radius: 0.0 })
+                .bounds(0.0, 0.0, 1.0, 1.0)
+                .curvature(18.0)
+                .bevel(14.0)
+                .refraction(22.0)
+                .dispersion(0.14)
+                .blur(0.0)
+                .specular(1.30)
+                .fresnel(0.65)
+                .style_mode(2.0)
+                .tint(
+                    hour_12 as f32,
+                    now.minute() as f32,
+                    now.second() as f32,
+                    is_light_f32,
+                )
+                .element_type(40.0) // Pure 3D Liquid Glass Text!
+                .deformation(0.0);
 
             if self.show_glass_card {
                 let card_w = 980.0f32;
@@ -678,13 +433,13 @@ impl CenterHeroClock {
                     .fresnel(0.60)
                     .style_mode(self.style_mode)
                     .tint(0.0, 0.0, 1.0, is_light_f32)
-                    .element_type(24.0) // Subtle frosted desktop glass backing
+                    .element_type(24.0)
                     .deformation(0.0);
 
-                let _ = renderer.render(&[hero_card]);
+                let _ = renderer.render(&[hero_card, liquid_text]);
             } else {
-                // Pure transparent frameless pass
-                let _ = renderer.render(&[]);
+                // Pure frameless literal liquid glass text — ZERO rectangular border box!
+                let _ = renderer.render(&[liquid_text]);
             }
             true
         } else {

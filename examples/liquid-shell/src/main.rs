@@ -404,6 +404,9 @@ impl ShellApp {
                 }
 
                 if let Some(clk) = val.get("clock") {
+                    if let Some(e) = clk.get("enabled").and_then(|v| v.as_bool()) {
+                        self.clock.enabled = e;
+                    }
                     if let Some(s) = clk.get("style_mode").and_then(|v| v.as_f64()) {
                         self.clock.style_mode = s as f32;
                     }
@@ -657,7 +660,7 @@ fn main() {
         }
     }
 
-    let mut last_minute = chrono::Local::now().minute();
+    let mut last_minute = 999u32;
     let mut last_frame = Instant::now();
     let mut last_config_check = Instant::now();
     let mut last_config_modified = std::fs::metadata(&conf_path)

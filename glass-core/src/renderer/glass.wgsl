@@ -648,6 +648,125 @@ fn draw_checkmark(p: vec2<f32>, scale: f32) -> f32 {
     return (min(leg1, leg2) - 0.75) * scale;
 }
 
+// ── Apple SF Pro Rounded Style Liquid Glass Digit SDF ──
+fn draw_apple_digit(p: vec2<f32>, dig: u32, scale: f32) -> f32 {
+    let q = p / scale;
+    var d = 999.0;
+    switch dig {
+        case 0u: {
+            // Smooth rounded stadium squircle
+            let outer = rr_sdf(q, vec2<f32>(3.2, 5.0), 3.2);
+            d = abs(outer);
+        }
+        case 1u: {
+            // Vertical rounded column with curved top beak
+            let stem = dist_segment(q, vec2<f32>(0.2, -5.0), vec2<f32>(0.2, 5.0));
+            let beak = dist_segment(q, vec2<f32>(-2.0, -3.2), vec2<f32>(0.2, -5.0));
+            d = min(stem, beak);
+        }
+        case 2u: {
+            // Top circular arch, diagonal sweep, bottom bar
+            let base = dist_segment(q, vec2<f32>(-3.0, 5.0), vec2<f32>(3.0, 5.0));
+            let diag = dist_segment(q, vec2<f32>(2.8, -1.6), vec2<f32>(-3.0, 5.0));
+            let arch = abs(length(q - vec2<f32>(0.0, -2.4)) - 2.8);
+            let arch_clipped = select(999.0, arch, q.y <= -1.6 || (q.x >= 0.0 && q.y <= -0.4));
+            let hook = dist_segment(q, vec2<f32>(-2.8, -2.4), vec2<f32>(-2.8, -1.6));
+            d = min(min(base, diag), min(arch_clipped, hook));
+        }
+        case 3u: {
+            // Twin graceful rounded arcs
+            let top_arch = abs(length(q - vec2<f32>(0.1, -2.5)) - 2.5);
+            let top_clipped = select(999.0, top_arch, q.x >= -0.3 && q.y <= -0.1);
+            let top_bar = dist_segment(q, vec2<f32>(-2.6, -5.0), vec2<f32>(0.1, -5.0));
+            let bot_arch = abs(length(q - vec2<f32>(0.1, 2.5)) - 2.5);
+            let bot_clipped = select(999.0, bot_arch, q.x >= -0.8 && q.y >= 0.0);
+            let bot_end = dist_segment(q, vec2<f32>(-2.6, 5.0), vec2<f32>(0.1, 5.0));
+            let mid_link = dist_segment(q, vec2<f32>(-0.3, 0.0), vec2<f32>(1.8, 0.0));
+            d = min(min(top_bar, top_clipped), min(min(bot_clipped, bot_end), mid_link));
+        }
+        case 4u: {
+            // Vertical stem, crossbar, diagonal shoulder
+            let v_stem = dist_segment(q, vec2<f32>(1.8, -5.0), vec2<f32>(1.8, 5.0));
+            let diag = dist_segment(q, vec2<f32>(1.8, -5.0), vec2<f32>(-2.8, 1.6));
+            let h_bar = dist_segment(q, vec2<f32>(-2.8, 1.6), vec2<f32>(3.0, 1.6));
+            d = min(v_stem, min(diag, h_bar));
+        }
+        case 5u: {
+            // Top bar, upper drop, flowing into generous circular bowl
+            let top = dist_segment(q, vec2<f32>(2.8, -5.0), vec2<f32>(-2.6, -5.0));
+            let v_upper = dist_segment(q, vec2<f32>(-2.6, -5.0), vec2<f32>(-2.6, -0.6));
+            let mid = dist_segment(q, vec2<f32>(-2.6, -0.6), vec2<f32>(0.2, -0.6));
+            let bot_arch = abs(length(q - vec2<f32>(0.2, 2.4)) - 2.6);
+            let bot_clipped = select(999.0, bot_arch, q.x >= -0.8 && q.y >= -0.6);
+            let bot_end = dist_segment(q, vec2<f32>(-2.6, 5.0), vec2<f32>(0.2, 5.0));
+            d = min(min(top, v_upper), min(mid, min(bot_clipped, bot_end)));
+        }
+        case 6u: {
+            // Sweeping curved back into full circular lower loop
+            let bot_loop = abs(length(q - vec2<f32>(0.0, 2.0)) - 3.0);
+            let spine = dist_segment(q, vec2<f32>(1.8, -5.0), vec2<f32>(-3.0, 2.0));
+            d = min(bot_loop, spine);
+        }
+        case 7u: {
+            // Horizontal bar with rounded corner and sweeping leg
+            let top = dist_segment(q, vec2<f32>(-2.8, -5.0), vec2<f32>(2.8, -5.0));
+            let diag = dist_segment(q, vec2<f32>(2.8, -5.0), vec2<f32>(-1.0, 5.0));
+            d = min(top, diag);
+        }
+        case 8u: {
+            // Two tangent smooth circular loops
+            let top_ring = abs(length(q - vec2<f32>(0.0, -2.5)) - 2.5);
+            let bot_ring = abs(length(q - vec2<f32>(0.0, 2.5)) - 2.65);
+            d = min(top_ring, bot_ring);
+        }
+        case 9u: {
+            // Full circular upper loop flowing into curved diagonal tail
+            let top_loop = abs(length(q - vec2<f32>(0.0, -2.0)) - 3.0);
+            let spine = dist_segment(q, vec2<f32>(3.0, -2.0), vec2<f32>(-1.8, 5.0));
+            d = min(top_loop, spine);
+        }
+        default: {}
+    }
+    return d * scale;
+}
+
+// ── Physical Liquid Glass 3D Text SDF (Pure 3D Snell Refraction Numerals) ──
+fn eval_liquid_text_sdf(p: vec2<f32>, tint: vec4<f32>) -> f32 {
+    let hr = tint.x;
+    let mn = tint.y;
+    let sec = tint.z;
+
+    let h_u = u32(hr) % 12u;
+    let h_12 = select(h_u, 12u, h_u == 0u);
+    let h_tens = h_12 / 10u;
+    let h_ones = h_12 % 10u;
+    let m_u = u32(mn) % 60u;
+    let m_tens = m_u / 10u;
+    let m_ones = m_u % 10u;
+
+    // Scale 13.5 produces heroic Apple OS lockscreen proportions (~140px tall digits)
+    let scale = 13.5;
+    let sp = 92.0;
+    let y_off = 36.0;
+
+    let d_h0 = select(999.0, draw_apple_digit(p - vec2<f32>(-2.15 * sp, y_off), h_tens, scale), h_tens > 0u);
+    let d_h1 = draw_apple_digit(p - vec2<f32>(-1.08 * sp, y_off), h_ones, scale);
+    let d_col = draw_colon(p - vec2<f32>(0.0, y_off), scale * 1.1);
+    let d_m0 = draw_apple_digit(p - vec2<f32>(1.08 * sp, y_off), m_tens, scale);
+    let d_m1 = draw_apple_digit(p - vec2<f32>(2.15 * sp, y_off), m_ones, scale);
+
+    // Thick rounded cylindrical liquid glass cross-section (11.5px radius)
+    let d_time = min(min(d_h0, d_h1), min(d_col, min(d_m0, d_m1))) - 11.5;
+    return d_time;
+}
+
+fn eval_liquid_text_normal(p: vec2<f32>, tint: vec4<f32>) -> vec2<f32> {
+    let e = 0.5;
+    let dx = eval_liquid_text_sdf(p + vec2<f32>(e, 0.0), tint) - eval_liquid_text_sdf(p - vec2<f32>(e, 0.0), tint);
+    let dy = eval_liquid_text_sdf(p + vec2<f32>(0.0, e), tint) - eval_liquid_text_sdf(p - vec2<f32>(0.0, e), tint);
+    return normalize(vec2<f32>(dx, dy) + vec2<f32>(1e-6, 1e-6));
+}
+
 // ── Evaluator for Todo Row Typography ──
 fn eval_todo_row_text(p: vec2<f32>, row_idx: u32) -> f32 {
     let row_y = -105.0 + f32(row_idx) * 44.0;
@@ -1419,6 +1538,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     //   0.0 = Floating (symmetric capsule / rounded rect)
     //   1.0 = Attached Straight (flush against screen edge, sharp 90-degree corners)
     //   2.0 = Attached Curved/Notch (flush against screen edge, smooth outward fillet wings)
+    let is_liquid_text = (params.padding >= 39.5 && params.padding <= 40.5);
     let is_dockable = (params.padding >= 24.9 && params.padding <= 28.5);
     let is_bottom_dock = (params.padding >= 27.9 && params.padding <= 28.5);
     let edge_style = params.deformation;
@@ -1433,7 +1553,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var sdf: f32;
     var grad_2d: vec2<f32>;
 
-    if is_curved {
+    if is_liquid_text {
+        // Pure Liquid Glass 3D Text Surface: the numerals themselves form the physical glass lenses!
+        sdf = eval_liquid_text_sdf(local_px, params.tint);
+        grad_2d = eval_liquid_text_normal(local_px, params.tint);
+    } else if is_curved {
         sdf = rr_sdf_notched(eval_px, half_size, r_bottom, r_fillet);
         let g = rr_normal_fd_notched(eval_px, half_size, r_bottom, r_fillet);
         grad_2d = select(g, vec2<f32>(g.x, -g.y), is_bottom_dock && is_attached);

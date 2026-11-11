@@ -338,6 +338,276 @@ async fn run_render(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+async fn run_render_custom(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    pipeline: &wgpu::RenderPipeline,
+    params_bgl: &wgpu::BindGroupLayout,
+    bg_bgl: &wgpu::BindGroupLayout,
+    sampler: &wgpu::Sampler,
+    bg_data: &[u8],
+    cfg: &RenderTestConfig<'_>,
+    padding: f32,
+    tint: [f32; 4],
+) {
+    let width = cfg.width;
+    let height = cfg.height;
+
+    let bg_texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("Background Texture"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+
+    queue.write_texture(
+        wgpu::ImageCopyTexture {
+            texture: &bg_texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        bg_data,
+        wgpu::ImageDataLayout {
+            offset: 0,
+            bytes_per_row: Some(width * 4),
+            rows_per_image: Some(height),
+        },
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+    );
+
+    let overlay_texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("Overlay Texture"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+
+    let overlay_empty = vec![0u8; (width * height * 4) as usize];
+    queue.write_texture(
+        wgpu::ImageCopyTexture {
+            texture: &overlay_texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        &overlay_empty,
+        wgpu::ImageDataLayout {
+            offset: 0,
+            bytes_per_row: Some(width * 4),
+            rows_per_image: Some(height),
+        },
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+    );
+
+    let target_texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("Target Texture"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+
+    let bg_view = bg_texture.create_view(&Default::default());
+    let overlay_view = overlay_texture.create_view(&Default::default());
+    let target_view = target_texture.create_view(&Default::default());
+
+    let uniforms = GlassUniforms {
+        bounds: cfg.bounds,
+        tint,
+        ior: 1.52,
+        roughness: 0.05,
+        refraction_strength: cfg.thickness,
+        dispersion: cfg.dispersion,
+        fresnel_strength: 0.60,
+        specular_strength: 1.25,
+        blur_radius: 0.0,
+        curvature: 0.04,
+        bevel: cfg.bevel,
+        time: 1.0,
+        deformation: 0.0,
+        corner_radius: cfg.corner_radius,
+        pointer_pos: [-1.0, -1.0],
+        surface_size: [width as f32, height as f32],
+        is_light: cfg.is_light,
+        padding,
+        _pad: [cfg.style_mode, cfg.debug_mode],
+    };
+
+    let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Uniform Buffer"),
+        size: std::mem::size_of::<GlassUniforms>() as u64,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    queue.write_buffer(&uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
+
+    let params_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("Params BG"),
+        layout: params_bgl,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: uniform_buffer.as_entire_binding(),
+        }],
+    });
+
+    let bg_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("BG BG"),
+        layout: bg_bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&bg_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(sampler),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::TextureView(&overlay_view),
+            },
+        ],
+    });
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("Encoder"),
+    });
+
+    {
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &target_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+        rpass.set_pipeline(pipeline);
+        rpass.set_bind_group(0, &params_bind_group, &[]);
+        rpass.set_bind_group(1, &bg_bind_group, &[]);
+        rpass.draw(0..6, 0..1);
+    }
+
+    let unpadded_bytes_per_row = width * 4;
+    let align = 256;
+    let padded_bytes_per_row = (unpadded_bytes_per_row + align - 1) & !(align - 1);
+
+    let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Output Buffer"),
+        size: (padded_bytes_per_row * height) as u64,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+
+    encoder.copy_texture_to_buffer(
+        wgpu::ImageCopyTexture {
+            texture: &target_texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::ImageCopyBuffer {
+            buffer: &output_buffer,
+            layout: wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(padded_bytes_per_row),
+                rows_per_image: Some(height),
+            },
+        },
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+    );
+
+    queue.submit(Some(encoder.finish()));
+
+    let buffer_slice = output_buffer.slice(..);
+    let (tx, rx) = std::sync::mpsc::channel();
+    buffer_slice.map_async(wgpu::MapMode::Read, move |v| tx.send(v).unwrap());
+    device.poll(wgpu::Maintain::Wait);
+    rx.recv().unwrap().expect("Failed to map buffer");
+
+    let mapped = buffer_slice.get_mapped_range();
+    let mut final_composite = bg_data.to_vec();
+    for dy in 0..height {
+        let row_start = (dy * padded_bytes_per_row) as usize;
+        let row = &mapped[row_start..row_start + (width * 4) as usize];
+        for dx in 0..width {
+            let i = ((dy * width + dx) * 4) as usize;
+            let src_i = (dx * 4) as usize;
+            let a = row[src_i + 3] as f32 / 255.0;
+            if a > 0.0 {
+                let r = row[src_i] as f32;
+                let g = row[src_i + 1] as f32;
+                let b = row[src_i + 2] as f32;
+                let bg_r = final_composite[i] as f32;
+                let bg_g = final_composite[i + 1] as f32;
+                let bg_b = final_composite[i + 2] as f32;
+                final_composite[i] = (r * a + bg_r * (1.0 - a)).round() as u8;
+                final_composite[i + 1] = (g * a + bg_g * (1.0 - a)).round() as u8;
+                final_composite[i + 2] = (b * a + bg_b * (1.0 - a)).round() as u8;
+            }
+        }
+    }
+
+    if let Some(parent) = std::path::Path::new(cfg.out_path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    if let Err(e) = image::save_buffer(
+        cfg.out_path,
+        &final_composite,
+        width,
+        height,
+        image::ExtendedColorType::Rgba8,
+    ) {
+        eprintln!("Warning: failed to save snapshot {}: {e}", cfg.out_path);
+    } else {
+        println!("Saved snapshot: {}", cfg.out_path);
+    }
+}
+
 #[test]
 fn test_render_calibration_snapshots() {
     pollster::block_on(async {
@@ -969,6 +1239,51 @@ fn test_render_calibration_snapshots() {
                 &sampler,
                 &fc_crop,
                 &cfg_fc_liquid,
+            )
+            .await;
+        }
+
+        // 6. Current Wallpaper Liquid Glass Text Test (Futuristic Blue & Amber)
+        let current_wp = "/home/zius/Pictures/wallpaper/Futuristic Blue and Amber Wave Slats.png";
+        if let Ok(img) = image::open(current_wp) {
+            let rgba = img.to_rgba8();
+            let hero_w = 1100u32;
+            let hero_h = 420u32;
+            let mut hero_crop = vec![0u8; (hero_w * hero_h * 4) as usize];
+            for dy in 0..hero_h {
+                for dx in 0..hero_w {
+                    let sx = (410 + dx).min(rgba.width().saturating_sub(1));
+                    let sy = (330 + dy).min(rgba.height().saturating_sub(1));
+                    let p = rgba.get_pixel(sx, sy);
+                    let idx = ((dy * hero_w + dx) * 4) as usize;
+                    hero_crop[idx..idx + 4].copy_from_slice(&p.0);
+                }
+            }
+
+            let cfg_hero_text = RenderTestConfig {
+                width: hero_w,
+                height: hero_h,
+                bounds: [0.0, 0.0, 1.0, 1.0],
+                thickness: 22.0,
+                bevel: 14.0,
+                dispersion: 0.14,
+                corner_radius: 0.0,
+                debug_mode: 0.0,
+                style_mode: 2.0,
+                is_light: 0.0,
+                out_path: &format!("{}/liquid_glass_font_apple.png", out_dir),
+            };
+            run_render_custom(
+                &device,
+                &queue,
+                &render_pipeline,
+                &params_bind_group_layout,
+                &bg_bind_group_layout,
+                &sampler,
+                &hero_crop,
+                &cfg_hero_text,
+                40.0,                  // Liquid text element_type
+                [5.0, 53.0, 0.0, 0.0], // 05:53
             )
             .await;
         }

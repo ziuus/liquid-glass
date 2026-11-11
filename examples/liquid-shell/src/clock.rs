@@ -85,6 +85,7 @@ pub struct ClockWidget {
     pub theme_mode: u32,
     pub blur_radius: f32,
     pub anim_speed: f32,
+    pub enabled: bool,
 
     // Liquid Edge Emergence
     pub is_docked: bool,
@@ -183,6 +184,7 @@ impl ClockWidget {
             theme_mode: 0,
             blur_radius: 6.0,
             anim_speed: 1.0,
+            enabled: true,
 
             is_docked: true,
             is_compact: true,
@@ -280,6 +282,12 @@ impl ClockWidget {
     {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
+        if !self.enabled {
+            self.surface.set_input_region(Some(&region));
+            region.destroy();
+            self.surface.commit();
+            return;
+        }
         let flare = if self.is_docked {
             self.fillet_radius as i32
         } else {
@@ -688,6 +696,13 @@ impl ClockWidget {
     }
 
     pub fn draw(&mut self) -> bool {
+        if !self.enabled {
+            if let Some(renderer) = &mut self.renderer {
+                let _ = renderer.render(&[]);
+            }
+            return false;
+        }
+
         self.update_battery();
 
         let req_len = (self.width * self.height * 4) as usize;
