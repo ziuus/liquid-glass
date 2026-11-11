@@ -1280,29 +1280,28 @@ fn test_render_calibration_snapshots() {
             let mut overlay_buf = vec![0u8; (hero_w * hero_h * 4) as usize];
             let cx = hero_w as f32 * 0.5;
             let cy = hero_h as f32 * 0.5;
-
-            let col_day = [248, 250, 255, 250];
-            let col_date = [210, 225, 245, 215];
-            let col_time = [255, 255, 255, 255];
+            let col_day = [248, 250, 255, 245];
+            let col_date = [205, 220, 245, 210];
+            let col_ampm = [175, 195, 225, 200];
             let col_shadow = [0, 0, 0, 180];
 
-            // ── 1. Monumental Rice Day ("W E D N E S D A Y") ──
+            // Render Day
             let day_text = "WEDNESDAY";
-            let day_tracking = 12.0f32;
+            let day_tracking = 8.0f32;
             let day_chars: Vec<char> = day_text.chars().collect();
             let mut total_day_w = 0.0f32;
             for (i, &ch) in day_chars.iter().enumerate() {
                 let s = ch.to_string();
-                total_day_w += font.measure_text(&s, 54.0, FontWeight::Bold);
+                total_day_w += font.measure_text(&s, 30.0, FontWeight::Bold);
                 if i < day_chars.len() - 1 {
                     total_day_w += day_tracking;
                 }
             }
             let mut cur_day_x = cx - total_day_w * 0.5;
-            let day_cy = cy - 66.0;
+            let day_cy = cy - 90.0;
             for (i, &ch) in day_chars.iter().enumerate() {
                 let s = ch.to_string();
-                let ch_w = font.measure_text(&s, 54.0, FontWeight::Bold);
+                let ch_w = font.measure_text(&s, 30.0, FontWeight::Bold);
                 font.draw_text_centered_y(
                     &mut overlay_buf,
                     hero_w,
@@ -1310,7 +1309,7 @@ fn test_render_calibration_snapshots() {
                     &s,
                     cur_day_x,
                     day_cy,
-                    54.0,
+                    30.0,
                     col_day,
                     col_shadow,
                     FontWeight::Bold,
@@ -1321,23 +1320,23 @@ fn test_render_calibration_snapshots() {
                 }
             }
 
-            // ── 2. Refined Tracked Date ("NOVEMBER 11, 2026") ──
+            // Render Date
             let date_text = "NOVEMBER 11, 2026";
-            let date_tracking = 5.5f32;
+            let date_tracking = 4.5f32;
             let mut total_date_w = 0.0f32;
             let date_chars: Vec<char> = date_text.chars().collect();
             for (i, &ch) in date_chars.iter().enumerate() {
                 let s = ch.to_string();
-                total_date_w += font.measure_text(&s, 19.0, FontWeight::SemiBold);
+                total_date_w += font.measure_text(&s, 17.0, FontWeight::Medium);
                 if i < date_chars.len() - 1 {
                     total_date_w += date_tracking;
                 }
             }
             let mut cur_date_x = cx - total_date_w * 0.5;
-            let date_cy = cy - 10.0;
+            let date_cy = cy - 54.0;
             for (i, &ch) in date_chars.iter().enumerate() {
                 let s = ch.to_string();
-                let ch_w = font.measure_text(&s, 19.0, FontWeight::SemiBold);
+                let ch_w = font.measure_text(&s, 17.0, FontWeight::Medium);
                 font.draw_text_centered_y(
                     &mut overlay_buf,
                     hero_w,
@@ -1345,10 +1344,10 @@ fn test_render_calibration_snapshots() {
                     &s,
                     cur_date_x,
                     date_cy,
-                    19.0,
+                    17.0,
                     col_date,
                     col_shadow,
-                    FontWeight::SemiBold,
+                    FontWeight::Medium,
                 );
                 cur_date_x += ch_w;
                 if i < date_chars.len() - 1 {
@@ -1356,20 +1355,16 @@ fn test_render_calibration_snapshots() {
                 }
             }
 
-            // ── 3. The Classic Hero Time ("09:08 PM") - Old Design Itself ──
-            let time_str = "09:08 PM";
-            let time_w = font.measure_text(time_str, 84.0, FontWeight::Bold);
-            let time_x = cx - time_w * 0.5;
-            let time_cy = cy + 68.0;
+            // Render AM/PM
             font.draw_text_centered_y(
                 &mut overlay_buf,
                 hero_w,
                 hero_h,
-                time_str,
-                time_x,
-                time_cy,
-                84.0,
-                col_time,
+                "PM",
+                cx + 242.0,
+                cy + 36.0,
+                15.0,
+                col_ampm,
                 col_shadow,
                 FontWeight::Bold,
             );
@@ -1383,8 +1378,8 @@ fn test_render_calibration_snapshots() {
                 &sampler,
                 &hero_crop,
                 &cfg_hero_text,
-                42.0, // Frameless overlay element_type
-                [0.0, 0.0, 0.0, 0.0],
+                40.0,                  // Liquid text element_type
+                [8.0, 36.0, 0.0, 0.0], // 08:36
                 Some(&overlay_buf),
             )
             .await;

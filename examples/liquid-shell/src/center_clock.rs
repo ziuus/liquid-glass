@@ -260,7 +260,7 @@ impl CenterHeroClock {
         } else {
             [205, 220, 245, 210]
         };
-        let _col_ampm = if is_light {
+        let col_ampm = if is_light {
             [90, 105, 128, 200]
         } else {
             [175, 195, 225, 200]
@@ -274,7 +274,7 @@ impl CenterHeroClock {
         let now = Local::now();
         let wday_full = now.format("%A").to_string().to_uppercase();
         let date_full = now.format("%B %d, %Y").to_string().to_uppercase();
-        let (_hour_12, _ampm) = match now.hour12() {
+        let (_hour_12, ampm) = match now.hour12() {
             (true, h) => (h, "PM"),
             (false, h) => (h, "AM"),
         };
@@ -353,22 +353,22 @@ impl CenterHeroClock {
                 }
             }
         } else {
-            // ── 1. Monumental Rice Day ("W E D N E S D A Y") ──
-            let day_tracking = 12.0f32;
+            // Day & Date with Liquid Glass Time Numerals underneath
+            let day_tracking = 8.0f32;
             let day_chars: Vec<char> = wday_full.chars().collect();
             let mut total_day_w = 0.0f32;
             for (i, &ch) in day_chars.iter().enumerate() {
                 let s = ch.to_string();
-                total_day_w += self.font.measure_text(&s, 54.0, FontWeight::Bold);
+                total_day_w += self.font.measure_text(&s, 30.0, FontWeight::Bold);
                 if i < day_chars.len() - 1 {
                     total_day_w += day_tracking;
                 }
             }
             let mut cur_day_x = cx - total_day_w * 0.5;
-            let day_cy = cy - 66.0;
+            let day_cy = cy - 90.0;
             for (i, &ch) in day_chars.iter().enumerate() {
                 let s = ch.to_string();
-                let ch_w = self.font.measure_text(&s, 54.0, FontWeight::Bold);
+                let ch_w = self.font.measure_text(&s, 30.0, FontWeight::Bold);
                 self.font.draw_text_centered_y(
                     buf,
                     self.width,
@@ -376,7 +376,7 @@ impl CenterHeroClock {
                     &s,
                     cur_day_x,
                     day_cy,
-                    54.0,
+                    30.0,
                     col_day,
                     col_shadow,
                     FontWeight::Bold,
@@ -387,22 +387,21 @@ impl CenterHeroClock {
                 }
             }
 
-            // ── 2. Refined Tracked Date ("NOVEMBER 11, 2026") ──
-            let date_tracking = 5.5f32;
+            let date_tracking = 4.5f32;
             let mut total_date_w = 0.0f32;
             let date_chars: Vec<char> = date_full.chars().collect();
             for (i, &ch) in date_chars.iter().enumerate() {
                 let s = ch.to_string();
-                total_date_w += self.font.measure_text(&s, 19.0, FontWeight::SemiBold);
+                total_date_w += self.font.measure_text(&s, 17.0, FontWeight::Medium);
                 if i < date_chars.len() - 1 {
                     total_date_w += date_tracking;
                 }
             }
             let mut cur_date_x = cx - total_date_w * 0.5;
-            let date_cy = cy - 10.0;
+            let date_cy = cy - 54.0;
             for (i, &ch) in date_chars.iter().enumerate() {
                 let s = ch.to_string();
-                let ch_w = self.font.measure_text(&s, 19.0, FontWeight::SemiBold);
+                let ch_w = self.font.measure_text(&s, 17.0, FontWeight::Medium);
                 self.font.draw_text_centered_y(
                     buf,
                     self.width,
@@ -410,10 +409,10 @@ impl CenterHeroClock {
                     &s,
                     cur_date_x,
                     date_cy,
-                    19.0,
+                    17.0,
                     col_date,
                     col_shadow,
-                    FontWeight::SemiBold,
+                    FontWeight::Medium,
                 );
                 cur_date_x += ch_w;
                 if i < date_chars.len() - 1 {
@@ -421,29 +420,18 @@ impl CenterHeroClock {
                 }
             }
 
-            // ── 3. The Classic Hero Time ("09:08 PM") - Old Design Itself ──
-            let (hour_12, ampm) = match now.hour12() {
-                (true, h) => (h, "PM"),
-                (false, h) => (h, "AM"),
-            };
-            let time_str = format!("{:02}:{:02} {}", hour_12, now.minute(), ampm);
-            let time_w = self.font.measure_text(&time_str, 84.0, FontWeight::Bold);
-            let time_x = cx - time_w * 0.5;
-            let time_cy = cy + 68.0;
-            let col_time = if is_light {
-                [18, 22, 32, 255]
-            } else {
-                [255, 255, 255, 255]
-            };
+            // AM/PM Crystalline Badge
+            let ampm_x = cx + 242.0;
+            let ampm_cy = cy + 36.0;
             self.font.draw_text_centered_y(
                 buf,
                 self.width,
                 self.height,
-                &time_str,
-                time_x,
-                time_cy,
-                84.0,
-                col_time,
+                ampm,
+                ampm_x,
+                ampm_cy,
+                15.0,
+                col_ampm,
                 col_shadow,
                 FontWeight::Bold,
             );
@@ -468,9 +456,72 @@ impl CenterHeroClock {
                 .bounds(0.0, 0.0, 1.0, 1.0)
                 .element_type(42.0); // Pure Frameless Overlay Pass!
 
-            if self.show_glass_card {
+            if self.show_time {
+                let now = Local::now();
+                let (hour_12, _ampm) = match now.hour12() {
+                    (true, h) => (h, "PM"),
+                    (false, h) => (h, "AM"),
+                };
+
+                let liquid_text = GlassSurface::new()
+                    .material(Material::LiquidGlass)
+                    .shape(Shape::RoundedRectangle { radius: 0.0 })
+                    .bounds(0.0, 0.0, 1.0, 1.0)
+                    .curvature(18.0)
+                    .bevel(14.0)
+                    .refraction(22.0)
+                    .dispersion(0.14)
+                    .blur(0.0)
+                    .specular(1.30)
+                    .fresnel(0.65)
+                    .style_mode(2.0)
+                    .tint(
+                        hour_12 as f32,
+                        now.minute() as f32,
+                        now.second() as f32,
+                        is_light_f32,
+                    )
+                    .element_type(40.0)
+                    .deformation(0.0);
+
+                if self.show_glass_card {
+                    let card_w = 980.0f32;
+                    let card_h = 350.0f32;
+                    let cx = (self.width as f32) * 0.5;
+                    let cy = (self.height as f32) * 0.5;
+                    let card_left = cx - card_w * 0.5;
+                    let card_top = cy - card_h * 0.5;
+
+                    let x_norm = card_left / (self.width as f32);
+                    let y_norm = card_top / (self.height as f32);
+                    let w_norm = card_w / (self.width as f32);
+                    let h_norm = card_h / (self.height as f32);
+
+                    let hero_card = GlassSurface::new()
+                        .material(Material::LiquidGlass)
+                        .shape(Shape::RoundedRectangle {
+                            radius: Tokens::RADIUS_OUTER,
+                        })
+                        .bounds(x_norm, y_norm, w_norm, h_norm)
+                        .curvature(18.0)
+                        .bevel(12.0)
+                        .refraction(14.0)
+                        .dispersion(0.12)
+                        .blur(self.blur_radius)
+                        .specular(1.05)
+                        .fresnel(0.60)
+                        .style_mode(self.style_mode)
+                        .tint(0.0, 0.0, 1.0, is_light_f32)
+                        .element_type(24.0)
+                        .deformation(0.0);
+
+                    let _ = renderer.render(&[hero_card, liquid_text]);
+                } else {
+                    let _ = renderer.render(&[liquid_text]);
+                }
+            } else if self.show_glass_card {
                 let card_w = 980.0f32;
-                let card_h = if self.show_time { 350.0f32 } else { 240.0f32 };
+                let card_h = 240.0f32;
                 let cx = (self.width as f32) * 0.5;
                 let cy = (self.height as f32) * 0.5;
                 let card_left = cx - card_w * 0.5;
@@ -501,6 +552,7 @@ impl CenterHeroClock {
 
                 let _ = renderer.render(&[hero_card, frameless_overlay]);
             } else {
+                // Pure frameless Day & Date floating on wallpaper
                 let _ = renderer.render(&[frameless_overlay]);
             }
             true

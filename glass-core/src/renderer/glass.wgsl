@@ -419,9 +419,9 @@ fn draw_digit(p: vec2<f32>, dig: u32, scale: f32) -> f32 {
 // ── Soft Glowing Pulsing Colon SDF ──
 fn draw_colon(p: vec2<f32>, scale: f32) -> f32 {
     let q = p / scale;
-    let d_top = length(q - vec2<f32>(0.0, -2.0));
-    let d_bot = length(q - vec2<f32>(0.0, 2.0));
-    return min(d_top, d_bot) * scale;
+    let d_top = length(q - vec2<f32>(0.0, -2.2));
+    let d_bot = length(q - vec2<f32>(0.0, 2.2));
+    return (min(d_top, d_bot) - 0.75) * scale;
 }
 
 // ── Precision Percentage Symbol SDF for Battery Percentage ──
@@ -655,74 +655,74 @@ fn draw_apple_digit(p: vec2<f32>, dig: u32, scale: f32) -> f32 {
     switch dig {
         case 0u: {
             // Smooth rounded stadium squircle
-            let outer = rr_sdf(q, vec2<f32>(3.0, 4.8), 2.8);
+            let outer = rr_sdf(q, vec2<f32>(3.2, 5.0), 3.2);
             d = abs(outer);
         }
         case 1u: {
-            // Vertical rounded column with angled top beak
-            let stem = dist_segment(q, vec2<f32>(0.2, -4.8), vec2<f32>(0.2, 4.8));
-            let beak = dist_segment(q, vec2<f32>(-2.0, -3.0), vec2<f32>(0.2, -4.8));
+            // Vertical rounded column with curved top beak
+            let stem = dist_segment(q, vec2<f32>(0.2, -5.0), vec2<f32>(0.2, 5.0));
+            let beak = dist_segment(q, vec2<f32>(-2.0, -3.2), vec2<f32>(0.2, -5.0));
             d = min(stem, beak);
         }
         case 2u: {
             // Top circular arch, diagonal sweep, bottom bar
-            let base = dist_segment(q, vec2<f32>(-2.8, 4.8), vec2<f32>(2.8, 4.8));
-            let diag = dist_segment(q, vec2<f32>(2.6, -1.4), vec2<f32>(-2.8, 4.8));
-            let arch = abs(length(q - vec2<f32>(0.0, -2.2)) - 2.6);
-            let arch_clipped = select(999.0, arch, q.y <= -1.4 || (q.x >= 0.0 && q.y <= -0.2));
-            let hook = dist_segment(q, vec2<f32>(-2.6, -2.2), vec2<f32>(-2.6, -1.4));
+            let base = dist_segment(q, vec2<f32>(-3.0, 5.0), vec2<f32>(3.0, 5.0));
+            let diag = dist_segment(q, vec2<f32>(2.8, -1.6), vec2<f32>(-3.0, 5.0));
+            let arch = abs(length(q - vec2<f32>(0.0, -2.4)) - 2.8);
+            let arch_clipped = select(999.0, arch, q.y <= -1.6 || (q.x >= 0.0 && q.y <= -0.4));
+            let hook = dist_segment(q, vec2<f32>(-2.8, -2.4), vec2<f32>(-2.8, -1.6));
             d = min(min(base, diag), min(arch_clipped, hook));
         }
         case 3u: {
             // Twin graceful rounded arcs
-            let top_arch = abs(length(q - vec2<f32>(0.1, -2.4)) - 2.4);
-            let top_clipped = select(999.0, top_arch, q.x >= -0.2 && q.y <= -0.1);
-            let top_bar = dist_segment(q, vec2<f32>(-2.4, -4.8), vec2<f32>(0.1, -4.8));
-            let bot_arch = abs(length(q - vec2<f32>(0.1, 2.4)) - 2.4);
-            let bot_clipped = select(999.0, bot_arch, q.x >= -0.6 && q.y >= 0.0);
-            let bot_end = dist_segment(q, vec2<f32>(-2.4, 4.8), vec2<f32>(0.1, 4.8));
-            let mid_link = dist_segment(q, vec2<f32>(-0.2, 0.0), vec2<f32>(1.6, 0.0));
+            let top_arch = abs(length(q - vec2<f32>(0.1, -2.5)) - 2.5);
+            let top_clipped = select(999.0, top_arch, q.x >= -0.3 && q.y <= -0.1);
+            let top_bar = dist_segment(q, vec2<f32>(-2.6, -5.0), vec2<f32>(0.1, -5.0));
+            let bot_arch = abs(length(q - vec2<f32>(0.1, 2.5)) - 2.5);
+            let bot_clipped = select(999.0, bot_arch, q.x >= -0.8 && q.y >= 0.0);
+            let bot_end = dist_segment(q, vec2<f32>(-2.6, 5.0), vec2<f32>(0.1, 5.0));
+            let mid_link = dist_segment(q, vec2<f32>(-0.3, 0.0), vec2<f32>(1.8, 0.0));
             d = min(min(top_bar, top_clipped), min(min(bot_clipped, bot_end), mid_link));
         }
         case 4u: {
-            // Vertical stem, crossbar, diagonal shoulder (Apple SF Pro layout)
-            let v_stem = dist_segment(q, vec2<f32>(1.6, -4.8), vec2<f32>(1.6, 4.8));
-            let diag = dist_segment(q, vec2<f32>(-0.6, -4.8), vec2<f32>(-2.8, 1.4));
-            let h_bar = dist_segment(q, vec2<f32>(-2.8, 1.4), vec2<f32>(2.8, 1.4));
+            // Vertical stem, crossbar, diagonal shoulder
+            let v_stem = dist_segment(q, vec2<f32>(1.8, -5.0), vec2<f32>(1.8, 5.0));
+            let diag = dist_segment(q, vec2<f32>(1.8, -5.0), vec2<f32>(-2.8, 1.6));
+            let h_bar = dist_segment(q, vec2<f32>(-2.8, 1.6), vec2<f32>(3.0, 1.6));
             d = min(v_stem, min(diag, h_bar));
         }
         case 5u: {
             // Top bar, upper drop, flowing into generous circular bowl
-            let top = dist_segment(q, vec2<f32>(2.6, -4.8), vec2<f32>(-2.4, -4.8));
-            let v_upper = dist_segment(q, vec2<f32>(-2.4, -4.8), vec2<f32>(-2.4, -0.6));
-            let mid = dist_segment(q, vec2<f32>(-2.4, -0.6), vec2<f32>(0.1, -0.6));
-            let bot_arch = abs(length(q - vec2<f32>(0.1, 2.3)) - 2.5);
-            let bot_clipped = select(999.0, bot_arch, q.x >= -0.6 && q.y >= -0.6);
-            let bot_end = dist_segment(q, vec2<f32>(-2.4, 4.8), vec2<f32>(0.1, 4.8));
+            let top = dist_segment(q, vec2<f32>(2.8, -5.0), vec2<f32>(-2.6, -5.0));
+            let v_upper = dist_segment(q, vec2<f32>(-2.6, -5.0), vec2<f32>(-2.6, -0.6));
+            let mid = dist_segment(q, vec2<f32>(-2.6, -0.6), vec2<f32>(0.2, -0.6));
+            let bot_arch = abs(length(q - vec2<f32>(0.2, 2.4)) - 2.6);
+            let bot_clipped = select(999.0, bot_arch, q.x >= -0.8 && q.y >= -0.6);
+            let bot_end = dist_segment(q, vec2<f32>(-2.6, 5.0), vec2<f32>(0.2, 5.0));
             d = min(min(top, v_upper), min(mid, min(bot_clipped, bot_end)));
         }
         case 6u: {
             // Sweeping curved back into full circular lower loop
-            let bot_loop = abs(length(q - vec2<f32>(0.0, 1.9)) - 2.9);
-            let spine = dist_segment(q, vec2<f32>(1.6, -4.8), vec2<f32>(-2.9, 1.9));
+            let bot_loop = abs(length(q - vec2<f32>(0.0, 2.0)) - 3.0);
+            let spine = dist_segment(q, vec2<f32>(1.8, -5.0), vec2<f32>(-3.0, 2.0));
             d = min(bot_loop, spine);
         }
         case 7u: {
             // Horizontal bar with rounded corner and sweeping leg
-            let top = dist_segment(q, vec2<f32>(-2.6, -4.8), vec2<f32>(2.6, -4.8));
-            let diag = dist_segment(q, vec2<f32>(2.6, -4.8), vec2<f32>(-1.0, 4.8));
+            let top = dist_segment(q, vec2<f32>(-2.8, -5.0), vec2<f32>(2.8, -5.0));
+            let diag = dist_segment(q, vec2<f32>(2.8, -5.0), vec2<f32>(-1.0, 5.0));
             d = min(top, diag);
         }
         case 8u: {
             // Two tangent smooth circular loops
-            let top_ring = abs(length(q - vec2<f32>(0.0, -2.3)) - 2.3);
-            let bot_ring = abs(length(q - vec2<f32>(0.0, 2.4)) - 2.5);
+            let top_ring = abs(length(q - vec2<f32>(0.0, -2.5)) - 2.5);
+            let bot_ring = abs(length(q - vec2<f32>(0.0, 2.5)) - 2.65);
             d = min(top_ring, bot_ring);
         }
         case 9u: {
             // Full circular upper loop flowing into curved diagonal tail
-            let top_loop = abs(length(q - vec2<f32>(0.0, -1.9)) - 2.9);
-            let spine = dist_segment(q, vec2<f32>(2.9, -1.9), vec2<f32>(-1.6, 4.8));
+            let top_loop = abs(length(q - vec2<f32>(0.0, -2.0)) - 3.0);
+            let spine = dist_segment(q, vec2<f32>(3.0, -2.0), vec2<f32>(-1.8, 5.0));
             d = min(top_loop, spine);
         }
         default: {}
@@ -744,19 +744,19 @@ fn eval_liquid_text_sdf(p: vec2<f32>, tint: vec4<f32>) -> f32 {
     let m_tens = m_u / 10u;
     let m_ones = m_u % 10u;
 
-    // Scale 14.5 produces heroic Apple OS lockscreen proportions (~150px tall digits)
-    let scale = 14.5;
-    let sp = 96.0;
-    let y_off = 38.0;
+    // Scale 13.5 produces heroic Apple OS lockscreen proportions (~140px tall digits)
+    let scale = 13.5;
+    let sp = 92.0;
+    let y_off = 36.0;
 
     let d_h0 = select(999.0, draw_apple_digit(p - vec2<f32>(-2.15 * sp, y_off), h_tens, scale), h_tens > 0u);
     let d_h1 = draw_apple_digit(p - vec2<f32>(-1.08 * sp, y_off), h_ones, scale);
-    let d_col = draw_colon(p - vec2<f32>(0.0, y_off), scale * 0.95);
+    let d_col = draw_colon(p - vec2<f32>(0.0, y_off), scale * 1.1);
     let d_m0 = draw_apple_digit(p - vec2<f32>(1.08 * sp, y_off), m_tens, scale);
     let d_m1 = draw_apple_digit(p - vec2<f32>(2.15 * sp, y_off), m_ones, scale);
 
-    // Thick volumetric cylindrical liquid glass cross-section (16.0px radius = 32px thick strokes!)
-    let d_time = min(min(d_h0, d_h1), min(d_col, min(d_m0, d_m1))) - 16.0;
+    // Thick rounded cylindrical liquid glass cross-section (11.5px radius)
+    let d_time = min(min(d_h0, d_h1), min(d_col, min(d_m0, d_m1))) - 11.5;
     return d_time;
 }
 
@@ -1739,23 +1739,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let side_rim_flare = 0.0;
 
     var fin = base_surface;
-
-    if is_liquid_text {
-        let rod_radius = 16.0;
-        let rod_u = clamp(depth / rod_radius, 0.0, 1.0);
-        let rod_core = sin(rod_u * 3.14159265);
-        
-        // Internal caustic luminescence: glowing frosted crystal refraction
-        let caustic_glow = vec3<f32>(0.50, 0.62, 0.82) * mix(0.48, 0.20, effective_light) * rod_core;
-        
-        // Polished axial glass spine reflection (central bright gleam)
-        let spine_refl = pow(rod_core, 3.2) * (0.42 + 0.50 * light_facing) * params.specular_strength;
-        
-        // Outer meniscus crystalline glint (razor-sharp perimeter refraction)
-        let edge_glint = smoothstep(2.5, 0.0, depth) * mix(0.50, 1.25, light_facing) * params.specular_strength;
-        
-        fin = sharp_col + caustic_glow + vec3<f32>(spine_refl + edge_glint);
-    }
 
     let flare_mag = (side_bevel_flare + side_rim_flare) * mix(1.0, 0.25, effective_light);
     let flare_rgb = vec3<f32>(flare_mag * 1.02, flare_mag * 0.99, flare_mag * 1.04);
