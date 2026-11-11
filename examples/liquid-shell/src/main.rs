@@ -1,5 +1,4 @@
 use chrono::Timelike;
-use glass_clock::ClockWidget;
 use glass_core::SharedGpu;
 use glass_platform::wallpaper::WallpaperManager;
 use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState};
@@ -22,8 +21,10 @@ use std::time::Instant;
 use wayland_client::protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface};
 use wayland_client::{Connection, Proxy, QueueHandle};
 
+mod clock;
 mod island;
 mod todo;
+use clock::ClockWidget;
 use island::{IslandMode, IslandWidget};
 use todo::TodoWidget;
 
@@ -127,6 +128,7 @@ impl LayerShellHandler for ShellApp {
             self.clock.configure(configure);
             if self.clock.renderer.is_none() {
                 self.clock.init_gpu(&self.gpu);
+                self.clock.apply_input_region(&self.compositor_state, _qh);
             }
             self.clock.draw();
             self.first_configure_count += 1;
@@ -142,6 +144,7 @@ impl LayerShellHandler for ShellApp {
             self.todo.configure(configure);
             if self.todo.renderer.is_none() {
                 self.todo.init_gpu(&self.gpu);
+                self.todo.apply_input_region(&self.compositor_state, _qh);
             }
             self.todo.draw();
             self.first_configure_count += 1;
@@ -266,6 +269,9 @@ impl PointerHandler for ShellApp {
         for event in events {
             let sid = event.surface.id();
             if sid == self.clock.surface_id() && self.clock.on_pointer_event(event) {
+                if self.clock.needs_input_region_update {
+                    self.clock.apply_input_region(&self.compositor_state, _qh);
+                }
                 self.clock.draw();
             } else if sid == self.island.surface_id() && self.island.on_pointer_event(event) {
                 if self.island.needs_input_region_update {
@@ -273,6 +279,9 @@ impl PointerHandler for ShellApp {
                 }
                 self.island.draw();
             } else if sid == self.todo.surface_id() && self.todo.on_pointer_event(event) {
+                if self.todo.needs_input_region_update {
+                    self.todo.apply_input_region(&self.compositor_state, _qh);
+                }
                 self.todo.draw();
             }
         }
@@ -377,6 +386,16 @@ impl ShellApp {
                     {
                         self.clock.anim_speed = spd as f32;
                     }
+                    if let Some(dock) = clk
+                        .get("edge_dock")
+                        .or_else(|| clk.get("dock_to_edge"))
+                        .and_then(|v| v.as_bool())
+                    {
+                        self.clock.is_docked = dock;
+                    }
+                    if let Some(hov) = clk.get("hover_to_expand").and_then(|v| v.as_bool()) {
+                        self.clock.hover_to_expand = hov;
+                    }
                 }
 
                 if let Some(td) = val.get("todo") {
@@ -399,6 +418,16 @@ impl ShellApp {
                         .and_then(|v| v.as_f64())
                     {
                         self.todo.anim_speed = spd as f32;
+                    }
+                    if let Some(dock) = td
+                        .get("edge_dock")
+                        .or_else(|| td.get("dock_to_edge"))
+                        .and_then(|v| v.as_bool())
+                    {
+                        self.todo.is_docked = dock;
+                    }
+                    if let Some(hov) = td.get("hover_to_expand").and_then(|v| v.as_bool()) {
+                        self.todo.hover_to_expand = hov;
                     }
                 }
 
@@ -620,9 +649,16 @@ fn main() {
 
         let island_active = app.island.update_physics(dt);
         let todo_active = app.todo.update_physics(dt);
+        let clock_active = app.clock.update_physics(dt);
 
         if app.island.needs_input_region_update {
             app.island.apply_input_region(&app.compositor_state, &qh);
+        }
+        if app.todo.needs_input_region_update {
+            app.todo.apply_input_region(&app.compositor_state, &qh);
+        }
+        if app.clock.needs_input_region_update {
+            app.clock.apply_input_region(&app.compositor_state, &qh);
         }
 
         // Check wallpaper updates across all widgets
@@ -663,7 +699,7 @@ fn main() {
 
         let now_local = chrono::Local::now();
         let cur_min = now_local.minute();
-        if app.clock.is_hovered || cur_min != last_minute {
+        if clock_active || app.clock.is_hovered || cur_min != last_minute {
             last_minute = cur_min;
             app.clock.draw();
             let _ = conn.flush();
@@ -682,6 +718,7 @@ fn main() {
 
         let animating = island_active
             || todo_active
+            || clock_active
             || app.clock.is_hovered
             || app.island.is_hovered
             || app.todo.is_hovered;

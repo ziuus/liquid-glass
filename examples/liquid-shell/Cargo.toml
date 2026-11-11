@@ -7,7 +7,6 @@ edition = "2021"
 glass-core = { path = "../../glass-core" }
 glass-platform = { path = "../../glass-platform" }
 glass-ui = { version = "0.1.0", path = "../../glass-ui" }
-glass-clock = { path = "../glass-clock" }
 wgpu = { workspace = true }
 wayland-client = { workspace = true }
 wayland-protocols = { workspace = true }

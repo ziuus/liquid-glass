@@ -18,7 +18,7 @@ use smithay_client_toolkit::shell::WaylandSurface;
 use std::sync::Arc;
 use std::time::Instant;
 use wayland_backend::client::ObjectId;
-use wayland_client::protocol::wl_surface;
+use wayland_client::protocol::{wl_region, wl_surface};
 use wayland_client::{Dispatch, Proxy, QueueHandle};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::ZwlrLayerSurfaceV1;
 
@@ -84,6 +84,8 @@ impl HasDisplayHandle for WaylandWindow {
 pub const CARD_W: f32 = 360.0;
 pub const CARD_H: f32 = 455.0;
 pub const CARD_PAD: f32 = 24.0;
+pub const COMPACT_W: f32 = 148.0;
+pub const COMPACT_H: f32 = 36.0;
 
 pub struct TodoWidget {
     #[allow(dead_code)]
@@ -134,6 +136,19 @@ pub struct TodoWidget {
     pub theme_mode: u32,
     pub blur_radius: f32,
     pub anim_speed: f32,
+
+    // Liquid Edge Emergence
+    pub is_docked: bool,
+    pub is_compact: bool,
+    pub hover_to_expand: bool,
+    pub current_w: f32,
+    pub target_w: f32,
+    pub current_h: f32,
+    pub target_h: f32,
+    pub size_spring: Spring,
+    pub fillet_radius: f32,
+    pub last_hover_time: Instant,
+    pub needs_input_region_update: bool,
 }
 
 impl TodoWidget {
@@ -157,21 +172,21 @@ impl TodoWidget {
     {
         let width = (CARD_W + CARD_PAD * 2.0) as u32; // 408
         let height = (CARD_H + CARD_PAD * 2.0) as u32; // 503
-        let pos_x = 1532i32 - CARD_PAD as i32; // 1508
-        let pos_y = 56i32 - CARD_PAD as i32; // 32
+        let pos_x = 1920i32 - width as i32 - 24; // 1488 (top right corner)
+        let pos_y = 0i32; // flush against top screen edge
 
         let surface = compositor.create_surface(qh);
         let layer_surface = layer_shell.create_layer_surface(
             qh,
             surface.clone(),
-            Layer::Bottom,
+            Layer::Top,
             Some("liquid-glass-todo"),
             None,
         );
 
-        layer_surface.set_anchor(Anchor::TOP | Anchor::LEFT);
+        layer_surface.set_anchor(Anchor::TOP | Anchor::RIGHT);
         layer_surface.set_size(width, height);
-        layer_surface.set_margin(pos_y, 0, 0, pos_x);
+        layer_surface.set_margin(0, 24, 0, 0);
         layer_surface.set_exclusive_zone(0);
         layer_surface.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
         layer_surface.commit();
@@ -255,6 +270,27 @@ impl TodoWidget {
             theme_mode: 0,
             blur_radius: 6.0,
             anim_speed: 1.0,
+
+            is_docked: true,
+            is_compact: true,
+            hover_to_expand: true,
+            current_w: COMPACT_W,
+            target_w: COMPACT_W,
+            current_h: COMPACT_H,
+            target_h: COMPACT_H,
+            size_spring: Spring::with_params(
+                0.0,
+                SpringParams {
+                    stiffness: 220.0,
+                    damping: 24.0,
+                    mass: 1.0,
+                    initial_velocity: 0.0,
+                    epsilon: 0.001,
+                },
+            ),
+            fillet_radius: 18.0,
+            last_hover_time: Instant::now() - std::time::Duration::from_secs(60),
+            needs_input_region_update: true,
         }
     }
 
@@ -297,15 +333,90 @@ impl TodoWidget {
         self.wallpaper_crop = Some(crop);
     }
 
+    pub fn expand(&mut self) {
+        if self.is_compact {
+            self.is_compact = false;
+            self.size_spring.set_target(1.0);
+            self.last_hover_time = Instant::now();
+            self.needs_input_region_update = true;
+        }
+    }
+
+    pub fn collapse(&mut self) {
+        if !self.is_compact {
+            self.is_compact = true;
+            self.size_spring.set_target(0.0);
+            self.needs_input_region_update = true;
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn toggle_expand(&mut self) {
+        if self.is_compact {
+            self.expand();
+        } else {
+            self.collapse();
+        }
+    }
+
+    pub fn is_inside(&self, px: f32, py: f32) -> bool {
+        let flare = if self.is_docked && py <= self.fillet_radius {
+            self.fillet_radius
+        } else {
+            0.0
+        };
+        let cx = (self.width as f32) * 0.5;
+        let half_w = self.current_w * 0.5 + flare;
+        px >= (cx - half_w) && px <= (cx + half_w) && py >= 0.0 && py <= (self.current_h + 6.0)
+    }
+
+    pub fn apply_input_region<D>(&mut self, compositor: &CompositorState, qh: &QueueHandle<D>)
+    where
+        D: Dispatch<wl_region::WlRegion, ()> + 'static,
+    {
+        self.needs_input_region_update = false;
+        let region = compositor.wl_compositor().create_region(qh, ());
+        let flare = if self.is_docked {
+            self.fillet_radius as i32
+        } else {
+            0
+        };
+        let cx = self.width as i32 / 2;
+        if self.is_compact && self.size_spring.value < 0.1 {
+            let pill_w = COMPACT_W as i32 + flare * 2;
+            let pill_h = (COMPACT_H + 6.0) as i32;
+            let pill_x = cx - pill_w / 2;
+            region.add(pill_x, 0, pill_w, pill_h);
+        } else {
+            let card_w = CARD_W as i32 + flare * 2;
+            let card_h = (self.target_h + 10.0) as i32;
+            let card_x = cx - card_w / 2;
+            region.add(card_x, 0, card_w, card_h);
+        }
+        self.surface.set_input_region(Some(&region));
+        region.destroy();
+        self.surface.commit();
+    }
+
     pub fn on_pointer_event(&mut self, event: &PointerEvent) -> bool {
         match event.kind {
             PointerEventKind::Enter { .. } => {
-                self.is_hovered = true;
+                let px = event.position.0 as f32;
+                let py = event.position.1 as f32;
+                let inside = self.is_inside(px, py);
+                self.is_hovered = inside;
+                if inside {
+                    self.last_hover_time = Instant::now();
+                    if self.is_compact && self.hover_to_expand {
+                        self.expand();
+                    }
+                }
                 true
             }
             PointerEventKind::Leave { .. } => {
                 self.is_hovered = false;
                 self.cursor_pos = [-10.0, -10.0];
+                self.last_hover_time = Instant::now();
                 true
             }
             PointerEventKind::Motion { .. } => {
@@ -314,13 +425,17 @@ impl TodoWidget {
                 let new_x = px / self.width as f32;
                 let new_y = py / self.height as f32;
                 self.cursor_pos = [new_x, new_y];
+                self.last_hover_time = Instant::now();
 
-                let lx = px - CARD_PAD;
-                let ly = py - CARD_PAD;
-                self.is_hovered =
-                    (0.0..=CARD_W).contains(&lx) && (0.0..=self.get_card_height()).contains(&ly);
+                let inside = self.is_inside(px, py);
+                self.is_hovered = inside;
+                if inside && self.is_compact && self.hover_to_expand {
+                    self.expand();
+                }
 
                 if let Some(row) = self.task_pressed_row {
+                    let cx = (self.width as f32) * 0.5;
+                    let lx = px - (cx - CARD_W * 0.5);
                     let dx = lx - self.press_start_pos[0];
                     if dx < -25.0 || self.is_sliding {
                         self.is_sliding = true;
@@ -332,8 +447,18 @@ impl TodoWidget {
             PointerEventKind::Press { button, .. } => {
                 let px = event.position.0 as f32;
                 let py = event.position.1 as f32;
-                let lx = px - CARD_PAD;
-                let ly = py - CARD_PAD;
+                if !self.is_inside(px, py) {
+                    return false;
+                }
+                if self.is_compact {
+                    self.expand();
+                    return true;
+                }
+                self.last_hover_time = Instant::now();
+
+                let cx = (self.width as f32) * 0.5;
+                let lx = px - (cx - CARD_W * 0.5);
+                let ly = py;
                 let is_right = button == 0x111;
 
                 if lx < 0.0 || lx > CARD_W || ly < 0.0 || ly > self.get_card_height() {
@@ -400,8 +525,9 @@ impl TodoWidget {
             } => {
                 let px = event.position.0 as f32;
                 let py = event.position.1 as f32;
-                let lx = px - CARD_PAD;
-                let ly = py - CARD_PAD;
+                let cx = (self.width as f32) * 0.5;
+                let lx = px - (cx - CARD_W * 0.5);
+                let ly = py;
                 if lx < 0.0 || lx > CARD_W || ly < 0.0 || ly > self.get_card_height() {
                     return false;
                 }
@@ -862,6 +988,24 @@ impl TodoWidget {
         let eff_dt = dt * self.anim_speed;
         self.tab_spring.update(eff_dt);
         self.filter_spring.update(eff_dt);
+        self.size_spring.update(eff_dt);
+
+        let t = self.size_spring.value.clamp(0.0, 1.0);
+        let card_h = self.get_card_height();
+        self.target_h = card_h;
+        self.target_w = CARD_W;
+        self.current_w = COMPACT_W + (self.target_w - COMPACT_W) * t;
+        self.current_h = COMPACT_H + (self.target_h - COMPACT_H) * t;
+
+        // Auto-collapse when unhovered after inactivity (3.2 seconds)
+        if !self.is_compact
+            && !self.is_hovered
+            && !self.is_editing
+            && !self.is_cal_editing
+            && self.last_hover_time.elapsed().as_secs_f32() > 3.2
+        {
+            self.collapse();
+        }
 
         let mut slide_animating = false;
         if !self.is_sliding {
@@ -879,6 +1023,7 @@ impl TodoWidget {
 
         !self.tab_spring.is_at_rest()
             || !self.filter_spring.is_at_rest()
+            || !self.size_spring.is_at_rest()
             || self.is_editing
             || self.is_cal_editing
             || slide_animating
@@ -1834,7 +1979,7 @@ impl TodoWidget {
         // Pack item_count in upper 16 bits, bitmask in lower 16 bits
         let progress_packed = (((item_count & 0xFFFF) << 16) | (bitmask & 0xFFFF)) as f32;
 
-        let card_h = self.get_card_height();
+        let _card_h = self.get_card_height();
 
         // Generate dynamic Quicksand font overlay (reusing overlay_buffer without frame reallocations)
         let required_len = (self.width * self.height * 4) as usize;
@@ -1845,20 +1990,114 @@ impl TodoWidget {
         }
         let mut overlay_buf = std::mem::take(&mut self.overlay_buffer);
 
-        let content_w = CARD_W as usize;
-        let content_h = CARD_H as usize;
-        let mut content_buf = vec![0u8; content_w * content_h * 4];
-        self.render_ui_overlay(&mut content_buf);
+        let t = self.size_spring.value.clamp(0.0, 1.0);
+        let cx = (self.width as f32) * 0.5;
 
-        let pad_x = CARD_PAD as usize;
-        let pad_y = CARD_PAD as usize;
-        let stride_dst = self.width as usize * 4;
-        let stride_src = content_w * 4;
-        for row in 0..content_h {
-            let src_start = row * stride_src;
-            let dst_start = (row + pad_y) * stride_dst + pad_x * 4;
-            overlay_buf[dst_start..dst_start + stride_src]
-                .copy_from_slice(&content_buf[src_start..src_start + stride_src]);
+        // 1. Render expanded content into overlay_buf if t > 0.05
+        if t > 0.05 {
+            let content_w = CARD_W as usize;
+            let content_h = CARD_H as usize;
+            let mut content_buf = vec![0u8; content_w * content_h * 4];
+            self.render_ui_overlay(&mut content_buf);
+
+            let alpha_factor = ((t - 0.1) / 0.9).clamp(0.0, 1.0);
+            let slide_y = ((1.0 - t) * -22.0) as i32;
+            let dst_x = (cx - CARD_W * 0.5) as usize;
+            let stride_src = content_w * 4;
+            let stride_dst = self.width as usize * 4;
+
+            for row in 0..content_h {
+                let target_y = (row as i32 + slide_y).clamp(0, (self.height as i32) - 1) as usize;
+                let src_start = row * stride_src;
+                let dst_start = target_y * stride_dst + dst_x * 4;
+                if dst_start + stride_src <= overlay_buf.len()
+                    && src_start + stride_src <= content_buf.len()
+                {
+                    for px_i in 0..content_w {
+                        let si = src_start + px_i * 4;
+                        let di = dst_start + px_i * 4;
+                        let a = (content_buf[si + 3] as f32 * alpha_factor) as u8;
+                        if a > 0 {
+                            overlay_buf[di] = content_buf[si];
+                            overlay_buf[di + 1] = content_buf[si + 1];
+                            overlay_buf[di + 2] = content_buf[si + 2];
+                            overlay_buf[di + 3] = a;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Render compact tab overview if t < 0.35
+        if t < 0.35 {
+            let comp_alpha = ((0.35 - t) / 0.35).clamp(0.0, 1.0);
+            let is_light = self.effective_is_light();
+            let ink_col = if is_light {
+                [10, 14, 22, (255.0 * comp_alpha) as u8]
+            } else {
+                [255, 255, 255, (255.0 * comp_alpha) as u8]
+            };
+            let shadow_col = [0, 0, 0, 0];
+
+            // Center of compact pill: cx, y = 18.0
+            UIFont::draw_check_icon(
+                &mut overlay_buf,
+                self.width,
+                self.height,
+                cx - 36.0,
+                18.0,
+                ink_col,
+            );
+            self.font.draw_text_centered_y(
+                &mut overlay_buf,
+                self.width,
+                self.height,
+                "Tasks",
+                cx - 22.0,
+                18.0,
+                13.5,
+                ink_col,
+                shadow_col,
+                FontWeight::SemiBold,
+            );
+
+            // Count pending tasks
+            let pending = self.todos.tasks.iter().filter(|tk| !tk.done).count();
+            let badge_str = format!("{}", pending);
+            let badge_w = self.font.measure_text(&badge_str, 12.0, FontWeight::Bold);
+            let badge_cx = cx + 32.0;
+            let badge_bg = if is_light {
+                [0, 0, 0, (28.0 * comp_alpha) as u8]
+            } else {
+                [255, 255, 255, (36.0 * comp_alpha) as u8]
+            };
+            UIFont::draw_rounded_rect_fill(
+                &mut overlay_buf,
+                self.width,
+                self.height,
+                badge_cx,
+                18.0,
+                (badge_w + 10.0) * 0.5,
+                9.0,
+                5.0,
+                badge_bg,
+            );
+            let badge_text_x = badge_cx - badge_w * 0.5;
+            let badge_baseline = self
+                .font
+                .vertical_center_baseline(18.0, 12.0, FontWeight::Bold);
+            self.font.draw_text_with_shadow(
+                &mut overlay_buf,
+                self.width,
+                self.height,
+                &badge_str,
+                badge_text_x,
+                badge_baseline,
+                12.0,
+                ink_col,
+                shadow_col,
+                FontWeight::Bold,
+            );
         }
 
         let is_light_f32 = if self.effective_is_light() { 1.0 } else { 0.0 };
@@ -1866,17 +2105,13 @@ impl TodoWidget {
         let rendered = if let Some(renderer) = &mut self.renderer {
             renderer.update_overlay(self.width, self.height, &overlay_buf);
 
-            let _accent = get_theme_accent();
             let (px, py) = (self.cursor_pos[0], self.cursor_pos[1]);
 
-            // Pass continuous spring-animated values to shader
-            let tab_val = self.tab_spring.value;
-
-            // Hug content: glass card bounds match calculated height inside padded surface
-            let x_norm = CARD_PAD / (self.width as f32);
-            let y_norm = CARD_PAD / (self.height as f32);
-            let w_norm = CARD_W / (self.width as f32);
-            let h_norm = card_h / (self.height as f32);
+            let card_left = cx - self.current_w * 0.5;
+            let x_norm = card_left / (self.width as f32);
+            let y_norm = 0.0;
+            let w_norm = self.current_w / (self.width as f32);
+            let h_norm = self.current_h / (self.height as f32);
 
             let todo_card = GlassSurface::new()
                 .material(Material::LiquidGlass)
@@ -1884,18 +2119,18 @@ impl TodoWidget {
                     radius: Tokens::RADIUS_OUTER,
                 })
                 .bounds(x_norm, y_norm, w_norm, h_norm)
-                .curvature(0.08)
+                .curvature(self.fillet_radius)
                 .bevel(22.0)
                 .refraction(20.0)
                 .dispersion(0.14)
                 .blur(self.blur_radius)
-                .tint(0.0, progress_packed, 0.0, is_light_f32)
+                .tint(0.0, progress_packed, 1.0, is_light_f32)
                 .roughness(-1.0)
                 .specular(1.10)
                 .fresnel(0.60)
                 .style_mode(self.style_mode)
                 .element_type(26.0)
-                .deformation(tab_val) // Continuous Tab spring
+                .deformation(if self.is_docked { 2.0 } else { 0.0 })
                 .pointer_pos(px, py);
 
             let surfaces = vec![todo_card];
@@ -1986,6 +2221,7 @@ fn is_buffer_light(buf: &[u8]) -> bool {
     buffer_lum_stats(buf).2
 }
 
+#[allow(dead_code)]
 fn get_theme_accent() -> [f32; 4] {
     let home = std::env::var("HOME").unwrap_or_default();
     let theme_path = format!("{}/.config/quickshell-todo-widget/theme.json", home);

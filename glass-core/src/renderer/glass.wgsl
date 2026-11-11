@@ -1405,14 +1405,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let local_px = uv * params.surface_size - center;
     let r = min(params.corner_radius, min(half_size.x, half_size.y));
     
-    // Dynamic Island edge modes (params.deformation):
+    // Dynamic Island & edge-docked widget modes (params.deformation):
     //   0.0 = Floating (symmetric capsule / rounded rect)
     //   1.0 = Attached Straight (top flush against screen, sharp 90-degree corners)
     //   2.0 = Attached Curved/Notch (top flush against screen, smooth outward fillet wings)
-    let is_island = (params.padding >= 26.9 && params.padding <= 27.1);
+    let is_dockable = (params.padding >= 24.9 && params.padding <= 27.1);
     let edge_style = params.deformation;
-    let is_attached = (is_island && edge_style >= 0.9);
-    let is_curved = (is_island && edge_style >= 1.5);
+    let is_attached = (is_dockable && edge_style >= 0.9);
+    let is_curved = (is_dockable && edge_style >= 1.5);
     let r_bottom = r;
     let r_fillet = select(24.0, params.curvature, params.curvature >= 4.0);
 
@@ -1617,9 +1617,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     fin = fin * (1.0 - overlay.a) + overlay.rgb;
 
     var fin_a = 1.0;
-    if params.padding >= 26.9 && params.padding <= 27.1 {
-        // Dynamic Island: smooth spring alpha fade during toggle/hide
-        fin_a = clamp(params.tint.z, 0.0, 1.0);
+    if params.padding >= 24.9 && params.padding <= 27.1 {
+        // Dynamic Island & edge widgets: smooth spring alpha fade during toggle/hide
+        let tint_z = params.tint.z;
+        if tint_z > 0.001 {
+            fin_a = clamp(tint_z, 0.0, 1.0);
+        }
     }
 
     let aa = 1.0 - smoothstep(-1.0, 0.0, sdf);

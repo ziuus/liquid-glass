@@ -1192,7 +1192,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "env_logger",
- "glass-clock",
  "glass-core",
  "glass-platform",
  "glass-ui",
