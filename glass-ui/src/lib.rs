@@ -375,6 +375,275 @@ impl GlassSlider {
     }
 }
 
+/// An interactive liquid glass text input field with animated focus, cursor blink, and text editing.
+#[derive(Debug, Clone)]
+pub struct GlassTextInput {
+    pub bounds: [f32; 4],
+    pub text: String,
+    pub placeholder: String,
+    pub is_focused: bool,
+    pub is_hovered: bool,
+    pub cursor_pos: usize,
+    pub cursor_visible: bool,
+    pub cursor_blink_timer: f32,
+    pub focus_spring: Spring,
+    pub hover_spring: Spring,
+    pub shape: Shape,
+    pub max_length: Option<usize>,
+}
+
+impl GlassTextInput {
+    pub fn new(x: f32, y: f32, w: f32, h: f32, placeholder: &str) -> Self {
+        Self {
+            bounds: [x, y, w, h],
+            text: String::new(),
+            placeholder: placeholder.to_string(),
+            is_focused: false,
+            is_hovered: false,
+            cursor_pos: 0,
+            cursor_visible: true,
+            cursor_blink_timer: 0.0,
+            focus_spring: Spring::with_params(0.0, SpringParams::smooth()),
+            hover_spring: Spring::with_params(0.0, SpringParams::smooth()),
+            shape: Shape::RoundedRectangle { radius: 14.0 },
+            max_length: None,
+        }
+    }
+
+    pub fn with_shape(mut self, shape: Shape) -> Self {
+        self.shape = shape;
+        self
+    }
+
+    pub fn with_text(mut self, text: &str) -> Self {
+        self.text = text.to_string();
+        self.cursor_pos = self.text.chars().count();
+        self
+    }
+
+    pub fn with_max_length(mut self, max_len: usize) -> Self {
+        self.max_length = Some(max_len);
+        self
+    }
+
+    pub fn contains(&self, px: f32, py: f32) -> bool {
+        px >= self.bounds[0]
+            && px <= self.bounds[0] + self.bounds[2]
+            && py >= self.bounds[1]
+            && py <= self.bounds[1] + self.bounds[3]
+    }
+
+    pub fn set_focused(&mut self, focused: bool) {
+        if self.is_focused != focused {
+            self.is_focused = focused;
+            self.focus_spring
+                .set_target(if focused { 1.0 } else { 0.0 });
+            if focused {
+                self.cursor_visible = true;
+                self.cursor_blink_timer = 0.0;
+            }
+        }
+    }
+
+    pub fn on_pointer_move(&mut self, px: f32, py: f32) {
+        let inside = self.contains(px, py);
+        if inside != self.is_hovered {
+            self.is_hovered = inside;
+            self.hover_spring.set_target(if inside { 1.0 } else { 0.0 });
+        }
+    }
+
+    pub fn on_pointer_down(&mut self, px: f32, py: f32) -> bool {
+        if self.contains(px, py) {
+            self.set_focused(true);
+            let char_width = 9.0;
+            let pad_x = 16.0;
+            let rel_x = (px - self.bounds[0] - pad_x).max(0.0);
+            let target_idx = (rel_x / char_width).round() as usize;
+            self.cursor_pos = target_idx.min(self.text.chars().count());
+            true
+        } else {
+            self.set_focused(false);
+            false
+        }
+    }
+
+    pub fn insert_char(&mut self, c: char) {
+        if let Some(max) = self.max_length {
+            if self.text.chars().count() >= max {
+                return;
+            }
+        }
+        let byte_pos = self
+            .text
+            .char_indices()
+            .map(|(i, _)| i)
+            .nth(self.cursor_pos)
+            .unwrap_or(self.text.len());
+        self.text.insert(byte_pos, c);
+        self.cursor_pos += 1;
+        self.cursor_visible = true;
+        self.cursor_blink_timer = 0.0;
+    }
+
+    pub fn insert_text(&mut self, s: &str) {
+        for c in s.chars() {
+            self.insert_char(c);
+        }
+    }
+
+    pub fn delete_backward(&mut self) -> bool {
+        if self.cursor_pos > 0 {
+            self.cursor_pos -= 1;
+            let byte_pos = self
+                .text
+                .char_indices()
+                .map(|(i, _)| i)
+                .nth(self.cursor_pos)
+                .unwrap_or(self.text.len());
+            self.text.remove(byte_pos);
+            self.cursor_visible = true;
+            self.cursor_blink_timer = 0.0;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn delete_forward(&mut self) -> bool {
+        if self.cursor_pos < self.text.chars().count() {
+            let byte_pos = self
+                .text
+                .char_indices()
+                .map(|(i, _)| i)
+                .nth(self.cursor_pos)
+                .unwrap_or(self.text.len());
+            self.text.remove(byte_pos);
+            self.cursor_visible = true;
+            self.cursor_blink_timer = 0.0;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn move_cursor_left(&mut self) {
+        if self.cursor_pos > 0 {
+            self.cursor_pos -= 1;
+            self.cursor_visible = true;
+            self.cursor_blink_timer = 0.0;
+        }
+    }
+
+    pub fn move_cursor_right(&mut self) {
+        if self.cursor_pos < self.text.chars().count() {
+            self.cursor_pos += 1;
+            self.cursor_visible = true;
+            self.cursor_blink_timer = 0.0;
+        }
+    }
+
+    pub fn move_cursor_start(&mut self) {
+        self.cursor_pos = 0;
+        self.cursor_visible = true;
+        self.cursor_blink_timer = 0.0;
+    }
+
+    pub fn move_cursor_end(&mut self) {
+        self.cursor_pos = self.text.chars().count();
+        self.cursor_visible = true;
+        self.cursor_blink_timer = 0.0;
+    }
+
+    pub fn update(&mut self, dt: f32) {
+        self.focus_spring.update(dt);
+        self.hover_spring.update(dt);
+
+        if self.is_focused {
+            self.cursor_blink_timer += dt;
+            if self.cursor_blink_timer >= 0.53 {
+                self.cursor_visible = !self.cursor_visible;
+                self.cursor_blink_timer = 0.0;
+            }
+        } else {
+            self.cursor_visible = false;
+        }
+    }
+
+    pub fn to_surfaces(&self) -> Vec<GlassSurface> {
+        let f = self.focus_spring.value.clamp(0.0, 1.0);
+        let h = self.hover_spring.value.clamp(0.0, 1.0);
+
+        // 1. Base input container: elevated blur and accent rim illumination on focus
+        let base_tint = [
+            0.08 + f * 0.15,
+            0.12 + f * 0.25,
+            0.18 + f * 0.40,
+            0.06 + h * 0.04 + f * 0.10,
+        ];
+
+        let base = GlassSurface::new()
+            .material(if f > 0.5 {
+                Material::LiquidGlass
+            } else {
+                Material::FrostedGlass
+            })
+            .shape(self.shape)
+            .bounds(
+                self.bounds[0],
+                self.bounds[1],
+                self.bounds[2],
+                self.bounds[3],
+            )
+            .blur(16.0 + f * 12.0)
+            .refraction(0.40 + f * 0.25)
+            .fresnel(0.50 + f * 0.30)
+            .bevel(6.0 + f * 2.0)
+            .specular(0.70 + f * 0.25)
+            .tint(base_tint[0], base_tint[1], base_tint[2], base_tint[3]);
+
+        let mut surfaces = vec![base];
+
+        // 2. Focused accent meniscus rim / glow if active
+        if f > 0.01 {
+            let rim = GlassSurface::new()
+                .material(Material::LiquidGlass)
+                .shape(self.shape)
+                .bounds(
+                    self.bounds[0] - 1.0,
+                    self.bounds[1] - 1.0,
+                    self.bounds[2] + 2.0,
+                    self.bounds[3] + 2.0,
+                )
+                .blur(8.0)
+                .refraction(0.70)
+                .specular(0.95)
+                .tint(0.38, 0.85, 1.0, f * 0.35);
+            surfaces.push(rim);
+        }
+
+        // 3. Blinking cursor indicator bar when focused and visible
+        if self.is_focused && self.cursor_visible {
+            let char_width = 9.0;
+            let pad_x = 16.0;
+            let cursor_x = self.bounds[0] + pad_x + self.cursor_pos as f32 * char_width;
+            let cursor_h = self.bounds[3] * 0.55;
+            let cursor_y = self.bounds[1] + (self.bounds[3] - cursor_h) * 0.5;
+
+            let cursor = GlassSurface::new()
+                .material(Material::LiquidGlass)
+                .shape(Shape::Capsule)
+                .bounds(cursor_x, cursor_y, 2.0, cursor_h)
+                .refraction(0.80)
+                .specular(1.0)
+                .tint(0.4, 0.9, 1.0, 0.90);
+            surfaces.push(cursor);
+        }
+
+        surfaces
+    }
+}
+
 /// A high-level Widget Container holding cards, buttons, sliders, and toggles.
 #[derive(Debug, Default)]
 pub struct GlassWidget {
@@ -382,6 +651,7 @@ pub struct GlassWidget {
     pub buttons: Vec<GlassButton>,
     pub toggles: Vec<GlassToggle>,
     pub sliders: Vec<GlassSlider>,
+    pub inputs: Vec<GlassTextInput>,
 }
 
 impl GlassWidget {
@@ -405,12 +675,19 @@ impl GlassWidget {
         self.sliders.push(slider);
     }
 
+    pub fn add_input(&mut self, input: GlassTextInput) {
+        self.inputs.push(input);
+    }
+
     pub fn on_pointer_move(&mut self, px: f32, py: f32) {
         for btn in &mut self.buttons {
             btn.on_pointer_move(px, py);
         }
         for sl in &mut self.sliders {
             sl.on_pointer_move(px, py);
+        }
+        for input in &mut self.inputs {
+            input.on_pointer_move(px, py);
         }
     }
 
@@ -428,6 +705,11 @@ impl GlassWidget {
         }
         for sl in &mut self.sliders {
             if sl.on_pointer_down(px, py) {
+                handled = true;
+            }
+        }
+        for input in &mut self.inputs {
+            if input.on_pointer_down(px, py) {
                 handled = true;
             }
         }
@@ -454,6 +736,9 @@ impl GlassWidget {
         for tg in &mut self.toggles {
             tg.update(dt);
         }
+        for input in &mut self.inputs {
+            input.update(dt);
+        }
     }
 
     pub fn collect_surfaces(&self) -> Vec<GlassSurface> {
@@ -469,6 +754,9 @@ impl GlassWidget {
         }
         for btn in &self.buttons {
             surfaces.push(btn.to_surface());
+        }
+        for input in &self.inputs {
+            surfaces.extend(input.to_surfaces());
         }
         surfaces
     }
@@ -531,13 +819,65 @@ mod tests {
     }
 
     #[test]
+    fn test_glass_text_input_builder_and_interaction() {
+        let mut input = GlassTextInput::new(10.0, 10.0, 200.0, 40.0, "Search...")
+            .with_shape(Shape::Capsule)
+            .with_max_length(30);
+
+        assert_eq!(input.placeholder, "Search...");
+        assert_eq!(input.text, "");
+        assert_eq!(input.cursor_pos, 0);
+        assert!(!input.is_focused);
+
+        input.on_pointer_move(50.0, 20.0);
+        assert!(input.is_hovered);
+
+        let focused = input.on_pointer_down(50.0, 20.0);
+        assert!(focused);
+        assert!(input.is_focused);
+
+        input.insert_text("Liquid Glass");
+        assert_eq!(input.text, "Liquid Glass");
+        assert_eq!(input.cursor_pos, 12);
+
+        input.move_cursor_left();
+        input.move_cursor_left();
+        assert_eq!(input.cursor_pos, 10);
+
+        input.delete_backward();
+        assert_eq!(input.text, "Liquid Glss");
+
+        input.delete_forward();
+        assert_eq!(input.text, "Liquid Gls");
+
+        input.move_cursor_start();
+        assert_eq!(input.cursor_pos, 0);
+
+        input.move_cursor_end();
+        assert_eq!(input.cursor_pos, 10);
+
+        // Test cursor blinking on update
+        input.update(0.6);
+        assert!(!input.cursor_visible); // toggled off after >0.53s
+        input.update(0.6);
+        assert!(input.cursor_visible); // toggled back on
+
+        // Focus loss on click outside
+        let outside = input.on_pointer_down(500.0, 500.0);
+        assert!(!outside);
+        assert!(!input.is_focused);
+    }
+
+    #[test]
     fn test_widget_collection() {
         let mut widget = GlassWidget::new();
         widget.add_card(GlassCard::new(0.0, 0.0, 1.0, 1.0));
         widget.add_button(GlassButton::new(0.1, 0.1, 0.2, 0.1, "Test"));
         widget.add_toggle(GlassToggle::new(0.4, 0.1, 0.1, 0.05, true));
+        widget.add_input(GlassTextInput::new(0.6, 0.1, 0.3, 0.05, "Type..."));
 
         let surfaces = widget.collect_surfaces();
-        assert_eq!(surfaces.len(), 4); // 1 card + 2 toggle + 1 button
+        // 1 card + 2 toggle + 1 button + 1 input base (unfocused) = 5
+        assert_eq!(surfaces.len(), 5);
     }
 }
