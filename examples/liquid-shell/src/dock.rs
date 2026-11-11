@@ -26,8 +26,8 @@ pub const DOCK_WIN_W: u32 = 640;
 pub const DOCK_WIN_H: u32 = 100;
 pub const DOCK_EXPANDED_W: f32 = 520.0;
 pub const DOCK_EXPANDED_H: f32 = 68.0;
-pub const DOCK_COMPACT_W: f32 = 140.0;
-pub const DOCK_COMPACT_H: f32 = 5.0;
+pub const DOCK_COMPACT_W: f32 = 96.0;
+pub const DOCK_COMPACT_H: f32 = 4.0;
 pub const DOCK_EXPANDED_Y: f32 = 18.0;
 pub const DOCK_COMPACT_Y: f32 = 93.0;
 
@@ -55,14 +55,92 @@ impl HasDisplayHandle for WaylandWindow {
     }
 }
 
-#[derive(Debug, Clone)]
+fn default_class() -> String {
+    String::new()
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DockItem {
     pub name: String,
     pub icon: String,
     pub command: String,
-    pub class_pattern: String,
+    #[serde(default = "default_class")]
+    pub class: String,
+    #[serde(skip)]
     pub is_running: bool,
+    #[serde(skip)]
     pub is_focused: bool,
+}
+
+impl DockItem {
+    pub fn defaults() -> Vec<Self> {
+        vec![
+            DockItem {
+                name: "Terminal".to_string(),
+                icon: "terminal".to_string(),
+                command: "foot".to_string(),
+                class: "foot".to_string(),
+                is_running: false,
+                is_focused: false,
+            },
+            DockItem {
+                name: "Browser".to_string(),
+                icon: "browser".to_string(),
+                command: "brave".to_string(),
+                class: "brave".to_string(),
+                is_running: false,
+                is_focused: false,
+            },
+            DockItem {
+                name: "Editor".to_string(),
+                icon: "editor".to_string(),
+                command: "code".to_string(),
+                class: "code".to_string(),
+                is_running: false,
+                is_focused: false,
+            },
+            DockItem {
+                name: "Files".to_string(),
+                icon: "folder".to_string(),
+                command: "thunar".to_string(),
+                class: "thunar".to_string(),
+                is_running: false,
+                is_focused: false,
+            },
+            DockItem {
+                name: "Music".to_string(),
+                icon: "music".to_string(),
+                command: "spotify".to_string(),
+                class: "spotify".to_string(),
+                is_running: false,
+                is_focused: false,
+            },
+            DockItem {
+                name: "Tasks".to_string(),
+                icon: "check".to_string(),
+                command: "/home/zius/.local/bin/island-ctl todo".to_string(),
+                class: "liquid-shell".to_string(),
+                is_running: true,
+                is_focused: false,
+            },
+            DockItem {
+                name: "Settings".to_string(),
+                icon: "settings".to_string(),
+                command: "/home/zius/.local/bin/settings-tui".to_string(),
+                class: "settings".to_string(),
+                is_running: false,
+                is_focused: false,
+            },
+            DockItem {
+                name: "Island".to_string(),
+                icon: "sync".to_string(),
+                command: "/home/zius/.local/bin/island-ctl toggle".to_string(),
+                class: "liquid-shell".to_string(),
+                is_running: true,
+                is_focused: false,
+            },
+        ]
+    }
 }
 
 pub struct DockWidget {
@@ -95,6 +173,8 @@ pub struct DockWidget {
     pub current_w: f32,
     pub current_h: f32,
     pub current_y: f32,
+    pub compact_w: f32,
+    pub compact_h: f32,
     pub size_spring: Spring,
     pub last_hover_time: Instant,
     pub needs_input_region_update: bool,
@@ -156,74 +236,7 @@ impl DockWidget {
             epsilon: 0.001,
         };
 
-        let items = vec![
-            DockItem {
-                name: "Terminal".to_string(),
-                icon: "terminal".to_string(),
-                command: "foot".to_string(),
-                class_pattern: "foot".to_string(),
-                is_running: false,
-                is_focused: false,
-            },
-            DockItem {
-                name: "Browser".to_string(),
-                icon: "browser".to_string(),
-                command: "brave".to_string(),
-                class_pattern: "brave".to_string(),
-                is_running: false,
-                is_focused: false,
-            },
-            DockItem {
-                name: "Editor".to_string(),
-                icon: "editor".to_string(),
-                command: "code".to_string(),
-                class_pattern: "code".to_string(),
-                is_running: false,
-                is_focused: false,
-            },
-            DockItem {
-                name: "Files".to_string(),
-                icon: "folder".to_string(),
-                command: "thunar".to_string(),
-                class_pattern: "thunar".to_string(),
-                is_running: false,
-                is_focused: false,
-            },
-            DockItem {
-                name: "Music".to_string(),
-                icon: "music".to_string(),
-                command: "spotify".to_string(),
-                class_pattern: "spotify".to_string(),
-                is_running: false,
-                is_focused: false,
-            },
-            DockItem {
-                name: "Tasks".to_string(),
-                icon: "check".to_string(),
-                command: "/home/zius/.local/bin/island-ctl todo".to_string(),
-                class_pattern: "liquid-shell".to_string(),
-                is_running: true,
-                is_focused: false,
-            },
-            DockItem {
-                name: "Settings".to_string(),
-                icon: "settings".to_string(),
-                command: "/home/zius/.local/bin/settings-tui".to_string(),
-                class_pattern: "settings".to_string(),
-                is_running: false,
-                is_focused: false,
-            },
-            DockItem {
-                name: "Island".to_string(),
-                icon: "sync".to_string(),
-                command: "/home/zius/.local/bin/island-ctl toggle".to_string(),
-                class_pattern: "liquid-shell".to_string(),
-                is_running: true,
-                is_focused: false,
-            },
-        ];
-
-        Self {
+        let mut widget = Self {
             layer_surface: Some(layer_surface),
             surface,
             window_wrapper,
@@ -252,13 +265,61 @@ impl DockWidget {
             current_w: DOCK_COMPACT_W,
             current_h: DOCK_COMPACT_H,
             current_y: DOCK_COMPACT_Y,
+            compact_w: DOCK_COMPACT_W,
+            compact_h: DOCK_COMPACT_H,
             size_spring: Spring::with_params(0.0, spring_params),
             last_hover_time: Instant::now() - Duration::from_secs(60),
             needs_input_region_update: true,
 
-            items,
+            items: DockItem::defaults(),
             last_client_poll: Instant::now() - Duration::from_secs(60),
             pressed_item: None,
+        };
+
+        widget.load_config();
+        widget
+    }
+
+    pub fn load_config(&mut self) {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let conf_path = format!("{}/.config/liquid-glass/config.json", home);
+        if let Ok(content) = std::fs::read_to_string(&conf_path) {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(d) = val.get("dock") {
+                    if let Some(apps) = d
+                        .get("apps")
+                        .and_then(|a| serde_json::from_value::<Vec<DockItem>>(a.clone()).ok())
+                    {
+                        if !apps.is_empty() {
+                            self.items = apps;
+                        }
+                    }
+                    if let Some(h) = d.get("hover_to_expand").and_then(|v| v.as_bool()) {
+                        self.hover_to_expand = h;
+                    }
+                    if let Some(s) = d.get("style_mode").and_then(|v| v.as_f64()) {
+                        self.style_mode = s as f32;
+                    }
+                    if let Some(b) = d.get("blur_radius").and_then(|v| v.as_f64()) {
+                        self.blur_radius = b as f32;
+                    }
+                    if let Some(spd) = d.get("animation_speed").and_then(|v| v.as_f64()) {
+                        self.anim_speed = spd as f32;
+                    }
+                    if let Some(iw) = d.get("indicator_width").and_then(|v| v.as_f64()) {
+                        self.compact_w = iw as f32;
+                        if self.is_compact {
+                            self.current_w = self.compact_w;
+                        }
+                    }
+                    if let Some(ih) = d.get("indicator_height").and_then(|v| v.as_f64()) {
+                        self.compact_h = ih as f32;
+                        if self.is_compact {
+                            self.current_h = self.compact_h;
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -330,11 +391,19 @@ impl DockWidget {
 
     pub fn is_inside(&self, px: f32, py: f32) -> bool {
         let cx = (self.width as f32) * 0.5;
-        let half_w = self.current_w * 0.5;
-        let top = self.current_y;
-        let bottom = self.current_y + self.current_h + 8.0;
-
-        px >= (cx - half_w) && px <= (cx + half_w) && py >= top && py <= bottom
+        if self.is_compact {
+            // Generous hover trigger zone across bottom 36px
+            let half_w = (self.compact_w * 0.5 + 40.0).max(90.0);
+            px >= (cx - half_w)
+                && px <= (cx + half_w)
+                && py >= (DOCK_COMPACT_Y - 24.0)
+                && py <= (self.height as f32)
+        } else {
+            let half_w = self.current_w * 0.5 + 16.0;
+            let top = (self.current_y - 12.0).max(0.0);
+            let bottom = self.height as f32;
+            px >= (cx - half_w) && px <= (cx + half_w) && py >= top && py <= bottom
+        }
     }
 
     pub fn apply_input_region<D>(&mut self, compositor: &CompositorState, qh: &QueueHandle<D>)
@@ -345,10 +414,10 @@ impl DockWidget {
         let region = compositor.wl_compositor().create_region(qh, ());
         let cx = self.width as i32 / 2;
         if self.is_compact && self.size_spring.value < 0.1 {
-            let pill_w = (DOCK_COMPACT_W + 16.0) as i32;
-            let pill_h = 16i32;
+            let pill_w = (self.compact_w + 80.0) as i32;
+            let pill_h = 28i32;
             let pill_x = cx - pill_w / 2;
-            let pill_y = (DOCK_COMPACT_Y - 4.0) as i32;
+            let pill_y = (DOCK_COMPACT_Y - 20.0) as i32;
             region.add(pill_x, pill_y, pill_w, pill_h);
         } else {
             let card_w = (self.current_w + 24.0) as i32;
@@ -396,12 +465,14 @@ impl DockWidget {
                             });
 
                         for item in &mut self.items {
-                            let pat = item.class_pattern.to_lowercase();
-                            item.is_running = active_classes.iter().any(|c| c.contains(&pat));
-                            item.is_focused = focused_class
-                                .as_ref()
-                                .map(|f| f.contains(&pat))
-                                .unwrap_or(false);
+                            let pat = item.class.to_lowercase();
+                            item.is_running =
+                                !pat.is_empty() && active_classes.iter().any(|c| c.contains(&pat));
+                            item.is_focused = !pat.is_empty()
+                                && focused_class
+                                    .as_ref()
+                                    .map(|f| f.contains(&pat))
+                                    .unwrap_or(false);
                         }
                     }
                 }
@@ -514,8 +585,8 @@ impl DockWidget {
         self.size_spring.update(eff_dt);
 
         let t = self.size_spring.value.clamp(0.0, 1.0);
-        self.current_w = DOCK_COMPACT_W + (DOCK_EXPANDED_W - DOCK_COMPACT_W) * t;
-        self.current_h = DOCK_COMPACT_H + (DOCK_EXPANDED_H - DOCK_COMPACT_H) * t;
+        self.current_w = self.compact_w + (DOCK_EXPANDED_W - self.compact_w) * t;
+        self.current_h = self.compact_h + (DOCK_EXPANDED_H - self.compact_h) * t;
         self.current_y = DOCK_COMPACT_Y + (DOCK_EXPANDED_Y - DOCK_COMPACT_Y) * t;
 
         // Auto-collapse after inactivity (2.5 seconds unhovered)
@@ -536,6 +607,14 @@ impl DockWidget {
         }
         self.overlay_buffer.fill(0);
 
+        let t = self.size_spring.value.clamp(0.0, 1.0);
+
+        // When compact (t < 0.15), the GPU glass surface itself is the single sleek glowing bar.
+        // No inner rectangle is rendered to avoid double-box / scrollbar artifacts!
+        if t < 0.15 {
+            return;
+        }
+
         let is_light = self.effective_is_light();
         let col_ink = if is_light {
             [16, 20, 28, 255]
@@ -553,32 +632,8 @@ impl DockWidget {
             [255, 255, 255, 34]
         };
 
-        let t = self.size_spring.value.clamp(0.0, 1.0);
         let cx = (self.width as f32) * 0.5;
         let buf = &mut self.overlay_buffer;
-
-        if t < 0.15 {
-            // Compact Bottom Pill Indicator (minimal glowing glass meniscus bar)
-            let pill_w = 80.0;
-            let pill_h = 2.0;
-            let pill_y = DOCK_COMPACT_Y + 2.0;
-            UIFont::draw_rounded_rect_fill(
-                buf,
-                self.width,
-                self.height,
-                cx,
-                pill_y,
-                pill_w * 0.5,
-                pill_h * 0.5,
-                1.0,
-                if is_light {
-                    [16, 20, 28, 160]
-                } else {
-                    [255, 255, 255, 180]
-                },
-            );
-            return;
-        }
 
         let dock_left = cx - self.current_w * 0.5;
         let dock_top = self.current_y;
@@ -809,15 +864,21 @@ impl DockWidget {
             let w_norm = self.current_w / (self.width as f32);
             let h_norm = self.current_h / (self.height as f32);
 
+            let shape = if t < 0.15 {
+                Shape::Capsule
+            } else {
+                Shape::RoundedRectangle {
+                    radius: Tokens::RADIUS_OUTER * t + 2.0 * (1.0 - t),
+                }
+            };
+
             let dock_card = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::RoundedRectangle {
-                    radius: Tokens::RADIUS_OUTER * t + 2.5 * (1.0 - t),
-                })
+                .shape(shape)
                 .bounds(x_norm, y_norm, w_norm, h_norm)
-                .curvature(24.0)
-                .bevel(16.0)
-                .refraction(18.0)
+                .curvature(if t < 0.15 { 2.0 } else { 24.0 })
+                .bevel(if t < 0.15 { 1.5 } else { 16.0 })
+                .refraction(if t < 0.15 { 6.0 } else { 18.0 })
                 .dispersion(0.12)
                 .blur(self.blur_radius)
                 .specular(1.10)
