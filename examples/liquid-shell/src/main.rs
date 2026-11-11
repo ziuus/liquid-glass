@@ -21,10 +21,12 @@ use std::time::Instant;
 use wayland_client::protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface};
 use wayland_client::{Connection, Proxy, QueueHandle};
 
+mod center_clock;
 mod clock;
 mod dock;
 mod island;
 mod todo;
+use center_clock::CenterHeroClock;
 use clock::ClockWidget;
 use dock::DockWidget;
 use island::{IslandMode, IslandWidget};
@@ -48,6 +50,7 @@ struct ShellApp {
     island: IslandWidget,
     todo: TodoWidget,
     dock: DockWidget,
+    center_hero: CenterHeroClock,
 
     exit: bool,
     first_configure_count: u32,
@@ -158,6 +161,15 @@ impl LayerShellHandler for ShellApp {
                 self.dock.apply_input_region(&self.compositor_state, _qh);
             }
             self.dock.draw();
+            self.first_configure_count += 1;
+        } else if sid == self.center_hero.surface_id() {
+            self.center_hero.configure(configure);
+            if self.center_hero.renderer.is_none() {
+                self.center_hero.init_gpu(&self.gpu);
+                self.center_hero
+                    .apply_input_region(&self.compositor_state, _qh);
+            }
+            self.center_hero.draw();
             self.first_configure_count += 1;
         }
     }
@@ -299,6 +311,10 @@ impl PointerHandler for ShellApp {
                     self.dock.apply_input_region(&self.compositor_state, _qh);
                 }
                 self.dock.draw();
+            } else if sid == self.center_hero.surface_id()
+                && self.center_hero.on_pointer_event(event)
+            {
+                self.center_hero.draw();
             }
         }
     }
@@ -362,6 +378,7 @@ impl ShellApp {
                     self.island.theme_mode = t;
                     self.todo.theme_mode = t;
                     self.dock.theme_mode = t;
+                    self.center_hero.theme_mode = t;
                 }
                 if let Some(s) = val
                     .get("style_mode")
@@ -372,6 +389,7 @@ impl ShellApp {
                     self.island.style_mode = s as f32;
                     self.todo.style_mode = s as f32;
                     self.dock.style_mode = s as f32;
+                    self.center_hero.style_mode = s as f32;
                 }
                 if let Some(b) = val
                     .get("blur_radius")
@@ -382,6 +400,7 @@ impl ShellApp {
                     self.island.blur_radius = b as f32;
                     self.todo.blur_radius = b as f32;
                     self.dock.blur_radius = b as f32;
+                    self.center_hero.blur_radius = b as f32;
                 }
 
                 if let Some(clk) = val.get("clock") {
@@ -414,6 +433,25 @@ impl ShellApp {
                     }
                     if let Some(hov) = clk.get("hover_to_expand").and_then(|v| v.as_bool()) {
                         self.clock.hover_to_expand = hov;
+                    }
+                }
+
+                if let Some(c) = val.get("center_hero").or_else(|| val.get("center_clock")) {
+                    if let Some(e) = c.get("enabled").and_then(|v| v.as_bool()) {
+                        self.center_hero.enabled = e;
+                    }
+                    if let Some(g) = c
+                        .get("show_glass_card")
+                        .or_else(|| c.get("glass_card"))
+                        .and_then(|v| v.as_bool())
+                    {
+                        self.center_hero.show_glass_card = g;
+                    }
+                    if let Some(s) = c.get("style_mode").and_then(|v| v.as_f64()) {
+                        self.center_hero.style_mode = s as f32;
+                    }
+                    if let Some(b) = c.get("blur_radius").and_then(|v| v.as_f64()) {
+                        self.center_hero.blur_radius = b as f32;
                     }
                 }
 
@@ -517,6 +555,7 @@ fn main() {
     );
     let mut todo = TodoWidget::new(&qh, &compositor_state, &layer_shell, display_ptr);
     let mut dock = DockWidget::new(&qh, &compositor_state, &layer_shell, display_ptr);
+    let mut center_hero = CenterHeroClock::new(&qh, &compositor_state, &layer_shell, display_ptr);
     clock.style_mode = island.style_mode;
     clock.theme_mode = island.theme_mode;
     clock.blur_radius = island.blur_radius;
@@ -526,6 +565,9 @@ fn main() {
     dock.style_mode = island.style_mode;
     dock.theme_mode = island.theme_mode;
     dock.blur_radius = island.blur_radius;
+    center_hero.style_mode = island.style_mode;
+    center_hero.theme_mode = island.theme_mode;
+    center_hero.blur_radius = island.blur_radius;
 
     let home = std::env::var("HOME").unwrap_or_default();
     let conf_path = format!("{}/.config/liquid-glass/config.json", home);
@@ -566,6 +608,15 @@ fn main() {
             dock.height,
         );
         dock.update_wallpaper(dock_crop);
+
+        let hero_crop = WallpaperManager::get_wallpaper_crop(
+            cache,
+            center_hero.pos_x.max(0) as u32,
+            center_hero.pos_y.max(0) as u32,
+            center_hero.width,
+            center_hero.height,
+        );
+        center_hero.update_wallpaper(hero_crop);
     }
     wallpaper_mgr.release_full_buffer();
 
@@ -584,6 +635,7 @@ fn main() {
         island,
         todo,
         dock,
+        center_hero,
 
         exit: false,
         first_configure_count: 0,
@@ -592,7 +644,7 @@ fn main() {
 
     app.reload_config(&conf_path);
 
-    while app.first_configure_count < 3 {
+    while app.first_configure_count < 4 {
         event_queue.blocking_dispatch(&mut app).unwrap();
     }
 
@@ -765,6 +817,16 @@ fn main() {
                 );
                 app.dock.update_wallpaper(d);
                 app.dock.draw();
+
+                let hero_crop = WallpaperManager::get_wallpaper_crop(
+                    cache,
+                    app.center_hero.pos_x.max(0) as u32,
+                    app.center_hero.pos_y.max(0) as u32,
+                    app.center_hero.width,
+                    app.center_hero.height,
+                );
+                app.center_hero.update_wallpaper(hero_crop);
+                app.center_hero.draw();
             }
             app.wallpaper_mgr.release_full_buffer();
         }
@@ -774,6 +836,7 @@ fn main() {
         if clock_active || app.clock.is_hovered || cur_min != last_minute {
             last_minute = cur_min;
             app.clock.draw();
+            app.center_hero.draw();
             let _ = conn.flush();
         }
 
