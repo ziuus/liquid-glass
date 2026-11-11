@@ -115,30 +115,6 @@ impl DockItem {
                 is_running: false,
                 is_focused: false,
             },
-            DockItem {
-                name: "Tasks".to_string(),
-                icon: "check".to_string(),
-                command: "/home/zius/.local/bin/island-ctl todo".to_string(),
-                class: "liquid-shell".to_string(),
-                is_running: true,
-                is_focused: false,
-            },
-            DockItem {
-                name: "Settings".to_string(),
-                icon: "settings".to_string(),
-                command: "/home/zius/.local/bin/settings-tui".to_string(),
-                class: "settings".to_string(),
-                is_running: false,
-                is_focused: false,
-            },
-            DockItem {
-                name: "Island".to_string(),
-                icon: "sync".to_string(),
-                command: "/home/zius/.local/bin/island-ctl toggle".to_string(),
-                class: "liquid-shell".to_string(),
-                is_running: true,
-                is_focused: false,
-            },
         ]
     }
 }
