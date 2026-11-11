@@ -1280,94 +1280,104 @@ fn test_render_calibration_snapshots() {
             let mut overlay_buf = vec![0u8; (hero_w * hero_h * 4) as usize];
             let cx = hero_w as f32 * 0.5;
             let cy = hero_h as f32 * 0.5;
-            let col_day = [248, 250, 255, 245];
-            let col_date = [205, 220, 245, 210];
-            let col_ampm = [175, 195, 225, 200];
-            let col_shadow = [0, 0, 0, 180];
 
-            // Render Day
-            let day_text = "WEDNESDAY";
-            let day_tracking = 8.0f32;
-            let day_chars: Vec<char> = day_text.chars().collect();
-            let mut total_day_w = 0.0f32;
-            for (i, &ch) in day_chars.iter().enumerate() {
-                let s = ch.to_string();
-                total_day_w += font.measure_text(&s, 30.0, FontWeight::Bold);
-                if i < day_chars.len() - 1 {
-                    total_day_w += day_tracking;
+            // Draw frosted glass capsule pill behind Day & Date
+            let pill_cx = cx;
+            let pill_cy = cy - 74.0;
+            let pill_w = 460.0f32;
+            let pill_h = 36.0f32;
+            let pill_r = 18.0f32;
+            let half_w = pill_w * 0.5;
+            let half_h = pill_h * 0.5;
+            let x_min = ((pill_cx - half_w - 2.0).max(0.0)) as u32;
+            let x_max = ((pill_cx + half_w + 2.0).min(hero_w as f32 - 1.0)) as u32;
+            let y_min = ((pill_cy - half_h - 2.0).max(0.0)) as u32;
+            let y_max = ((pill_cy + half_h + 2.0).min(hero_h as f32 - 1.0)) as u32;
+
+            for y in y_min..=y_max {
+                let py = y as f32 + 0.5;
+                let dy = (py - pill_cy).abs() - (half_h - pill_r);
+                let qy = dy.max(0.0);
+
+                for x in x_min..=x_max {
+                    let px = x as f32 + 0.5;
+                    let dx = (px - pill_cx).abs() - (half_w - pill_r);
+                    let qx = dx.max(0.0);
+
+                    let d = (qx * qx + qy * qy).sqrt() + dy.min(0.0).max(dx.min(0.0)) - pill_r;
+                    let alpha_fill = (0.5 - d).clamp(0.0, 1.0);
+                    if alpha_fill > 0.001 {
+                        let rim_edge = (1.0 - (d.abs() * 1.5)).clamp(0.0, 1.0);
+                        let is_top = if py < pill_cy { 1.0 } else { 0.35 };
+                        let rim_a = rim_edge * 0.35 * is_top;
+                        let fill_a = 0.12 * alpha_fill;
+                        let final_a = (fill_a + rim_a * (1.0 - fill_a)).clamp(0.0, 1.0);
+
+                        let idx = ((y * hero_w + x) * 4) as usize;
+                        let r_out = (255.0 * final_a) as u8;
+                        let g_out = (255.0 * final_a) as u8;
+                        let b_out = (255.0 * final_a) as u8;
+                        let a_out = (final_a * 255.0) as u8;
+
+                        overlay_buf[idx] = r_out;
+                        overlay_buf[idx + 1] = g_out;
+                        overlay_buf[idx + 2] = b_out;
+                        overlay_buf[idx + 3] = a_out;
+                    }
                 }
             }
-            let mut cur_day_x = cx - total_day_w * 0.5;
-            let day_cy = cy - 90.0;
-            for (i, &ch) in day_chars.iter().enumerate() {
+
+            // Draw pill content: "WEDNESDAY   •   NOVEMBER 11, 2026"
+            let day_date_text = "WEDNESDAY   •   NOVEMBER 11, 2026";
+            let tracking = 4.0f32;
+            let chars: Vec<char> = day_date_text.chars().collect();
+            let mut total_w = 0.0f32;
+            for (i, &ch) in chars.iter().enumerate() {
                 let s = ch.to_string();
-                let ch_w = font.measure_text(&s, 30.0, FontWeight::Bold);
+                total_w += font.measure_text(&s, 14.5, FontWeight::Bold);
+                if i < chars.len() - 1 {
+                    total_w += tracking;
+                }
+            }
+            let mut cur_x = cx - total_w * 0.5;
+            let col_text = [255, 255, 255, 245];
+            let col_shadow = [0, 0, 0, 160];
+            for (i, &ch) in chars.iter().enumerate() {
+                let s = ch.to_string();
+                let ch_w = font.measure_text(&s, 14.5, FontWeight::Bold);
                 font.draw_text_centered_y(
                     &mut overlay_buf,
                     hero_w,
                     hero_h,
                     &s,
-                    cur_day_x,
-                    day_cy,
-                    30.0,
-                    col_day,
+                    cur_x,
+                    pill_cy,
+                    14.5,
+                    col_text,
                     col_shadow,
                     FontWeight::Bold,
                 );
-                cur_day_x += ch_w;
-                if i < day_chars.len() - 1 {
-                    cur_day_x += day_tracking;
+                cur_x += ch_w;
+                if i < chars.len() - 1 {
+                    cur_x += tracking;
                 }
             }
 
-            // Render Date
-            let date_text = "NOVEMBER 11, 2026";
-            let date_tracking = 4.5f32;
-            let mut total_date_w = 0.0f32;
-            let date_chars: Vec<char> = date_text.chars().collect();
-            for (i, &ch) in date_chars.iter().enumerate() {
-                let s = ch.to_string();
-                total_date_w += font.measure_text(&s, 17.0, FontWeight::Medium);
-                if i < date_chars.len() - 1 {
-                    total_date_w += date_tracking;
-                }
+            // Draw delicate grounding streak below numerals (cy + 132)
+            let streak_w = 140.0f32;
+            let streak_x0 = (cx - streak_w * 0.5) as u32;
+            let streak_x1 = (cx + streak_w * 0.5) as u32;
+            let streak_y = (cy + 132.0) as u32;
+            for x in streak_x0..streak_x1 {
+                let u = (x as f32 - (cx - streak_w * 0.5)) / streak_w;
+                let fade = (u * std::f32::consts::PI).sin();
+                let a = (fade * 0.35 * 255.0) as u8;
+                let idx = ((streak_y * hero_w + x) * 4) as usize;
+                overlay_buf[idx] = a;
+                overlay_buf[idx + 1] = a;
+                overlay_buf[idx + 2] = a;
+                overlay_buf[idx + 3] = a;
             }
-            let mut cur_date_x = cx - total_date_w * 0.5;
-            let date_cy = cy - 54.0;
-            for (i, &ch) in date_chars.iter().enumerate() {
-                let s = ch.to_string();
-                let ch_w = font.measure_text(&s, 17.0, FontWeight::Medium);
-                font.draw_text_centered_y(
-                    &mut overlay_buf,
-                    hero_w,
-                    hero_h,
-                    &s,
-                    cur_date_x,
-                    date_cy,
-                    17.0,
-                    col_date,
-                    col_shadow,
-                    FontWeight::Medium,
-                );
-                cur_date_x += ch_w;
-                if i < date_chars.len() - 1 {
-                    cur_date_x += date_tracking;
-                }
-            }
-
-            // Render AM/PM
-            font.draw_text_centered_y(
-                &mut overlay_buf,
-                hero_w,
-                hero_h,
-                "PM",
-                cx + 242.0,
-                cy + 36.0,
-                15.0,
-                col_ampm,
-                col_shadow,
-                FontWeight::Bold,
-            );
 
             run_render_custom(
                 &device,
@@ -1379,7 +1389,7 @@ fn test_render_calibration_snapshots() {
                 &hero_crop,
                 &cfg_hero_text,
                 40.0,                  // Liquid text element_type
-                [8.0, 36.0, 0.0, 0.0], // 08:36
+                [8.0, 48.0, 0.0, 0.0], // 08:48
                 Some(&overlay_buf),
             )
             .await;

@@ -260,7 +260,7 @@ impl CenterHeroClock {
         } else {
             [205, 220, 245, 210]
         };
-        let col_ampm = if is_light {
+        let _col_ampm = if is_light {
             [90, 105, 128, 200]
         } else {
             [175, 195, 225, 200]
@@ -274,7 +274,7 @@ impl CenterHeroClock {
         let now = Local::now();
         let wday_full = now.format("%A").to_string().to_uppercase();
         let date_full = now.format("%B %d, %Y").to_string().to_uppercase();
-        let (_hour_12, ampm) = match now.hour12() {
+        let (_hour_12, _ampm) = match now.hour12() {
             (true, h) => (h, "PM"),
             (false, h) => (h, "AM"),
         };
@@ -353,88 +353,110 @@ impl CenterHeroClock {
                 }
             }
         } else {
-            // Day & Date with Liquid Glass Time Numerals underneath
-            let day_tracking = 8.0f32;
-            let day_chars: Vec<char> = wday_full.chars().collect();
-            let mut total_day_w = 0.0f32;
-            for (i, &ch) in day_chars.iter().enumerate() {
-                let s = ch.to_string();
-                total_day_w += self.font.measure_text(&s, 30.0, FontWeight::Bold);
-                if i < day_chars.len() - 1 {
-                    total_day_w += day_tracking;
+            // ── VisionOS Aero Frosted Capsule (Day & Date) ──
+            let pill_cx = cx;
+            let pill_cy = cy - 74.0;
+            let pill_w = 460.0f32;
+            let pill_h = 36.0f32;
+            let pill_r = 18.0f32;
+            let half_w = pill_w * 0.5;
+            let half_h = pill_h * 0.5;
+            let x_min = ((pill_cx - half_w - 2.0).max(0.0)) as u32;
+            let x_max = ((pill_cx + half_w + 2.0).min(self.width as f32 - 1.0)) as u32;
+            let y_min = ((pill_cy - half_h - 2.0).max(0.0)) as u32;
+            let y_max = ((pill_cy + half_h + 2.0).min(self.height as f32 - 1.0)) as u32;
+
+            let fill_base = if is_light { 0.0f32 } else { 255.0f32 };
+            let fill_alpha = if is_light { 0.08f32 } else { 0.12f32 };
+            let rim_alpha_max = if is_light { 0.20f32 } else { 0.35f32 };
+
+            for y in y_min..=y_max {
+                let py = y as f32 + 0.5;
+                let dy = (py - pill_cy).abs() - (half_h - pill_r);
+                let qy = dy.max(0.0);
+
+                for x in x_min..=x_max {
+                    let px = x as f32 + 0.5;
+                    let dx = (px - pill_cx).abs() - (half_w - pill_r);
+                    let qx = dx.max(0.0);
+
+                    let d = (qx * qx + qy * qy).sqrt() + dy.min(0.0).max(dx.min(0.0)) - pill_r;
+                    let alpha_fill = (0.5 - d).clamp(0.0, 1.0);
+                    if alpha_fill > 0.001 {
+                        let rim_edge = (1.0 - (d.abs() * 1.5)).clamp(0.0, 1.0);
+                        let is_top = if py < pill_cy { 1.0 } else { 0.35 };
+                        let rim_a = rim_edge * rim_alpha_max * is_top;
+                        let fill_a = fill_alpha * alpha_fill;
+                        let final_a = (fill_a + rim_a * (1.0 - fill_a)).clamp(0.0, 1.0);
+
+                        let idx = ((y * self.width + x) * 4) as usize;
+                        let r_out = (fill_base * final_a) as u8;
+                        let g_out = (fill_base * final_a) as u8;
+                        let b_out = (fill_base * final_a) as u8;
+                        let a_out = (final_a * 255.0) as u8;
+
+                        buf[idx] = r_out;
+                        buf[idx + 1] = g_out;
+                        buf[idx + 2] = b_out;
+                        buf[idx + 3] = a_out;
+                    }
                 }
             }
-            let mut cur_day_x = cx - total_day_w * 0.5;
-            let day_cy = cy - 90.0;
-            for (i, &ch) in day_chars.iter().enumerate() {
+
+            // Draw pill content: "WEDNESDAY   •   NOVEMBER 11, 2026"
+            let day_date_text = format!("{}   •   {}", wday_full, date_full);
+            let tracking = 4.0f32;
+            let chars: Vec<char> = day_date_text.chars().collect();
+            let mut total_w = 0.0f32;
+            for (i, &ch) in chars.iter().enumerate() {
                 let s = ch.to_string();
-                let ch_w = self.font.measure_text(&s, 30.0, FontWeight::Bold);
+                total_w += self.font.measure_text(&s, 14.5, FontWeight::Bold);
+                if i < chars.len() - 1 {
+                    total_w += tracking;
+                }
+            }
+            let mut cur_x = cx - total_w * 0.5;
+            for (i, &ch) in chars.iter().enumerate() {
+                let s = ch.to_string();
+                let ch_w = self.font.measure_text(&s, 14.5, FontWeight::Bold);
                 self.font.draw_text_centered_y(
                     buf,
                     self.width,
                     self.height,
                     &s,
-                    cur_day_x,
-                    day_cy,
-                    30.0,
+                    cur_x,
+                    pill_cy,
+                    14.5,
                     col_day,
                     col_shadow,
                     FontWeight::Bold,
                 );
-                cur_day_x += ch_w;
-                if i < day_chars.len() - 1 {
-                    cur_day_x += day_tracking;
+                cur_x += ch_w;
+                if i < chars.len() - 1 {
+                    cur_x += tracking;
                 }
             }
 
-            let date_tracking = 4.5f32;
-            let mut total_date_w = 0.0f32;
-            let date_chars: Vec<char> = date_full.chars().collect();
-            for (i, &ch) in date_chars.iter().enumerate() {
-                let s = ch.to_string();
-                total_date_w += self.font.measure_text(&s, 17.0, FontWeight::Medium);
-                if i < date_chars.len() - 1 {
-                    total_date_w += date_tracking;
+            // Delicate grounding optical streak below numerals (cy + 132)
+            let streak_w = 140.0f32;
+            let streak_x0 = (cx - streak_w * 0.5).max(0.0) as u32;
+            let streak_x1 = (cx + streak_w * 0.5).min(self.width as f32) as u32;
+            let streak_y = (cy + 132.0) as u32;
+            if streak_y < self.height {
+                let streak_base = if is_light { 0.0f32 } else { 255.0f32 };
+                for x in streak_x0..streak_x1 {
+                    let u = (x as f32 - (cx - streak_w * 0.5)) / streak_w;
+                    let fade = (u * std::f32::consts::PI).sin();
+                    let a_val = fade * (if is_light { 0.20 } else { 0.35 });
+                    let a = (a_val * 255.0) as u8;
+                    let col_val = (streak_base * a_val) as u8;
+                    let idx = ((streak_y * self.width + x) * 4) as usize;
+                    buf[idx] = col_val;
+                    buf[idx + 1] = col_val;
+                    buf[idx + 2] = col_val;
+                    buf[idx + 3] = a;
                 }
             }
-            let mut cur_date_x = cx - total_date_w * 0.5;
-            let date_cy = cy - 54.0;
-            for (i, &ch) in date_chars.iter().enumerate() {
-                let s = ch.to_string();
-                let ch_w = self.font.measure_text(&s, 17.0, FontWeight::Medium);
-                self.font.draw_text_centered_y(
-                    buf,
-                    self.width,
-                    self.height,
-                    &s,
-                    cur_date_x,
-                    date_cy,
-                    17.0,
-                    col_date,
-                    col_shadow,
-                    FontWeight::Medium,
-                );
-                cur_date_x += ch_w;
-                if i < date_chars.len() - 1 {
-                    cur_date_x += date_tracking;
-                }
-            }
-
-            // AM/PM Crystalline Badge
-            let ampm_x = cx + 242.0;
-            let ampm_cy = cy + 36.0;
-            self.font.draw_text_centered_y(
-                buf,
-                self.width,
-                self.height,
-                ampm,
-                ampm_x,
-                ampm_cy,
-                15.0,
-                col_ampm,
-                col_shadow,
-                FontWeight::Bold,
-            );
         }
     }
 
