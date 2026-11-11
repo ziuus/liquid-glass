@@ -610,86 +610,117 @@ impl ClockWidget {
 
             let pill_cy = 15.0;
 
-            // CPU Segment
-            UIFont::draw_cpu_icon(buf, self.width, self.height, cx - 68.0, pill_cy, ink_col);
+            // Lookmaxed telemetry: 3 symmetrically centered segments across 176px capsule
             let cpu_str = format!("{}%", self.sys_stats.cpu_pct);
+            let ram_str = format!("{}%", ram_pct);
+            let bat_str = format!("{}%", self.sys_stats.bat_pct);
+
+            let font_size = 10.0;
+            let icon_w = 12.0f32;
+            let gap = 5.5f32;
+
+            // Segment 0: CPU (slot center at cx - 48.0)
+            let seg0_cx = cx - 48.0;
+            let cpu_w = self
+                .font
+                .measure_text(&cpu_str, font_size, FontWeight::SemiBold);
+            let block0_w = icon_w + gap + cpu_w;
+            let start0_x = seg0_cx - block0_w * 0.5;
+            let cpu_icon_cx = start0_x + icon_w * 0.5;
+            let cpu_text_x = start0_x + icon_w + gap;
+
+            UIFont::draw_cpu_icon(buf, self.width, self.height, cpu_icon_cx, pill_cy, ink_col);
             self.font.draw_text_centered_y(
                 buf,
                 self.width,
                 self.height,
                 &cpu_str,
-                cx - 58.0,
+                cpu_text_x,
                 pill_cy,
-                10.5,
+                font_size,
                 ink_col,
                 col_shadow,
                 FontWeight::SemiBold,
             );
 
-            // Divider 1
-            self.font.draw_text_centered_y(
+            // Divider 1 (hairline dot centered at cx - 24.0)
+            UIFont::draw_rounded_rect_fill(
                 buf,
                 self.width,
                 self.height,
-                "·",
-                cx - 26.0,
+                cx - 24.0,
                 pill_cy,
-                9.5,
+                1.0,
+                1.0,
+                1.0,
                 sub_ink,
-                col_shadow,
-                FontWeight::Bold,
             );
 
-            // RAM Segment
-            UIFont::draw_ram_icon(buf, self.width, self.height, cx - 15.0, pill_cy, ink_col);
-            let ram_str = format!("{}%", ram_pct);
+            // Segment 1: RAM (slot center at cx)
+            let seg1_cx = cx;
+            let ram_w = self
+                .font
+                .measure_text(&ram_str, font_size, FontWeight::SemiBold);
+            let block1_w = icon_w + gap + ram_w;
+            let start1_x = seg1_cx - block1_w * 0.5;
+            let ram_icon_cx = start1_x + icon_w * 0.5;
+            let ram_text_x = start1_x + icon_w + gap;
+
+            UIFont::draw_ram_icon(buf, self.width, self.height, ram_icon_cx, pill_cy, ink_col);
             self.font.draw_text_centered_y(
                 buf,
                 self.width,
                 self.height,
                 &ram_str,
-                cx - 5.0,
+                ram_text_x,
                 pill_cy,
-                10.5,
+                font_size,
                 ink_col,
                 col_shadow,
                 FontWeight::SemiBold,
             );
 
-            // Divider 2
-            self.font.draw_text_centered_y(
+            // Divider 2 (hairline dot centered at cx + 24.0)
+            UIFont::draw_rounded_rect_fill(
                 buf,
                 self.width,
                 self.height,
-                "·",
-                cx + 26.0,
+                cx + 24.0,
                 pill_cy,
-                9.5,
+                1.0,
+                1.0,
+                1.0,
                 sub_ink,
-                col_shadow,
-                FontWeight::Bold,
             );
 
-            // Battery Segment
+            // Segment 2: Battery (slot center at cx + 48.0)
+            let seg2_cx = cx + 48.0;
+            let bat_w = self
+                .font
+                .measure_text(&bat_str, font_size, FontWeight::SemiBold);
+            let block2_w = icon_w + gap + bat_w;
+            let start2_x = seg2_cx - block2_w * 0.5;
+            let bat_icon_cx = start2_x + icon_w * 0.5;
+            let bat_text_x = start2_x + icon_w + gap;
+
             UIFont::draw_battery_icon(
                 buf,
                 self.width,
                 self.height,
-                cx + 37.0,
+                bat_icon_cx,
                 pill_cy,
                 self.sys_stats.bat_pct,
                 self.sys_stats.bat_charging,
                 ink_col,
             );
-            let bat_str = format!("{}%", self.sys_stats.bat_pct);
             self.font.draw_text_centered_y(
                 buf,
                 self.width,
                 self.height,
                 &bat_str,
-                cx + 49.0,
+                bat_text_x,
                 pill_cy,
-                10.5,
+                font_size,
                 ink_col,
                 col_shadow,
                 FontWeight::SemiBold,

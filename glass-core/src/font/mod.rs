@@ -1249,16 +1249,16 @@ impl UIFont {
         charging: bool,
         color: [u8; 4],
     ) {
-        // Outer body (half_w = 7.0, half_h = 4.2, r = 1.6, stroke = 1.5)
-        Self::draw_rounded_rect_stroke(buf, width, height, cx - 1.0, cy, 7.0, 4.2, 1.6, 1.5, color);
+        // Outer body (half_w = 5.5, half_h = 3.5, r = 1.2, stroke = 1.1)
+        Self::draw_rounded_rect_stroke(buf, width, height, cx - 0.8, cy, 5.5, 3.5, 1.2, 1.1, color);
         // Positive terminal cap (+ right nipple)
-        Self::draw_rounded_rect_fill(buf, width, height, cx + 7.2, cy, 1.0, 2.0, 0.8, color);
+        Self::draw_rounded_rect_fill(buf, width, height, cx + 5.6, cy, 0.7, 1.6, 0.5, color);
 
         // Fill indicator
         let fill_pct = (pct as f32 / 100.0).clamp(0.08, 1.0);
-        let max_w = 11.0f32;
+        let max_w = 8.6f32;
         let cur_w = max_w * fill_pct;
-        let fill_cx = (cx - 1.0) - (max_w - cur_w) * 0.5;
+        let fill_cx = (cx - 0.8) - (max_w - cur_w) * 0.5;
         Self::draw_rounded_rect_fill(
             buf,
             width,
@@ -1266,8 +1266,8 @@ impl UIFont {
             fill_cx,
             cy,
             cur_w * 0.5,
-            2.6,
-            1.0,
+            2.0,
+            0.6,
             color,
         );
 
@@ -1278,9 +1278,9 @@ impl UIFont {
                 buf,
                 width,
                 height,
-                (cx - 2.0, cy - 4.5),
+                (cx - 1.5, cy - 3.5),
                 (cx, cy),
-                1.5,
+                1.2,
                 bolt_col,
             );
             Self::draw_segment(
@@ -1288,8 +1288,8 @@ impl UIFont {
                 width,
                 height,
                 (cx - 0.5, cy),
-                (cx + 1.5, cy + 4.5),
-                1.5,
+                (cx + 1.2, cy + 3.5),
+                1.2,
                 bolt_col,
             );
         }
@@ -1304,22 +1304,22 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        // Outer chip package (half = 6.0 x 6.0, r = 1.6, stroke = 1.5)
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 6.0, 6.0, 1.6, 1.5, color);
-        // Core die outline (hollow 1.5px stroke, not a heavy solid block)
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 2.6, 2.6, 0.8, 1.3, color);
+        // Outer chip package (half = 4.8 x 4.8, r = 1.2, stroke = 1.1)
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 4.8, 4.8, 1.2, 1.1, color);
+        // Core die outline
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 2.0, 2.0, 0.6, 1.0, color);
 
-        // Pins (2 on each of the 4 sides, stroke = 1.5)
-        let pin_len = 2.0f32;
-        for &offset in &[-2.8f32, 2.8f32] {
+        // Pins (2 on each of the 4 sides, stroke = 1.0, length = 1.4)
+        let pin_len = 1.4f32;
+        for &offset in &[-2.2f32, 2.2f32] {
             // Top pins
             Self::draw_segment(
                 buf,
                 width,
                 height,
-                (cx + offset, cy - 6.0),
-                (cx + offset, cy - 6.0 - pin_len),
-                1.5,
+                (cx + offset, cy - 4.8),
+                (cx + offset, cy - 4.8 - pin_len),
+                1.0,
                 color,
             );
             // Bottom pins
@@ -1327,9 +1327,9 @@ impl UIFont {
                 buf,
                 width,
                 height,
-                (cx + offset, cy + 6.0),
-                (cx + offset, cy + 6.0 + pin_len),
-                1.5,
+                (cx + offset, cy + 4.8),
+                (cx + offset, cy + 4.8 + pin_len),
+                1.0,
                 color,
             );
             // Left pins
@@ -1337,9 +1337,9 @@ impl UIFont {
                 buf,
                 width,
                 height,
-                (cx - 6.0, cy + offset),
-                (cx - 6.0 - pin_len, cy + offset),
-                1.5,
+                (cx - 4.8, cy + offset),
+                (cx - 4.8 - pin_len, cy + offset),
+                1.0,
                 color,
             );
             // Right pins
@@ -1347,9 +1347,9 @@ impl UIFont {
                 buf,
                 width,
                 height,
-                (cx + 6.0, cy + offset),
-                (cx + 6.0 + pin_len, cy + offset),
-                1.5,
+                (cx + 4.8, cy + offset),
+                (cx + 4.8 + pin_len, cy + offset),
+                1.0,
                 color,
             );
         }
@@ -1364,31 +1364,31 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        // Outer stick module: half_w = 7.0, half_h = 4.5, r = 1.2, stroke = 1.5
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 7.0, 4.5, 1.2, 1.5, color);
+        // Outer stick module: half_w = 5.6, half_h = 3.6, r = 1.0, stroke = 1.1
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy - 0.4, 5.6, 3.6, 1.0, 1.1, color);
         // 3 memory chip blocks inside
-        for &ox in &[-3.8f32, 0.0f32, 3.8f32] {
+        for &ox in &[-3.0f32, 0.0f32, 3.0f32] {
             Self::draw_rounded_rect_fill(
                 buf,
                 width,
                 height,
                 cx + ox,
-                cy - 0.5,
-                1.2,
-                2.0,
-                0.6,
+                cy - 0.7,
+                0.9,
+                1.6,
+                0.4,
                 color,
             );
         }
-        // Bottom contact pins
-        for &ox in &[-4.5f32, -2.0f32, 2.0f32, 4.5f32] {
+        // Bottom contact notch / pins (subtle)
+        for &ox in &[-3.5f32, -1.2f32, 1.2f32, 3.5f32] {
             Self::draw_segment(
                 buf,
                 width,
                 height,
-                (cx + ox, cy + 4.5),
-                (cx + ox, cy + 6.0),
-                1.4,
+                (cx + ox, cy + 3.2),
+                (cx + ox, cy + 4.4),
+                1.0,
                 color,
             );
         }
