@@ -1513,6 +1513,11 @@ fn render_element_appearance(local_p: vec2<f32>, half: vec2<f32>, el_type: f32, 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv;
+
+    // Pure Frameless Overlay Pass (Element type 42.0): renders overlay buffer directly with zero background/card box
+    if params.padding >= 41.5 && params.padding <= 42.5 {
+        return textureSampleLevel(overlay_texture, background_sampler, uv, 0.0);
+    }
     
     // ════════════════════════════════════════════
     // CLEAN GEOMETRIC CONTOUR (ZERO SQUARE SHADOW BOX)

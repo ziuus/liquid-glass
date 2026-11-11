@@ -450,6 +450,12 @@ impl CenterHeroClock {
         if let Some(renderer) = &mut self.renderer {
             renderer.update_overlay(self.width, self.height, &self.overlay_buffer);
 
+            let frameless_overlay = GlassSurface::new()
+                .material(Material::LiquidGlass)
+                .shape(Shape::RoundedRectangle { radius: 0.0 })
+                .bounds(0.0, 0.0, 1.0, 1.0)
+                .element_type(42.0); // Pure Frameless Overlay Pass!
+
             if self.show_time {
                 let now = Local::now();
                 let (hour_12, _ampm) = match now.hour12() {
@@ -509,9 +515,9 @@ impl CenterHeroClock {
                         .element_type(24.0)
                         .deformation(0.0);
 
-                    let _ = renderer.render(&[hero_card, liquid_text]);
+                    let _ = renderer.render(&[hero_card, liquid_text, frameless_overlay]);
                 } else {
-                    let _ = renderer.render(&[liquid_text]);
+                    let _ = renderer.render(&[liquid_text, frameless_overlay]);
                 }
             } else if self.show_glass_card {
                 let card_w = 980.0f32;
@@ -544,10 +550,10 @@ impl CenterHeroClock {
                     .element_type(24.0)
                     .deformation(0.0);
 
-                let _ = renderer.render(&[hero_card]);
+                let _ = renderer.render(&[hero_card, frameless_overlay]);
             } else {
                 // Pure frameless Day & Date floating on wallpaper
-                let _ = renderer.render(&[]);
+                let _ = renderer.render(&[frameless_overlay]);
             }
             true
         } else {
