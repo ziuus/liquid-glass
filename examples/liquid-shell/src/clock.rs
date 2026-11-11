@@ -23,7 +23,7 @@ use wayland_client::protocol::{wl_region, wl_surface};
 use wayland_client::{Dispatch, Proxy, QueueHandle};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::ZwlrLayerSurfaceV1;
 
-pub const CARD_PAD: f32 = 24.0;
+pub const CARD_PAD: f32 = 16.0;
 pub const CARD_W: f32 = 340.0;
 pub const CARD_H: f32 = 286.0;
 pub const COMPACT_W: f32 = 176.0;
@@ -142,9 +142,9 @@ impl ClockWidget {
             + Dispatch<ZwlrLayerSurfaceV1, LayerSurfaceData>
             + 'static,
     {
-        let width = (CARD_W + CARD_PAD * 2.0) as u32; // 388
-        let height = (CARD_H + CARD_PAD * 2.0) as u32; // 334
-        let pos_x = 24i32;
+        let width = (CARD_W + CARD_PAD * 2.0) as u32;
+        let height = (CARD_H + CARD_PAD * 2.0) as u32;
+        let pos_x = 0i32;
         let pos_y = 0i32; // Flush against top screen edge
 
         let surface = compositor.create_surface(qh);
@@ -336,13 +336,11 @@ impl ClockWidget {
     }
 
     pub fn is_inside(&self, px: f32, py: f32) -> bool {
-        let cx = (self.width as f32) * 0.5;
+        let card_left = CARD_PAD;
         if self.is_compact {
-            let half_w = COMPACT_W * 0.5;
-            px >= (cx - half_w) && px <= (cx + half_w) && (0.0..=COMPACT_H).contains(&py)
+            (card_left..=(card_left + COMPACT_W)).contains(&px) && (0.0..=COMPACT_H).contains(&py)
         } else {
-            let half_w = CARD_W * 0.5;
-            px >= (cx - half_w) && px <= (cx + half_w) && (0.0..=CARD_H).contains(&py)
+            (card_left..=(card_left + CARD_W)).contains(&px) && (0.0..=CARD_H).contains(&py)
         }
     }
 
@@ -350,7 +348,7 @@ impl ClockWidget {
         if py < 14.0 || py > 44.0 {
             return None;
         }
-        let cx = (self.width as f32) * 0.5;
+        let cx = CARD_PAD + CARD_W * 0.5;
         let tab_w = 86.0;
         let start_x = cx - 129.0;
         for i in 0..3 {
@@ -363,7 +361,7 @@ impl ClockWidget {
     }
 
     fn hit_test_row(&self, px: f32, py: f32) -> Option<usize> {
-        let cx = (self.width as f32) * 0.5;
+        let cx = CARD_PAD + CARD_W * 0.5;
         if px < (cx - 150.0) || px > (cx + 150.0) {
             return None;
         }
@@ -388,17 +386,15 @@ impl ClockWidget {
             self.surface.commit();
             return;
         }
-        let cx = self.width as i32 / 2;
+        let card_left = CARD_PAD as i32;
         if self.is_compact {
             let pill_w = COMPACT_W as i32;
             let pill_h = COMPACT_H as i32;
-            let pill_x = cx - pill_w / 2;
-            region.add(pill_x, 0, pill_w, pill_h);
+            region.add(card_left, 0, pill_w, pill_h);
         } else {
             let card_w = CARD_W as i32;
             let card_h = CARD_H as i32;
-            let card_x = cx - card_w / 2;
-            region.add(card_x, 0, card_w, card_h);
+            region.add(card_left, 0, card_w, card_h);
         }
         self.surface.set_input_region(Some(&region));
         region.destroy();
@@ -580,7 +576,7 @@ impl ClockWidget {
 
     pub fn render_ui_overlay(&mut self, buf: &mut [u8]) {
         let col_shadow = [0, 0, 0, 0];
-        let cx = (self.width as f32) * 0.5;
+        let cx = CARD_PAD + self.current_w * 0.5;
         let t = self.size_spring.value.clamp(0.0, 1.0);
         let is_light = self.effective_is_light();
 
@@ -1627,8 +1623,7 @@ impl ClockWidget {
 
             let (px, py) = (self.cursor_pos[0], self.cursor_pos[1]);
 
-            let cx = (self.width as f32) * 0.5;
-            let card_left = cx - self.current_w * 0.5;
+            let card_left = CARD_PAD;
             let x_norm = card_left / (self.width as f32);
             let y_norm = 0.0; // Flush with top screen edge
             let w_norm = self.current_w / (self.width as f32);
