@@ -1,4 +1,5 @@
 use crate::island::SysStats;
+use chrono::Local;
 use glass_core::font::{FontWeight, QuicksandFont, UIFont};
 use glass_core::geometry::Shape;
 use glass_core::renderer::GlassRenderer;
@@ -95,15 +96,24 @@ pub struct ClockWidget {
     pub current_h: f32,
     pub target_h: f32,
     pub size_spring: Spring,
+    #[allow(dead_code)]
     pub fillet_radius: f32,
     pub last_hover_time: Instant,
     pub needs_input_region_update: bool,
 
     // Multi-page sliding carousel
+    #[allow(dead_code)]
     pub current_page: usize,
+    #[allow(dead_code)]
     pub page_spring: Spring,
+    #[allow(dead_code)]
     pub hovered_tab: Option<usize>,
+    #[allow(dead_code)]
     pub hovered_row: Option<usize>,
+    pub hovered_tile: Option<usize>,
+    pub hovered_btn: Option<usize>,
+    pub power_held: Option<Instant>,
+    pub power_hold_progress: f32,
 
     pub is_window_overlapping: bool,
     pub last_window_check: Instant,
@@ -155,7 +165,7 @@ impl ClockWidget {
         let layer_surface = layer_shell.create_layer_surface(
             qh,
             surface.clone(),
-            Layer::Top,
+            Layer::Overlay,
             Some("liquid-glass-control-hub"),
             None,
         );
@@ -233,6 +243,10 @@ impl ClockWidget {
             page_spring: Spring::with_params(0.0, page_params),
             hovered_tab: None,
             hovered_row: None,
+            hovered_tile: None,
+            hovered_btn: None,
+            power_held: None,
+            power_hold_progress: 0.0,
 
             is_window_overlapping: false,
             last_window_check: Instant::now() - Duration::from_secs(60),
@@ -262,24 +276,8 @@ impl ClockWidget {
             self.needs_input_region_update = true;
         }
 
-        if !overlapping {
-            // Empty desktop: always show status pill on wallpaper
-            self.is_hidden_by_window = false;
-        } else {
-            // Window overlapping: check cursor
-            if let Some((cx, cy)) = crate::island::IslandWidget::query_hyprland_cursor() {
-                let is_at_top_edge = (check_x..=(check_x + check_w)).contains(&cx) && cy <= 6;
-                if is_at_top_edge || self.is_hovered || !self.is_compact {
-                    self.is_hidden_by_window = false;
-                    self.last_hover_time = Instant::now();
-                } else if self.last_hover_time.elapsed() >= Duration::from_millis(1200) {
-                    // Auto-hide behind top bezel so app titlebar is clear
-                    self.is_hidden_by_window = true;
-                }
-            } else if !self.is_hovered && self.is_compact {
-                self.is_hidden_by_window = true;
-            }
-        }
+        // Always stay visible and interactive above apps
+        self.is_hidden_by_window = false;
     }
 
     pub fn load_config(&mut self) {
@@ -399,32 +397,40 @@ impl ClockWidget {
         }
     }
 
-    fn hit_test_tab(&self, px: f32, py: f32) -> Option<usize> {
+    fn hit_test_tile(&self, px: f32, py: f32) -> Option<usize> {
         let card_top = 8.0;
-        if py < (card_top + 14.0) || py > (card_top + 44.0) {
-            return None;
-        }
         let cx = (self.width as f32) * 0.5;
-        let tab_w = 86.0;
-        let start_x = cx - 129.0;
-        for i in 0..3 {
-            let bx = start_x + (i as f32) * tab_w;
-            if px >= bx && px <= bx + tab_w {
+        let tile_w = 160.0;
+        let tile_h = 132.0;
+        let centers = [
+            (cx - 86.0, card_top + 74.0),
+            (cx + 86.0, card_top + 74.0),
+            (cx - 86.0, card_top + 218.0),
+            (cx + 86.0, card_top + 218.0),
+        ];
+        for (i, (tcx, tcy)) in centers.iter().enumerate() {
+            if (px - tcx).abs() <= tile_w * 0.5 && (py - tcy).abs() <= tile_h * 0.5 {
                 return Some(i);
             }
         }
         None
     }
 
-    fn hit_test_row(&self, px: f32, py: f32) -> Option<usize> {
-        let cx = (self.width as f32) * 0.5;
+    fn hit_test_action_btn(&self, px: f32, py: f32) -> Option<usize> {
         let card_top = 8.0;
-        if px < (cx - 150.0) || px > (cx + 150.0) {
-            return None;
-        }
-        for i in 0..4 {
-            let row_cy = card_top + 74.0 + (i as f32) * 44.0;
-            if (py - row_cy).abs() <= 20.0 {
+        let cx = (self.width as f32) * 0.5;
+        let tx = cx + 86.0;
+        let ty = card_top + 218.0;
+        let btns = [
+            (tx - 38.0, ty - 26.0),
+            (tx + 38.0, ty - 26.0),
+            (tx - 38.0, ty + 28.0),
+            (tx + 38.0, ty + 28.0),
+        ];
+        for (i, (bx, by)) in btns.iter().enumerate() {
+            let dx = px - bx;
+            let dy = py - by;
+            if (dx * dx + dy * dy) <= 24.0 * 24.0 {
                 return Some(i);
             }
         }
@@ -437,7 +443,7 @@ impl ClockWidget {
     {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
-        if !self.enabled || (self.is_hidden_by_window && self.is_compact) {
+        if !self.enabled {
             self.surface.set_input_region(Some(&region));
             region.destroy();
             self.surface.commit();
@@ -481,6 +487,9 @@ impl ClockWidget {
                 self.cursor_pos = [-10.0, -10.0];
                 self.hovered_tab = None;
                 self.hovered_row = None;
+                self.hovered_tile = None;
+                self.hovered_btn = None;
+                self.power_held = None;
                 self.last_hover_time = Instant::now();
                 if !self.is_compact {
                     self.collapse();
@@ -502,26 +511,13 @@ impl ClockWidget {
                 }
 
                 if !self.is_compact {
-                    self.hovered_tab = self.hit_test_tab(px, py);
-                    self.hovered_row = self.hit_test_row(px, py);
+                    self.hovered_tile = self.hit_test_tile(px, py);
+                    self.hovered_btn = self.hit_test_action_btn(px, py);
                 } else {
-                    self.hovered_tab = None;
-                    self.hovered_row = None;
+                    self.hovered_tile = None;
+                    self.hovered_btn = None;
                 }
                 true
-            }
-            PointerEventKind::Axis { vertical, .. } => {
-                if !self.is_compact && vertical.absolute != 0.0 {
-                    if vertical.absolute > 0.0 {
-                        self.current_page = (self.current_page + 1) % 3;
-                    } else {
-                        self.current_page = (self.current_page + 2) % 3;
-                    }
-                    self.page_spring.set_target(self.current_page as f32);
-                    self.last_hover_time = Instant::now();
-                    return true;
-                }
-                false
             }
             PointerEventKind::Press { .. } => {
                 let px = event.position.0 as f32;
@@ -536,76 +532,38 @@ impl ClockWidget {
 
                 self.last_hover_time = Instant::now();
 
-                // Check tab switcher clicks
-                if let Some(tab_idx) = self.hit_test_tab(px, py) {
-                    self.current_page = tab_idx;
-                    self.page_spring.set_target(tab_idx as f32);
-                    return true;
-                }
-
-                // Check pagination dot clicks at bottom
-                let cx = (self.width as f32) * 0.5;
-                if (262.0..=284.0).contains(&py) {
-                    for i in 0..3 {
-                        let dot_x = cx - 24.0 + (i as f32) * 24.0;
-                        if (px - dot_x).abs() <= 16.0 {
-                            self.current_page = i;
-                            self.page_spring.set_target(i as f32);
+                // Check 2x2 action buttons in Tile 3 (Bottom-Right)
+                if let Some(btn_idx) = self.hit_test_action_btn(px, py) {
+                    match btn_idx {
+                        0 => {
+                            let _ = Command::new("foot").spawn();
+                            self.collapse();
                             return true;
                         }
-                    }
-                }
-
-                // Check action row clicks based on active page
-                if let Some(row_idx) = self.hit_test_row(px, py) {
-                    match self.current_page {
                         1 => {
-                            // Applications Page
-                            match row_idx {
-                                0 => {
-                                    let _ = Command::new("foot").spawn();
-                                }
-                                1 => {
-                                    let _ = Command::new("brave").spawn();
-                                }
-                                2 => {
-                                    let _ = Command::new("code").spawn();
-                                }
-                                3 => {
-                                    let _ = Command::new("thunar").spawn();
-                                }
-                                _ => {}
-                            }
+                            let _ = Command::new("brave").spawn();
                             self.collapse();
+                            return true;
                         }
                         2 => {
-                            // Power Page
-                            match row_idx {
-                                0 => {
-                                    let _ = Command::new("/home/zius/.local/bin/hyprlock")
-                                        .spawn()
-                                        .or_else(|_| Command::new("hyprlock").spawn());
-                                }
-                                1 => {
-                                    let _ = Command::new("systemctl").arg("suspend").spawn();
-                                }
-                                2 => {
-                                    let _ = Command::new("systemctl").arg("reboot").spawn();
-                                }
-                                3 => {
-                                    let _ = Command::new("systemctl").arg("poweroff").spawn();
-                                }
-                                _ => {}
-                            }
+                            let _ = Command::new("/home/zius/.local/bin/hyprlock")
+                                .spawn()
+                                .or_else(|_| Command::new("hyprlock").spawn());
                             self.collapse();
+                            return true;
                         }
-                        _ => {
-                            // Vitals Page: click cycles to next page
-                            self.current_page = 1;
-                            self.page_spring.set_target(1.0);
+                        3 => {
+                            // Hold to Power Off: start timer!
+                            self.power_held = Some(Instant::now());
+                            return true;
                         }
+                        _ => {}
                     }
                 }
+                true
+            }
+            PointerEventKind::Release { .. } => {
+                self.power_held = None;
                 true
             }
             _ => false,
@@ -623,15 +581,33 @@ impl ClockWidget {
         self.current_w = COMPACT_W + (self.target_w - COMPACT_W) * t;
         self.current_h = COMPACT_H + (self.target_h - COMPACT_H) * t;
 
-        // Auto-collapse after inactivity
+        // Hold to Power Off progress update
+        if let Some(start) = self.power_held {
+            let elapsed = start.elapsed().as_secs_f32();
+            self.power_hold_progress = (elapsed / 1.2).clamp(0.0, 1.0);
+            if self.power_hold_progress >= 1.0 {
+                let _ = Command::new("systemctl").arg("poweroff").spawn();
+                self.power_held = None;
+                self.power_hold_progress = 0.0;
+                self.collapse();
+            }
+        } else {
+            self.power_hold_progress = (self.power_hold_progress - eff_dt * 4.0).max(0.0);
+        }
+
+        // Auto-collapse after inactivity (do not collapse while holding power!)
         if !self.is_compact
             && !self.is_hovered
+            && self.power_held.is_none()
             && self.last_hover_time.elapsed().as_secs_f32() > 4.0
         {
             self.collapse();
         }
 
-        !self.size_spring.is_at_rest() || !self.page_spring.is_at_rest()
+        !self.size_spring.is_at_rest()
+            || !self.page_spring.is_at_rest()
+            || self.power_held.is_some()
+            || self.power_hold_progress > 0.001
     }
 
     pub fn render_ui_overlay(&mut self, buf: &mut [u8]) {
@@ -785,941 +761,413 @@ impl ClockWidget {
         }
 
         // ══════════════════════════════════════════════════════════════
-        // 2. EXPANDED SLIDING CONTROL HUB (t > 0.05)
+        // 2. 2x2 MODULAR SQUIRCLE GLASS CONTROL CENTER (t > 0.05)
         // ══════════════════════════════════════════════════════════════
         if t > 0.05 {
             let exp_alpha = ((t - 0.1) / 0.9).clamp(0.0, 1.0);
             let alpha_u8 = (255.0 * exp_alpha) as u8;
-            let slide_y = (1.0 - t) * -24.0;
+            let slide_y = (1.0 - t) * -20.0;
             let card_top = 8.0;
 
-            let col_primary = if is_light {
+            let col_p = if is_light {
                 [10, 14, 22, alpha_u8]
             } else {
                 [255, 255, 255, alpha_u8]
             };
-            let col_secondary = if is_light {
-                [45, 60, 80, (230.0 * exp_alpha) as u8]
+            let col_sub = if is_light {
+                [50, 65, 85, (230.0 * exp_alpha) as u8]
             } else {
                 [215, 228, 245, (230.0 * exp_alpha) as u8]
             };
             let tile_base = if is_light { [0, 0, 0] } else { [255, 255, 255] };
             let accent = Tokens::ACCENT;
+            let accent_col = [accent[0], accent[1], accent[2], alpha_u8];
 
-            // ── SEGMENTED TOP TAB SWITCHER (VITALS | APPS | POWER) ──
-            let tab_y = card_top + 26.0 + slide_y;
+            let now = Local::now();
+
+            let tile_w = 160.0f32;
+            let tile_h = 132.0f32;
+            let tile_r = 18.0f32;
+
+            let centers = [
+                (cx - 86.0, card_top + 74.0 + slide_y), // Tile 0: Top-Left (Calendar & Session)
+                (cx + 86.0, card_top + 74.0 + slide_y), // Tile 1: Top-Right (Hardware Telemetry)
+                (cx - 86.0, card_top + 218.0 + slide_y), // Tile 2: Bottom-Left (Battery & Health Streak)
+                (cx + 86.0, card_top + 218.0 + slide_y), // Tile 3: Bottom-Right (2x2 Quick Controls)
+            ];
+
+            // Draw all 4 modular squircle glass card containers
+            for (i, (tcx, tcy)) in centers.iter().enumerate() {
+                let is_tile_hover = self.hovered_tile == Some(i);
+                let fill_a = if is_tile_hover { 75.0 } else { 55.0 };
+                let bg_col = if is_light {
+                    [255, 255, 255, (fill_a * 1.5 * exp_alpha) as u8]
+                } else {
+                    [14, 22, 38, (fill_a * exp_alpha) as u8]
+                };
+                let stroke_col = if is_tile_hover {
+                    [accent[0], accent[1], accent[2], (180.0 * exp_alpha) as u8]
+                } else if is_light {
+                    [200, 215, 235, (120.0 * exp_alpha) as u8]
+                } else {
+                    [65, 130, 240, (75.0 * exp_alpha) as u8]
+                };
+
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    *tcx,
+                    *tcy,
+                    tile_w * 0.5,
+                    tile_h * 0.5,
+                    tile_r,
+                    bg_col,
+                );
+                UIFont::draw_rounded_rect_stroke(
+                    buf,
+                    self.width,
+                    self.height,
+                    *tcx,
+                    *tcy,
+                    tile_w * 0.5,
+                    tile_h * 0.5,
+                    tile_r,
+                    1.2,
+                    stroke_col,
+                );
+            }
+
+            // ─────────────────────────────────────────────────────────
+            // TILE 0 (TOP-LEFT): DATE & ACTIVE SESSION
+            // ─────────────────────────────────────────────────────────
+            let (tx0, ty0) = centers[0];
+            let day_name = now.format("%A").to_string().to_uppercase();
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                &day_name,
+                tx0 - 64.0,
+                ty0 - 44.0,
+                10.0,
+                col_sub,
+                col_shadow,
+                FontWeight::Bold,
+            );
+
+            let day_num = now.format("%d").to_string();
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                &day_num,
+                tx0 - 64.0,
+                ty0 - 10.0,
+                34.0,
+                col_p,
+                col_shadow,
+                FontWeight::Bold,
+            );
+
+            // Vertical Accent Divider
             UIFont::draw_rounded_rect_fill(
                 buf,
                 self.width,
                 self.height,
-                cx,
-                tab_y,
-                130.0,
-                12.5,
-                9.0,
-                [
-                    tile_base[0],
-                    tile_base[1],
-                    tile_base[2],
-                    (20.0 * exp_alpha) as u8,
-                ],
-            );
-
-            // Smooth spring sliding indicator pill — clearly visible active state
-            let ind_x = (cx - 86.0) + self.page_spring.value * 86.0;
-            UIFont::draw_rounded_rect_fill(
-                buf,
-                self.width,
-                self.height,
-                ind_x,
-                tab_y,
-                42.0,
-                11.5,
-                8.0,
-                [
-                    tile_base[0],
-                    tile_base[1],
-                    tile_base[2],
-                    (80.0 * exp_alpha) as u8,
-                ],
-            );
-            UIFont::draw_rounded_rect_stroke(
-                buf,
-                self.width,
-                self.height,
-                ind_x,
-                tab_y,
-                42.0,
-                11.5,
-                8.0,
+                tx0 - 64.0,
+                ty0 + 29.0,
+                1.5,
+                10.0,
                 1.0,
+                accent_col,
+            );
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                "Active Session",
+                tx0 - 54.0,
+                ty0 + 23.0,
+                10.5,
+                col_p,
+                col_shadow,
+                FontWeight::Bold,
+            );
+            let up_str = format!(
+                "Up {}h {}m",
+                self.sys_stats.uptime_hrs, self.sys_stats.uptime_mins
+            );
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                &up_str,
+                tx0 - 54.0,
+                ty0 + 37.0,
+                9.5,
+                col_sub,
+                col_shadow,
+                FontWeight::Medium,
+            );
+
+            // ─────────────────────────────────────────────────────────
+            // TILE 1 (TOP-RIGHT): HARDWARE TELEMETRY (CPU & RAM)
+            // ─────────────────────────────────────────────────────────
+            let (tx1, ty1) = centers[1];
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                "CPU UTILIZATION",
+                tx1 - 64.0,
+                ty1 - 44.0,
+                10.0,
+                col_sub,
+                col_shadow,
+                FontWeight::Bold,
+            );
+
+            let cpu_val = format!("{}%", self.sys_stats.cpu_pct);
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                &cpu_val,
+                tx1 - 64.0,
+                ty1 - 10.0,
+                30.0,
+                col_p,
+                col_shadow,
+                FontWeight::Bold,
+            );
+
+            // CPU micro-chip
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                tx1 + 46.0,
+                ty1 - 14.0,
+                12.0,
+                12.0,
+                8.0,
+                [accent[0], accent[1], accent[2], (36.0 * exp_alpha) as u8],
+            );
+            UIFont::draw_cpu_icon(buf, self.width, self.height, tx1 + 46.0, ty1 - 14.0, col_p);
+
+            // Memory line
+            let ram_str = format!(
+                "{:.1} / {:.1} GB RAM",
+                self.sys_stats.ram_used_gb, self.sys_stats.ram_total_gb
+            );
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                &ram_str,
+                tx1 - 64.0,
+                ty1 + 20.0,
+                10.0,
+                col_p,
+                col_shadow,
+                FontWeight::Bold,
+            );
+
+            // Dual Progress Rail
+            let rail_y = ty1 + 38.0;
+            let rail_w = 128.0;
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                tx1,
+                rail_y,
+                rail_w * 0.5,
+                2.5,
+                2.0,
                 [
                     tile_base[0],
                     tile_base[1],
                     tile_base[2],
-                    (130.0 * exp_alpha) as u8,
+                    (75.0 * exp_alpha) as u8,
                 ],
             );
-
-            // Tab Labels
-            let tabs = [("VITALS", cx - 86.0), ("APPS", cx), ("POWER", cx + 86.0)];
-            for (idx, (label, tx)) in tabs.iter().enumerate() {
-                let is_active = self.current_page == idx;
-                let text_col = if is_active {
-                    col_primary
-                } else {
-                    col_secondary
-                };
-                let tw = self.font.measure_text(label, 10.0, FontWeight::Bold);
-                self.font.draw_text_centered_y(
-                    buf,
-                    self.width,
-                    self.height,
-                    label,
-                    tx - tw * 0.5,
-                    tab_y,
-                    10.0,
-                    text_col,
-                    col_shadow,
-                    FontWeight::Bold,
-                );
-            }
-
-            // ── ACTIVE SLIDING PAGE CONTENT ──
-            let cur_p = self.page_spring.value;
+            let cpu_fw = rail_w * (self.sys_stats.cpu_pct as f32 / 100.0).clamp(0.04, 1.0);
+            let cpu_fcx = (tx1 - rail_w * 0.5) + cpu_fw * 0.5;
+            let cpu_col = if self.sys_stats.cpu_pct > 80 {
+                [255, 85, 85, alpha_u8]
+            } else {
+                accent_col
+            };
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                cpu_fcx,
+                rail_y,
+                cpu_fw * 0.5,
+                2.5,
+                2.0,
+                cpu_col,
+            );
 
             // ─────────────────────────────────────────────────────────
-            // PAGE 0: HARDWARE TELEMETRY
+            // TILE 2 (BOTTOM-LEFT): BATTERY & HEALTH STREAK
             // ─────────────────────────────────────────────────────────
-            let off0 = (0.0 - cur_p) * CARD_W;
-            if off0.abs() < CARD_W {
-                let px_c = cx + off0;
-                let page_alpha = (1.0 - (off0.abs() / CARD_W)).clamp(0.0, 1.0) * exp_alpha;
-                let a8 = (255.0 * page_alpha) as u8;
-                let col_p = if is_light {
-                    [10, 14, 22, a8]
-                } else {
-                    [255, 255, 255, a8]
-                };
-                let col_p_sub = if is_light {
-                    [45, 60, 80, (230.0 * page_alpha) as u8]
-                } else {
-                    [215, 228, 245, (230.0 * page_alpha) as u8]
-                };
+            let (tx2, ty2) = centers[2];
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                "POWER STATUS",
+                tx2 - 64.0,
+                ty2 - 44.0,
+                10.0,
+                col_sub,
+                col_shadow,
+                FontWeight::Bold,
+            );
 
-                // Subtitle Header
-                let sub_y = card_top + 50.0 + slide_y;
+            let bat_val = format!("{}%", self.sys_stats.bat_pct);
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                &bat_val,
+                tx2 - 64.0,
+                ty2 - 10.0,
+                30.0,
+                col_p,
+                col_shadow,
+                FontWeight::Bold,
+            );
+
+            // Battery micro-chip
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                tx2 + 46.0,
+                ty2 - 14.0,
+                12.0,
+                12.0,
+                8.0,
+                [accent[0], accent[1], accent[2], (36.0 * exp_alpha) as u8],
+            );
+            UIFont::draw_battery_icon(
+                buf,
+                self.width,
+                self.height,
+                tx2 + 46.0,
+                ty2 - 14.0,
+                self.sys_stats.bat_pct,
+                self.sys_stats.bat_charging,
+                col_p,
+            );
+
+            let bat_sub = if self.sys_stats.bat_charging {
+                "AC Power [Charging] ⚡"
+            } else {
+                "Battery Health 100%"
+            };
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                bat_sub,
+                tx2 - 64.0,
+                ty2 + 18.0,
+                9.5,
+                col_sub,
+                col_shadow,
+                FontWeight::Medium,
+            );
+
+            // 7 Day Streak Dots (S M T W T F S)
+            let streak_y_lbl = ty2 + 30.0;
+            let streak_y_dot = ty2 + 44.0;
+            let day_labels = ["S", "M", "T", "W", "T", "F", "S"];
+            let today_idx = now.format("%w").to_string().parse::<usize>().unwrap_or(4);
+            let dot_start_x = tx2 - 54.0;
+            let dot_gap = 18.0f32;
+
+            for (i, lbl) in day_labels.iter().enumerate() {
+                let dx = dot_start_x + (i as f32) * dot_gap;
+                let is_today = i == today_idx;
+                let lbl_col = if is_today { accent_col } else { col_sub };
+                let lw = self.font.measure_text(lbl, 8.5, FontWeight::Bold);
                 self.font.draw_text_centered_y(
                     buf,
                     self.width,
                     self.height,
-                    "System health",
-                    px_c - 146.0,
-                    sub_y,
-                    10.5,
-                    col_p_sub,
-                    col_shadow,
-                    FontWeight::Bold,
-                );
-                let up_str = format!(
-                    "Up {}h {}m",
-                    self.sys_stats.uptime_hrs, self.sys_stats.uptime_mins
-                );
-                let up_w = self.font.measure_text(&up_str, 10.5, FontWeight::Bold);
-                self.font.draw_text_centered_y(
-                    buf,
-                    self.width,
-                    self.height,
-                    &up_str,
-                    px_c + 146.0 - up_w,
-                    sub_y,
-                    10.5,
-                    col_p_sub,
+                    lbl,
+                    dx - lw * 0.5,
+                    streak_y_lbl,
+                    8.5,
+                    lbl_col,
                     col_shadow,
                     FontWeight::Bold,
                 );
 
-                // Row 1: CPU Metric in Glass Squircle Micro-tile
-                let cpu_y = card_top + 84.0 + slide_y;
-                let track_w = 260.0;
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    px_c,
-                    cpu_y + 3.0,
-                    146.0,
-                    24.0,
-                    12.0,
-                    [
-                        tile_base[0],
-                        tile_base[1],
-                        tile_base[2],
-                        (14.0 * page_alpha) as u8,
-                    ],
-                );
-                UIFont::draw_rounded_rect_stroke(
-                    buf,
-                    self.width,
-                    self.height,
-                    px_c,
-                    cpu_y + 3.0,
-                    146.0,
-                    24.0,
-                    12.0,
-                    1.0,
-                    [
-                        tile_base[0],
-                        tile_base[1],
-                        tile_base[2],
-                        (26.0 * page_alpha) as u8,
-                    ],
-                );
-
-                // Accent icon chip
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    px_c - 128.0,
-                    cpu_y - 4.0,
-                    13.0,
-                    13.0,
-                    9.0,
-                    [accent[0], accent[1], accent[2], (40.0 * page_alpha) as u8],
-                );
-                UIFont::draw_cpu_icon(
-                    buf,
-                    self.width,
-                    self.height,
-                    px_c - 128.0,
-                    cpu_y - 4.0,
-                    col_p,
-                );
-                self.font.draw_text_centered_y(
-                    buf,
-                    self.width,
-                    self.height,
-                    "CPU UTILIZATION",
-                    px_c - 110.0,
-                    cpu_y - 4.0,
-                    11.5,
-                    col_p,
-                    col_shadow,
-                    FontWeight::Bold,
-                );
-                let cpu_val = format!("{}%", self.sys_stats.cpu_pct);
-                let cpu_w = self.font.measure_text(&cpu_val, 13.5, FontWeight::Bold);
-                let is_cpu_hot = self.sys_stats.cpu_pct > 80;
-                let cpu_val_col = if is_cpu_hot { [255, 85, 85, a8] } else { col_p };
-                let cpu_bar_col = if is_cpu_hot {
-                    [255, 85, 85, a8]
-                } else {
-                    [accent[0], accent[1], accent[2], a8]
-                };
-                self.font.draw_text_centered_y(
-                    buf,
-                    self.width,
-                    self.height,
-                    &cpu_val,
-                    px_c + 138.0 - cpu_w,
-                    cpu_y - 4.0,
-                    15.0,
-                    cpu_val_col,
-                    col_shadow,
-                    FontWeight::Bold,
-                );
-                // CPU Bar Track & Fill
-                let track_y = cpu_y + 13.0;
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    px_c,
-                    track_y,
-                    track_w * 0.5,
-                    3.0,
-                    2.5,
-                    [
-                        tile_base[0],
-                        tile_base[1],
-                        tile_base[2],
-                        (75.0 * page_alpha) as u8,
-                    ],
-                );
-                let cpu_fw = track_w * (self.sys_stats.cpu_pct as f32 / 100.0).clamp(0.02, 1.0);
-                let cpu_fcx = (px_c - track_w * 0.5) + cpu_fw * 0.5;
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    cpu_fcx,
-                    track_y,
-                    cpu_fw * 0.5,
-                    3.0,
-                    2.5,
-                    cpu_bar_col,
-                );
-
-                // Row 2: MEMORY Metric in Glass Squircle Micro-tile
-                let ram_y = card_top + 144.0 + slide_y;
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    px_c,
-                    ram_y + 3.0,
-                    146.0,
-                    24.0,
-                    12.0,
-                    [
-                        tile_base[0],
-                        tile_base[1],
-                        tile_base[2],
-                        (14.0 * page_alpha) as u8,
-                    ],
-                );
-                UIFont::draw_rounded_rect_stroke(
-                    buf,
-                    self.width,
-                    self.height,
-                    px_c,
-                    ram_y + 3.0,
-                    146.0,
-                    24.0,
-                    12.0,
-                    1.0,
-                    [
-                        tile_base[0],
-                        tile_base[1],
-                        tile_base[2],
-                        (26.0 * page_alpha) as u8,
-                    ],
-                );
-                // Accent icon chip
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    px_c - 128.0,
-                    ram_y - 4.0,
-                    13.0,
-                    13.0,
-                    9.0,
-                    [accent[0], accent[1], accent[2], (40.0 * page_alpha) as u8],
-                );
-                UIFont::draw_ram_icon(
-                    buf,
-                    self.width,
-                    self.height,
-                    px_c - 128.0,
-                    ram_y - 4.0,
-                    col_p,
-                );
-                self.font.draw_text_centered_y(
-                    buf,
-                    self.width,
-                    self.height,
-                    "MEMORY ALLOCATION",
-                    px_c - 110.0,
-                    ram_y - 4.0,
-                    11.5,
-                    col_p,
-                    col_shadow,
-                    FontWeight::Bold,
-                );
-                let ram_val = format!(
-                    "{:.1} / {:.1} GB",
-                    self.sys_stats.ram_used_gb, self.sys_stats.ram_total_gb
-                );
-                let ram_w = self.font.measure_text(&ram_val, 12.5, FontWeight::Bold);
-                self.font.draw_text_centered_y(
-                    buf,
-                    self.width,
-                    self.height,
-                    &ram_val,
-                    px_c + 138.0 - ram_w,
-                    ram_y - 4.0,
-                    14.0,
-                    col_p,
-                    col_shadow,
-                    FontWeight::Bold,
-                );
-                let ram_track_y = ram_y + 13.0;
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    px_c,
-                    ram_track_y,
-                    track_w * 0.5,
-                    3.0,
-                    2.5,
-                    [
-                        tile_base[0],
-                        tile_base[1],
-                        tile_base[2],
-                        (75.0 * page_alpha) as u8,
-                    ],
-                );
-                let ram_fw = track_w * (ram_pct as f32 / 100.0).clamp(0.02, 1.0);
-                let ram_fcx = (px_c - track_w * 0.5) + ram_fw * 0.5;
-                let ram_bar_col = [accent[0], accent[1], accent[2], a8];
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    ram_fcx,
-                    ram_track_y,
-                    ram_fw * 0.5,
-                    3.0,
-                    2.5,
-                    ram_bar_col,
-                );
-
-                // Row 3: BATTERY Metric in Glass Squircle Micro-tile
-                let bat_y = card_top + 204.0 + slide_y;
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    px_c,
-                    bat_y + 3.0,
-                    146.0,
-                    24.0,
-                    12.0,
-                    [
-                        tile_base[0],
-                        tile_base[1],
-                        tile_base[2],
-                        (14.0 * page_alpha) as u8,
-                    ],
-                );
-                UIFont::draw_rounded_rect_stroke(
-                    buf,
-                    self.width,
-                    self.height,
-                    px_c,
-                    bat_y + 3.0,
-                    146.0,
-                    24.0,
-                    12.0,
-                    1.0,
-                    [
-                        tile_base[0],
-                        tile_base[1],
-                        tile_base[2],
-                        (26.0 * page_alpha) as u8,
-                    ],
-                );
-                // Accent icon chip
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    px_c - 128.0,
-                    bat_y - 4.0,
-                    13.0,
-                    13.0,
-                    9.0,
-                    [accent[0], accent[1], accent[2], (40.0 * page_alpha) as u8],
-                );
-                UIFont::draw_battery_icon(
-                    buf,
-                    self.width,
-                    self.height,
-                    px_c - 128.0,
-                    bat_y - 4.0,
-                    self.sys_stats.bat_pct,
-                    self.sys_stats.bat_charging,
-                    col_p,
-                );
-                self.font.draw_text_centered_y(
-                    buf,
-                    self.width,
-                    self.height,
-                    "BATTERY STATUS",
-                    px_c - 110.0,
-                    bat_y - 4.0,
-                    11.5,
-                    col_p,
-                    col_shadow,
-                    FontWeight::Bold,
-                );
-                let bat_val = format!(
-                    "{}%{}",
-                    self.sys_stats.bat_pct,
-                    if self.sys_stats.bat_charging {
-                        " [CHARGING]"
-                    } else {
-                        ""
-                    }
-                );
-                let bat_w = self.font.measure_text(&bat_val, 12.5, FontWeight::Bold);
-                self.font.draw_text_centered_y(
-                    buf,
-                    self.width,
-                    self.height,
-                    &bat_val,
-                    px_c + 138.0 - bat_w,
-                    bat_y - 4.0,
-                    14.0,
-                    col_p,
-                    col_shadow,
-                    FontWeight::Bold,
-                );
-                let bat_track_y = bat_y + 13.0;
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    px_c,
-                    bat_track_y,
-                    track_w * 0.5,
-                    3.0,
-                    2.5,
-                    [
-                        tile_base[0],
-                        tile_base[1],
-                        tile_base[2],
-                        (75.0 * page_alpha) as u8,
-                    ],
-                );
-                let bat_fw = track_w * (self.sys_stats.bat_pct as f32 / 100.0).clamp(0.02, 1.0);
-                let bat_fcx = (px_c - track_w * 0.5) + bat_fw * 0.5;
-                let bat_bar_col = if self.sys_stats.bat_charging {
-                    if is_light {
-                        [16, 140, 65, a8]
-                    } else {
-                        [78, 216, 138, a8]
-                    }
-                } else if self.sys_stats.bat_pct <= 20 {
-                    [255, 140, 10, a8]
-                } else {
-                    [accent[0], accent[1], accent[2], a8]
-                };
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    bat_fcx,
-                    bat_track_y,
-                    bat_fw * 0.5,
-                    3.0,
-                    2.5,
-                    bat_bar_col,
-                );
-            }
-
-            // ─────────────────────────────────────────────────────────
-            // PAGE 1: APPLICATIONS (QUICK LAUNCHERS)
-            // ─────────────────────────────────────────────────────────
-            let off1 = (1.0 - cur_p) * CARD_W;
-            if off1.abs() < CARD_W {
-                let px_c = cx + off1;
-                let page_alpha = (1.0 - (off1.abs() / CARD_W)).clamp(0.0, 1.0) * exp_alpha;
-                let a8 = (255.0 * page_alpha) as u8;
-                let col_p = if is_light {
-                    [10, 14, 22, a8]
-                } else {
-                    [255, 255, 255, a8]
-                };
-                let col_p_sub = if is_light {
-                    [45, 60, 80, (230.0 * page_alpha) as u8]
-                } else {
-                    [215, 228, 245, (230.0 * page_alpha) as u8]
-                };
-
-                let sub_y = card_top + 50.0 + slide_y;
-                self.font.draw_text_centered_y(
-                    buf,
-                    self.width,
-                    self.height,
-                    "Quick launch",
-                    px_c - 146.0,
-                    sub_y,
-                    10.5,
-                    col_p_sub,
-                    col_shadow,
-                    FontWeight::Bold,
-                );
-                self.font.draw_text_centered_y(
-                    buf,
-                    self.width,
-                    self.height,
-                    "Click to launch",
-                    px_c + 54.0,
-                    sub_y,
-                    10.5,
-                    col_p_sub,
-                    col_shadow,
-                    FontWeight::Bold,
-                );
-
-                let apps = [
-                    ("Terminal", "foot command shell", 0),
-                    ("Browser", "brave web browser", 1),
-                    ("Editor", "visual studio code", 2),
-                    ("Files", "thunar file manager", 3),
-                ];
-
-                for (idx, (title, sub, icon_idx)) in apps.iter().enumerate() {
-                    let row_y = card_top + 74.0 + (idx as f32) * 44.0 + slide_y;
-                    let is_hover = self.current_page == 1 && self.hovered_row == Some(idx);
-                    let row_bg = if is_hover {
-                        [
-                            tile_base[0],
-                            tile_base[1],
-                            tile_base[2],
-                            (34.0 * page_alpha) as u8,
-                        ]
-                    } else {
-                        [
-                            tile_base[0],
-                            tile_base[1],
-                            tile_base[2],
-                            (14.0 * page_alpha) as u8,
-                        ]
-                    };
-                    UIFont::draw_rounded_rect_fill(
-                        buf,
-                        self.width,
-                        self.height,
-                        px_c,
-                        row_y,
-                        146.0,
-                        18.0,
-                        10.0,
-                        row_bg,
-                    );
-                    if is_hover {
-                        UIFont::draw_rounded_rect_stroke(
-                            buf,
-                            self.width,
-                            self.height,
-                            px_c,
-                            row_y,
-                            146.0,
-                            18.0,
-                            10.0,
-                            1.0,
-                            [
-                                tile_base[0],
-                                tile_base[1],
-                                tile_base[2],
-                                (40.0 * page_alpha) as u8,
-                            ],
-                        );
-                    }
-
-                    let icon_x = px_c - 128.0;
-                    match icon_idx {
-                        0 => UIFont::draw_terminal_icon(
-                            buf,
-                            self.width,
-                            self.height,
-                            icon_x,
-                            row_y,
-                            col_p,
-                        ),
-                        1 => UIFont::draw_browser_icon(
-                            buf,
-                            self.width,
-                            self.height,
-                            icon_x,
-                            row_y,
-                            col_p,
-                        ),
-                        2 => UIFont::draw_editor_icon(
-                            buf,
-                            self.width,
-                            self.height,
-                            icon_x,
-                            row_y,
-                            col_p,
-                        ),
-                        _ => UIFont::draw_folder_icon(
-                            buf,
-                            self.width,
-                            self.height,
-                            icon_x,
-                            row_y,
-                            col_p,
-                        ),
-                    }
-
-                    self.font.draw_text_centered_y(
-                        buf,
-                        self.width,
-                        self.height,
-                        title,
-                        px_c - 108.0,
-                        row_y - 6.0,
-                        12.5,
-                        col_p,
-                        col_shadow,
-                        FontWeight::Bold,
-                    );
-                    self.font.draw_text_centered_y(
-                        buf,
-                        self.width,
-                        self.height,
-                        sub,
-                        px_c - 108.0,
-                        row_y + 7.5,
-                        9.5,
-                        col_p_sub,
-                        col_shadow,
-                        FontWeight::Medium,
-                    );
-
-                    let hint_col = if is_hover {
-                        [accent[0], accent[1], accent[2], a8]
-                    } else {
-                        col_p_sub
-                    };
-                    let hint_w = self.font.measure_text("Launch ↵", 10.0, FontWeight::Bold);
-                    self.font.draw_text_centered_y(
-                        buf,
-                        self.width,
-                        self.height,
-                        "Launch ↵",
-                        px_c + 140.0 - hint_w,
-                        row_y,
-                        10.0,
-                        hint_col,
-                        col_shadow,
-                        FontWeight::Bold,
-                    );
-                }
-            }
-
-            // ─────────────────────────────────────────────────────────
-            // PAGE 2: POWER & SESSION
-            // ─────────────────────────────────────────────────────────
-            let off2 = (2.0 - cur_p) * CARD_W;
-            if off2.abs() < CARD_W {
-                let px_c = cx + off2;
-                let page_alpha = (1.0 - (off2.abs() / CARD_W)).clamp(0.0, 1.0) * exp_alpha;
-                let a8 = (255.0 * page_alpha) as u8;
-                let col_p = if is_light {
-                    [10, 14, 22, a8]
-                } else {
-                    [255, 255, 255, a8]
-                };
-                let col_p_sub = if is_light {
-                    [45, 60, 80, (230.0 * page_alpha) as u8]
-                } else {
-                    [215, 228, 245, (230.0 * page_alpha) as u8]
-                };
-
-                let sub_y = card_top + 50.0 + slide_y;
-                self.font.draw_text_centered_y(
-                    buf,
-                    self.width,
-                    self.height,
-                    "System controls",
-                    px_c - 146.0,
-                    sub_y,
-                    10.5,
-                    col_p_sub,
-                    col_shadow,
-                    FontWeight::Bold,
-                );
-                self.font.draw_text_centered_y(
-                    buf,
-                    self.width,
-                    self.height,
-                    "Session power",
-                    px_c + 60.0,
-                    sub_y,
-                    10.5,
-                    col_p_sub,
-                    col_shadow,
-                    FontWeight::Bold,
-                );
-
-                let power_ops = [
-                    ("Lock Session", "secure display with hyprlock", "LOCK", 0),
-                    ("Suspend", "low-power system sleep", "SLEEP", 1),
-                    ("Reboot", "restart operating system", "RESTART", 2),
-                    ("Power Off", "shut down system hardware", "SHUTDOWN", 3),
-                ];
-
-                for (idx, (title, sub, action, icon_idx)) in power_ops.iter().enumerate() {
-                    let row_y = card_top + 74.0 + (idx as f32) * 44.0 + slide_y;
-                    let is_hover = self.current_page == 2 && self.hovered_row == Some(idx);
-                    let row_bg = if is_hover {
-                        if idx == 3 {
-                            [255, 60, 60, (50.0 * page_alpha) as u8]
-                        } else {
-                            [
-                                tile_base[0],
-                                tile_base[1],
-                                tile_base[2],
-                                (34.0 * page_alpha) as u8,
-                            ]
-                        }
-                    } else {
-                        [
-                            tile_base[0],
-                            tile_base[1],
-                            tile_base[2],
-                            (14.0 * page_alpha) as u8,
-                        ]
-                    };
-                    UIFont::draw_rounded_rect_fill(
-                        buf,
-                        self.width,
-                        self.height,
-                        px_c,
-                        row_y,
-                        146.0,
-                        18.0,
-                        10.0,
-                        row_bg,
-                    );
-                    if is_hover {
-                        let stroke_col = if idx == 3 {
-                            [255, 90, 90, a8]
-                        } else {
-                            [
-                                tile_base[0],
-                                tile_base[1],
-                                tile_base[2],
-                                (40.0 * page_alpha) as u8,
-                            ]
-                        };
-                        UIFont::draw_rounded_rect_stroke(
-                            buf,
-                            self.width,
-                            self.height,
-                            px_c,
-                            row_y,
-                            146.0,
-                            18.0,
-                            10.0,
-                            1.0,
-                            stroke_col,
-                        );
-                    }
-
-                    let icon_x = px_c - 128.0;
-                    match icon_idx {
-                        0 => UIFont::draw_lock_icon(
-                            buf,
-                            self.width,
-                            self.height,
-                            icon_x,
-                            row_y,
-                            col_p,
-                        ),
-                        1 => UIFont::draw_moon_icon(
-                            buf,
-                            self.width,
-                            self.height,
-                            icon_x,
-                            row_y,
-                            col_p,
-                        ),
-                        2 => UIFont::draw_restart_icon(
-                            buf,
-                            self.width,
-                            self.height,
-                            icon_x,
-                            row_y,
-                            col_p,
-                        ),
-                        _ => UIFont::draw_power_icon(
-                            buf,
-                            self.width,
-                            self.height,
-                            icon_x,
-                            row_y,
-                            if is_hover { [255, 90, 90, a8] } else { col_p },
-                        ),
-                    }
-
-                    let title_col = if is_hover && idx == 3 {
-                        [255, 140, 140, a8]
-                    } else {
-                        col_p
-                    };
-                    self.font.draw_text_centered_y(
-                        buf,
-                        self.width,
-                        self.height,
-                        title,
-                        px_c - 108.0,
-                        row_y - 6.0,
-                        12.5,
-                        title_col,
-                        col_shadow,
-                        FontWeight::Bold,
-                    );
-                    self.font.draw_text_centered_y(
-                        buf,
-                        self.width,
-                        self.height,
-                        sub,
-                        px_c - 108.0,
-                        row_y + 7.5,
-                        9.5,
-                        col_p_sub,
-                        col_shadow,
-                        FontWeight::Medium,
-                    );
-
-                    let act_col = if is_hover && idx == 3 {
-                        [255, 90, 90, a8]
-                    } else if is_hover {
-                        [accent[0], accent[1], accent[2], a8]
-                    } else {
-                        col_p_sub
-                    };
-                    let act_w = self.font.measure_text(action, 10.0, FontWeight::Bold);
-                    self.font.draw_text_centered_y(
-                        buf,
-                        self.width,
-                        self.height,
-                        action,
-                        px_c + 140.0 - act_w,
-                        row_y,
-                        10.0,
-                        act_col,
-                        col_shadow,
-                        FontWeight::Bold,
-                    );
-                }
-            }
-
-            // ── PAGINATION DOTS (BOTTOM CAROUSEL INDICATOR) ──
-            let dot_y = card_top + 264.0 + slide_y;
-            for i in 0..3 {
-                let dx = cx - 24.0 + (i as f32) * 24.0;
-                let is_cur = self.current_page == i;
-                if is_cur {
+                if i < today_idx {
+                    // Past completed day: filled cyan badge with checkmark ✓
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
                         self.height,
                         dx,
-                        dot_y,
-                        10.0,
-                        2.5,
-                        2.5,
-                        col_primary,
+                        streak_y_dot,
+                        6.5,
+                        6.5,
+                        6.5,
+                        [accent[0], accent[1], accent[2], (220.0 * exp_alpha) as u8],
                     );
-                } else {
+                    UIFont::draw_check_icon(
+                        buf,
+                        self.width,
+                        self.height,
+                        dx,
+                        streak_y_dot,
+                        [255, 255, 255, alpha_u8],
+                    );
+                } else if is_today {
+                    // Today: pulsing cyan ring with active center
+                    UIFont::draw_rounded_rect_stroke(
+                        buf,
+                        self.width,
+                        self.height,
+                        dx,
+                        streak_y_dot,
+                        6.5,
+                        6.5,
+                        6.5,
+                        1.5,
+                        [accent[0], accent[1], accent[2], alpha_u8],
+                    );
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
                         self.height,
                         dx,
-                        dot_y,
+                        streak_y_dot,
                         2.5,
                         2.5,
                         2.5,
+                        [accent[0], accent[1], accent[2], alpha_u8],
+                    );
+                } else {
+                    // Future day: subtle translucent ring
+                    UIFont::draw_rounded_rect_stroke(
+                        buf,
+                        self.width,
+                        self.height,
+                        dx,
+                        streak_y_dot,
+                        6.5,
+                        6.5,
+                        6.5,
+                        1.0,
                         [
                             tile_base[0],
                             tile_base[1],
@@ -1729,11 +1177,182 @@ impl ClockWidget {
                     );
                 }
             }
+
+            // ─────────────────────────────────────────────────────────
+            // TILE 3 (BOTTOM-RIGHT): 2x2 QUICK ACTION CONTROLS & HOLD POWER
+            // ─────────────────────────────────────────────────────────
+            let (tx3, ty3) = centers[3];
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                "QUICK CONTROLS",
+                tx3 - 64.0,
+                ty3 - 48.0,
+                10.0,
+                col_sub,
+                col_shadow,
+                FontWeight::Bold,
+            );
+
+            let action_btns = [
+                (tx3 - 38.0, ty3 - 26.0, 0), // Terminal
+                (tx3 + 38.0, ty3 - 26.0, 1), // Browser
+                (tx3 - 38.0, ty3 + 28.0, 2), // Lock
+                (tx3 + 38.0, ty3 + 28.0, 3), // Power Off (Hold)
+            ];
+
+            for (bx, by, b_idx) in action_btns {
+                let is_hover = self.hovered_btn == Some(b_idx);
+                let btn_r = 21.0f32;
+
+                if b_idx == 3 && self.power_hold_progress > 0.01 {
+                    // DYNAMIC HOLD-TO-POWER-OFF RADIAL PROGRESS
+                    let hp = self.power_hold_progress;
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        bx,
+                        by,
+                        btn_r,
+                        btn_r,
+                        btn_r,
+                        [255, 69, 58, (60.0 + hp * 180.0) as u8],
+                    );
+                    let halo_r = btn_r + hp * 6.0;
+                    UIFont::draw_rounded_rect_stroke(
+                        buf,
+                        self.width,
+                        self.height,
+                        bx,
+                        by,
+                        halo_r,
+                        halo_r,
+                        halo_r,
+                        2.0,
+                        [255, 90, 80, (200.0 * hp) as u8],
+                    );
+                    UIFont::draw_power_icon(
+                        buf,
+                        self.width,
+                        self.height,
+                        bx,
+                        by,
+                        [255, 255, 255, alpha_u8],
+                    );
+
+                    let hold_text = if hp > 0.85 { "RELEASE!" } else { "HOLD..." };
+                    let tw = self.font.measure_text(hold_text, 8.5, FontWeight::Bold);
+                    self.font.draw_text_centered_y(
+                        buf,
+                        self.width,
+                        self.height,
+                        hold_text,
+                        bx - tw * 0.5,
+                        by + btn_r + 6.0,
+                        8.5,
+                        [255, 90, 80, alpha_u8],
+                        col_shadow,
+                        FontWeight::Bold,
+                    );
+                } else {
+                    let btn_fill_a = if is_hover { 38.0 } else { 16.0 };
+                    let btn_stroke_col = if is_hover {
+                        if b_idx == 3 {
+                            [255, 90, 90, alpha_u8]
+                        } else {
+                            accent_col
+                        }
+                    } else {
+                        [
+                            tile_base[0],
+                            tile_base[1],
+                            tile_base[2],
+                            (45.0 * exp_alpha) as u8,
+                        ]
+                    };
+
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        bx,
+                        by,
+                        btn_r,
+                        btn_r,
+                        btn_r,
+                        [
+                            tile_base[0],
+                            tile_base[1],
+                            tile_base[2],
+                            (btn_fill_a * exp_alpha) as u8,
+                        ],
+                    );
+                    UIFont::draw_rounded_rect_stroke(
+                        buf,
+                        self.width,
+                        self.height,
+                        bx,
+                        by,
+                        btn_r,
+                        btn_r,
+                        btn_r,
+                        1.0,
+                        btn_stroke_col,
+                    );
+
+                    let icon_col = if is_hover && b_idx == 3 {
+                        [255, 100, 100, alpha_u8]
+                    } else {
+                        col_p
+                    };
+
+                    match b_idx {
+                        0 => UIFont::draw_terminal_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            bx,
+                            by,
+                            icon_col,
+                        ),
+                        1 => UIFont::draw_browser_icon(
+                            buf,
+                            self.width,
+                            self.height,
+                            bx,
+                            by,
+                            icon_col,
+                        ),
+                        2 => UIFont::draw_moon_icon(buf, self.width, self.height, bx, by, icon_col),
+                        _ => {
+                            UIFont::draw_power_icon(buf, self.width, self.height, bx, by, icon_col);
+                            if is_hover {
+                                let tip = "Hold to Off";
+                                let tw = self.font.measure_text(tip, 8.0, FontWeight::Bold);
+                                self.font.draw_text_centered_y(
+                                    buf,
+                                    self.width,
+                                    self.height,
+                                    tip,
+                                    bx - tw * 0.5,
+                                    by + btn_r + 6.0,
+                                    8.0,
+                                    [255, 120, 120, alpha_u8],
+                                    col_shadow,
+                                    FontWeight::Bold,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
     pub fn draw(&mut self) -> bool {
-        if !self.enabled || (self.is_hidden_by_window && self.is_compact) {
+        if !self.enabled {
             if let Some(renderer) = &mut self.renderer {
                 self.overlay_buffer.fill(0);
                 renderer.update_overlay(self.width, self.height, &self.overlay_buffer);
@@ -1760,40 +1379,86 @@ impl ClockWidget {
             let (px, py) = (self.cursor_pos[0], self.cursor_pos[1]);
 
             let cx = (self.width as f32) * 0.5;
-            let card_left = cx - self.current_w * 0.5;
-            let x_norm = card_left / (self.width as f32);
+            let sw = self.width as f32;
+            let sh = self.height as f32;
             let card_top = 8.0;
-            let y_norm = card_top / (self.height as f32);
-            let w_norm = self.current_w / (self.width as f32);
-            let h_norm = self.current_h / (self.height as f32);
+            let t = self.size_spring.value.clamp(0.0, 1.0);
 
-            let pill_radius = if self.is_compact {
-                15.0
+            let surfaces: Vec<GlassSurface> = if t <= 0.05 {
+                let card_left = cx - self.current_w * 0.5;
+                let x_norm = card_left / sw;
+                let y_norm = card_top / sh;
+                let w_norm = self.current_w / sw;
+                let h_norm = self.current_h / sh;
+
+                vec![GlassSurface::new()
+                    .material(Material::LiquidGlass)
+                    .shape(Shape::Capsule)
+                    .bounds(x_norm, y_norm, w_norm, h_norm)
+                    .curvature(2.0)
+                    .bevel(12.0)
+                    .refraction(10.0)
+                    .dispersion(0.05)
+                    .blur(self.blur_radius)
+                    .specular(1.10)
+                    .fresnel(0.55)
+                    .style_mode(self.style_mode)
+                    .tint(0.0, 0.0, 1.0, is_light_f32)
+                    .element_type(0.0)
+                    .deformation(0.0)
+                    .pointer_pos(px, py)]
             } else {
-                Tokens::RADIUS_OUTER
+                let slide_y = (1.0 - t) * -20.0;
+                let tile_w = 160.0f32;
+                let tile_h = 132.0f32;
+                let tile_r = 18.0f32;
+                let centers = [
+                    (cx - 86.0, card_top + 74.0 + slide_y),
+                    (cx + 86.0, card_top + 74.0 + slide_y),
+                    (cx - 86.0, card_top + 218.0 + slide_y),
+                    (cx + 86.0, card_top + 218.0 + slide_y),
+                ];
+
+                centers
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (tcx, tcy))| {
+                        let cur_cx = cx + (tcx - cx) * t;
+                        let cur_cy = 23.0 + (tcy - 23.0) * t;
+                        let cur_w = (COMPACT_W * 0.45) * (1.0 - t) + tile_w * t;
+                        let cur_h = 28.0 * (1.0 - t) + tile_h * t;
+                        let cur_r = 14.0 * (1.0 - t) + tile_r * t;
+
+                        let tx_norm = (cur_cx - cur_w * 0.5) / sw;
+                        let ty_norm = (cur_cy - cur_h * 0.5) / sh;
+                        let tw_norm = cur_w / sw;
+                        let th_norm = cur_h / sh;
+
+                        GlassSurface::new()
+                            .material(Material::LiquidGlass)
+                            .shape(Shape::RoundedRectangle { radius: cur_r })
+                            .bounds(tx_norm, ty_norm, tw_norm, th_norm)
+                            .curvature(14.0)
+                            .bevel(12.0)
+                            .refraction(12.0)
+                            .dispersion(0.06)
+                            .blur(self.blur_radius)
+                            .specular(1.20)
+                            .fresnel(0.65)
+                            .style_mode(self.style_mode)
+                            .tint(0.0, 0.0, 1.0, is_light_f32)
+                            .roughness(if i == 2 {
+                                self.sys_stats.bat_pct as f32
+                            } else {
+                                0.0
+                            })
+                            .element_type(0.0)
+                            .deformation(0.0)
+                            .pointer_pos(px, py)
+                    })
+                    .collect()
             };
 
-            let control_hub_card = GlassSurface::new()
-                .material(Material::LiquidGlass)
-                .shape(Shape::RoundedRectangle {
-                    radius: pill_radius,
-                })
-                .bounds(x_norm, y_norm, w_norm, h_norm)
-                .curvature(self.fillet_radius)
-                .bevel(12.0)
-                .refraction(12.0)
-                .dispersion(0.08)
-                .blur(self.blur_radius)
-                .specular(1.10)
-                .fresnel(0.55)
-                .style_mode(self.style_mode)
-                .tint(0.0, 0.0, 1.0, is_light_f32)
-                .roughness(self.sys_stats.bat_pct as f32)
-                .element_type(0.0)
-                .deformation(0.0)
-                .pointer_pos(px, py);
-
-            let surfaces = vec![control_hub_card];
             let _ = renderer.render(&surfaces);
             true
         } else {

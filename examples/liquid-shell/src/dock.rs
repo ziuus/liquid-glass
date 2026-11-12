@@ -247,7 +247,7 @@ impl DockWidget {
         let layer_surface = layer_shell.create_layer_surface(
             qh,
             surface.clone(),
-            Layer::Top,
+            Layer::Overlay,
             Some("liquid-glass-dock"),
             None,
         );
@@ -296,15 +296,15 @@ impl DockWidget {
             blur_radius: 0.0,
             anim_speed: 1.0,
 
-            is_compact: true,
+            is_compact: false,
             hover_to_expand: true,
             dock_mode: BottomDockMode::Floating,
-            current_w: DOCK_COMPACT_W,
-            current_h: DOCK_COMPACT_H,
-            current_y: DOCK_COMPACT_Y,
+            current_w: DOCK_EXPANDED_W,
+            current_h: DOCK_EXPANDED_H,
+            current_y: DOCK_EXPANDED_Y,
             compact_w: DOCK_COMPACT_W,
             compact_h: DOCK_COMPACT_H,
-            size_spring: Spring::with_params(0.0, spring_params),
+            size_spring: Spring::with_params(1.0, spring_params),
             last_hover_time: Instant::now() - Duration::from_secs(60),
             needs_input_region_update: true,
 
@@ -347,8 +347,8 @@ impl DockWidget {
         } else {
             // Windows are overlapping underneath the dock
             if let Some((_cx, cy)) = crate::island::IslandWidget::query_hyprland_cursor() {
-                // If cursor is at bottom edge (y >= 1074) or inside dock, keep expanded
-                if cy >= 1074 || self.is_hovered {
+                // If cursor is near bottom edge (y >= 980) or inside dock, keep expanded
+                if cy >= 980 || self.is_hovered {
                     if self.is_compact {
                         self.expand();
                     }

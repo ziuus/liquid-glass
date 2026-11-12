@@ -1766,12 +1766,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let shadow_meniscus = smoothstep(1.8, 0.0, depth) * pow(shadow_facing, 2.0) * 0.035 * top_flush;
         base_surface = col + vec3<f32>(lit_highlight) - vec3<f32>(shadow_meniscus);
     } else {
-        // ── DARK / VIBRANT BACKDROP (e.g. Ferns): LIT SPECULAR + 18% AMBIENT RIM FLOOR ──
+        // ── DARK / VIBRANT BACKDROP (e.g. Ferns): LIT SPECULAR + OPTICAL TRANSPARENCY ──
         let digit_spec_boost = select(1.0, 1.85, is_liquid_text);
         let dark_spec = spec_line * 0.60 * digit_spec_boost;
         let dark_rim = smoothstep(1.2, 0.0, depth) * mix(0.18, 0.40, light_facing) * top_flush;
-        let digit_inner_fill = select(0.0, 0.08, is_liquid_text);
-        let liquid_lift = select(0.0, smoothstep(2.0, 0.0, depth) * 0.35 + digit_inner_fill, is_liquid_text);
+        let digit_inner_fill = select(0.0, 0.012, is_liquid_text);
+        let liquid_lift = select(0.0, smoothstep(1.2, 0.0, depth) * 0.10 + digit_inner_fill, is_liquid_text);
         base_surface = col + vec3<f32>(dark_spec + dark_rim + liquid_lift);
     }
 
