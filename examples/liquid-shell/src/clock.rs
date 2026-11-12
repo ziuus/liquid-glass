@@ -168,7 +168,7 @@ impl ClockWidget {
         let layer_surface = layer_shell.create_layer_surface(
             qh,
             surface.clone(),
-            Layer::Overlay,
+            Layer::Bottom,
             Some("liquid-glass-control-hub"),
             None,
         );
