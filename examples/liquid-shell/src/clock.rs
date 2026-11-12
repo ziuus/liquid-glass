@@ -901,34 +901,30 @@ impl ClockWidget {
                 (cx + 86.0, card_top + 218.0 + slide_y), // Tile 3: Bottom-Right (2x2 Quick Controls)
             ];
 
-            // Draw all 4 modular squircle glass card containers
+            // Draw subtle modular squircle glass card accents (underlying WGPU glass surfaces provide physical refraction & caustics)
             for (i, (tcx, tcy)) in centers.iter().enumerate() {
                 let is_tile_hover = self.hovered_tile == Some(i);
-                let fill_a = if is_tile_hover { 75.0 } else { 55.0 };
-                let bg_col = if is_light {
-                    [255, 255, 255, (fill_a * 1.5 * exp_alpha) as u8]
-                } else {
-                    [14, 22, 38, (fill_a * exp_alpha) as u8]
-                };
+                if is_tile_hover {
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        *tcx,
+                        *tcy,
+                        tile_w * 0.5,
+                        tile_h * 0.5,
+                        tile_r,
+                        [accent[0], accent[1], accent[2], (22.0 * exp_alpha) as u8],
+                    );
+                }
                 let stroke_col = if is_tile_hover {
-                    [accent[0], accent[1], accent[2], (180.0 * exp_alpha) as u8]
+                    [accent[0], accent[1], accent[2], (140.0 * exp_alpha) as u8]
                 } else if is_light {
-                    [200, 215, 235, (120.0 * exp_alpha) as u8]
+                    [255, 255, 255, (60.0 * exp_alpha) as u8]
                 } else {
-                    [65, 130, 240, (75.0 * exp_alpha) as u8]
+                    [80, 150, 255, (40.0 * exp_alpha) as u8]
                 };
 
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    *tcx,
-                    *tcy,
-                    tile_w * 0.5,
-                    tile_h * 0.5,
-                    tile_r,
-                    bg_col,
-                );
                 UIFont::draw_rounded_rect_stroke(
                     buf,
                     self.width,
@@ -938,7 +934,7 @@ impl ClockWidget {
                     tile_w * 0.5,
                     tile_h * 0.5,
                     tile_r,
-                    1.2,
+                    1.0,
                     stroke_col,
                 );
             }
@@ -1555,16 +1551,16 @@ impl ClockWidget {
                     .material(Material::LiquidGlass)
                     .shape(Shape::Capsule)
                     .bounds(x_norm, y_norm, w_norm, h_norm)
-                    .curvature(2.0)
-                    .bevel(12.0)
-                    .refraction(10.0)
-                    .dispersion(0.05)
+                    .curvature(14.0)
+                    .bevel(16.0)
+                    .refraction(16.0)
+                    .dispersion(0.12)
                     .blur(self.blur_radius)
-                    .specular(1.10)
-                    .fresnel(0.55)
+                    .specular(1.15)
+                    .fresnel(0.60)
                     .style_mode(self.style_mode)
                     .tint(0.0, 0.0, 1.0, is_light_f32)
-                    .element_type(0.0)
+                    .element_type(27.0)
                     .deformation(0.0)
                     .pointer_pos(px, py)]
             } else {
@@ -1598,10 +1594,10 @@ impl ClockWidget {
                             .material(Material::LiquidGlass)
                             .shape(Shape::RoundedRectangle { radius: cur_r })
                             .bounds(tx_norm, ty_norm, tw_norm, th_norm)
-                            .curvature(14.0)
-                            .bevel(12.0)
-                            .refraction(12.0)
-                            .dispersion(0.06)
+                            .curvature(16.0)
+                            .bevel(14.0)
+                            .refraction(16.0)
+                            .dispersion(0.12)
                             .blur(self.blur_radius)
                             .specular(1.20)
                             .fresnel(0.65)
@@ -1612,7 +1608,7 @@ impl ClockWidget {
                             } else {
                                 0.0
                             })
-                            .element_type(0.0)
+                            .element_type(27.0)
                             .deformation(0.0)
                             .pointer_pos(px, py)
                     })
