@@ -180,8 +180,8 @@ impl TodoWidget {
     {
         let width = (CARD_W + CARD_PAD * 2.0) as u32; // 408
         let height = (CARD_H + CARD_PAD * 2.0) as u32; // 503
-        let pos_x = 1920i32 - width as i32 - 24; // 1488 (top right corner)
-        let pos_y = 10i32; // Floating top margin with full 360-degree rounded corners
+        let pos_x = 1920i32 - width as i32 - 14; // 1498 (top right corner)
+        let pos_y = 0i32; // Flush to top bezel for attached notch fillets
 
         let surface = compositor.create_surface(qh);
         let layer_surface = layer_shell.create_layer_surface(
@@ -194,7 +194,7 @@ impl TodoWidget {
 
         layer_surface.set_anchor(Anchor::TOP | Anchor::RIGHT);
         layer_surface.set_size(width, height);
-        layer_surface.set_margin(pos_y, 24, 0, 0);
+        layer_surface.set_margin(pos_y, 14, 0, 0);
         layer_surface.set_exclusive_zone(0);
         layer_surface.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
         layer_surface.commit();
@@ -230,7 +230,7 @@ impl TodoWidget {
         let font = QuicksandFont::new();
         let spring_params = SpringParams::bouncy();
 
-        Self {
+        let mut widget = Self {
             layer_surface: Some(layer_surface),
             surface,
             renderer: None,
@@ -304,7 +304,60 @@ impl TodoWidget {
             last_window_check: Instant::now() - std::time::Duration::from_secs(60),
             is_hidden_by_window: false,
             needs_redraw: true,
-            dock_mode: crate::island::IslandDockMode::Floating,
+            dock_mode: crate::island::IslandDockMode::AttachedCurved,
+        };
+        widget.load_config();
+        widget
+    }
+
+    pub fn load_config(&mut self) {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let conf_path = format!("{}/.config/liquid-glass/config.json", home);
+        if let Ok(content) = std::fs::read_to_string(&conf_path) {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(c) = val.get("todo") {
+                    if let Some(edge) = c
+                        .get("edge_style")
+                        .or_else(|| c.get("mode"))
+                        .and_then(|v| v.as_str())
+                    {
+                        self.dock_mode = crate::island::IslandDockMode::from_str(edge);
+                    }
+                    if let Some(s) = c.get("style_mode").and_then(|v| v.as_f64()) {
+                        self.style_mode = s as f32;
+                    }
+                    if let Some(b) = c.get("blur_radius").and_then(|v| v.as_f64()) {
+                        self.blur_radius = b as f32;
+                    }
+                    if let Some(spd) = c.get("animation_speed").and_then(|v| v.as_f64()) {
+                        self.anim_speed = spd as f32;
+                    }
+                    if let Some(hov) = c.get("hover_to_expand").and_then(|v| v.as_bool()) {
+                        self.hover_to_expand = hov;
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn save_config(&self) {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let dir = format!("{}/.config/liquid-glass", home);
+        let conf_path = format!("{}/config.json", dir);
+        let mut root_val = if let Ok(content) = std::fs::read_to_string(&conf_path) {
+            serde_json::from_str::<serde_json::Value>(&content)
+                .unwrap_or_else(|_| serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
+        let mut todo_obj = root_val
+            .get("todo")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+        todo_obj["edge_style"] = serde_json::json!(self.dock_mode.as_str());
+        root_val["todo"] = todo_obj;
+        if let Ok(formatted) = serde_json::to_string_pretty(&root_val) {
+            let _ = std::fs::write(&conf_path, formatted);
         }
     }
 
@@ -424,12 +477,17 @@ impl TodoWidget {
 
     pub fn is_inside(&self, px: f32, py: f32) -> bool {
         let cx = (self.width as f32) * 0.5;
-        let card_top = 8.0;
+        let card_top = self.dock_mode.dock_y();
+        let flare = if self.dock_mode.is_curved() && py <= (card_top + self.fillet_radius) {
+            self.fillet_radius
+        } else {
+            0.0
+        };
         if self.is_compact {
-            let half_w = COMPACT_W * 0.5;
+            let half_w = COMPACT_W * 0.5 + flare;
             px >= (cx - half_w)
                 && px <= (cx + half_w)
-                && (card_top..=(card_top + COMPACT_H)).contains(&py)
+                && (0.0..=(card_top + COMPACT_H)).contains(&py)
         } else {
             let half_w = CARD_W * 0.5;
             px >= (cx - half_w)
@@ -456,12 +514,17 @@ impl TodoWidget {
             return;
         }
         let cx = self.width as i32 / 2;
-        let card_top = 8i32;
+        let card_top = self.dock_mode.dock_y() as i32;
         if self.is_compact {
-            let pill_w = COMPACT_W as i32;
-            let pill_h = COMPACT_H as i32;
-            let pill_x = cx - pill_w / 2;
-            region.add(pill_x, card_top, pill_w, pill_h);
+            let flare = if self.dock_mode.is_curved() {
+                self.fillet_radius as i32
+            } else {
+                0
+            };
+            let pill_w = COMPACT_W as i32 + flare * 2;
+            let pill_h = card_top + COMPACT_H as i32;
+            let pill_x = cx - COMPACT_W as i32 / 2 - flare;
+            region.add(pill_x, 0, pill_w, pill_h);
         } else {
             let card_w = CARD_W as i32;
             let card_h = (self.target_h + 6.0) as i32;
@@ -538,20 +601,12 @@ impl TodoWidget {
                     return false;
                 }
 
-                // Right click toggles attachment mode: Floating -> Attached Straight -> Attached Curved Notch
+                // Right click toggles attachment mode: AttachedCurved -> AttachedStraight -> Floating
                 if button == 273 {
-                    self.dock_mode = match self.dock_mode {
-                        crate::island::IslandDockMode::Floating => {
-                            crate::island::IslandDockMode::AttachedStraight
-                        }
-                        crate::island::IslandDockMode::AttachedStraight => {
-                            crate::island::IslandDockMode::AttachedCurved
-                        }
-                        crate::island::IslandDockMode::AttachedCurved => {
-                            crate::island::IslandDockMode::Floating
-                        }
-                    };
+                    self.dock_mode = self.dock_mode.next();
+                    self.save_config();
                     self.needs_input_region_update = true;
+                    self.needs_redraw = true;
                     return true;
                 }
 
@@ -570,10 +625,11 @@ impl TodoWidget {
                     return false;
                 }
 
+                let card_top = self.dock_mode.dock_y();
                 let half_w = CARD_W * 0.5;
                 let half_h = CARD_H * 0.5;
                 let local_x = lx - half_w;
-                let local_y = (ly - 8.0) - half_h;
+                let local_y = (ly - card_top) - half_h;
 
                 let mut touched_row = None;
                 if self.active_tab == 0 && !is_right {
@@ -830,7 +886,8 @@ impl TodoWidget {
         let half_w = CARD_W * 0.5;
         let half_h = CARD_H * 0.5;
         let local_x = lx - half_w;
-        let local_y = (ly - 8.0) - half_h;
+        let card_top = self.dock_mode.dock_y();
+        let local_y = (ly - card_top) - half_h;
 
         // Check Top Tabs & Header Settings Button (tab_y = -195.0, cy = 32.5)
         if (local_y - (-195.0)).abs() <= 22.0 {
@@ -2107,7 +2164,7 @@ impl TodoWidget {
         let t = self.size_spring.value.clamp(0.0, 1.0);
         let cx = (self.width as f32) * 0.5;
 
-        let card_top = 8.0;
+        let card_top = self.dock_mode.dock_y();
 
         // 1. Render expanded content into overlay_buf if t > 0.05
         if t > 0.05 {
@@ -2156,7 +2213,7 @@ impl TodoWidget {
             };
             let shadow_col = [0, 0, 0, 0];
 
-            let pill_cy = card_top + 15.0; // 23.0
+            let pill_cy = card_top + COMPACT_H * 0.5;
             UIFont::draw_check_icon(
                 &mut overlay_buf,
                 self.width,
@@ -2230,11 +2287,17 @@ impl TodoWidget {
             let w_norm = self.current_w / (self.width as f32);
             let h_norm = self.current_h / (self.height as f32);
 
+            let todo_shape = if t <= 0.05 {
+                Shape::Capsule
+            } else {
+                Shape::RoundedRectangle {
+                    radius: Tokens::RADIUS_OUTER,
+                }
+            };
+
             let todo_card = GlassSurface::new()
                 .material(Material::LiquidGlass)
-                .shape(Shape::RoundedRectangle {
-                    radius: Tokens::RADIUS_OUTER,
-                })
+                .shape(todo_shape)
                 .bounds(x_norm, y_norm, w_norm, h_norm)
                 .curvature(self.fillet_radius)
                 .bevel(12.0)
@@ -2246,8 +2309,8 @@ impl TodoWidget {
                 .specular(1.10)
                 .fresnel(0.55)
                 .style_mode(self.style_mode)
-                .element_type(0.0)
-                .deformation(0.0)
+                .element_type(27.0)
+                .deformation(self.dock_mode.deformation())
                 .pointer_pos(px, py);
 
             let surfaces = vec![todo_card];

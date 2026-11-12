@@ -121,7 +121,7 @@ pub struct ClockWidget {
     pub needs_redraw: bool,
 
     // Attachment mode (right-click cycle)
-    pub attachment_mode: u8, // 0=Floating, 1=AttachedStraight, 2=AttachedCurved
+    pub dock_mode: crate::island::IslandDockMode,
 }
 
 impl ClockWidget {
@@ -163,7 +163,7 @@ impl ClockWidget {
         let width = (CARD_W + CARD_PAD * 2.0) as u32; // 388
         let height = (CARD_H + CARD_PAD * 2.0) as u32; // 334
         let pos_x = 24i32;
-        let pos_y = 10i32; // Floating top margin with full 360-degree rounded corners
+        let pos_y = 0i32; // Flush to top bezel for attached notch fillets
 
         let surface = compositor.create_surface(qh);
         let layer_surface = layer_shell.create_layer_surface(
@@ -257,7 +257,7 @@ impl ClockWidget {
             is_hidden_by_window: false,
             needs_redraw: true,
 
-            attachment_mode: 0,
+            dock_mode: crate::island::IslandDockMode::AttachedCurved,
         };
 
         widget.load_config();
@@ -319,6 +319,13 @@ impl ClockWidget {
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
                 let obj = val.get("control_hub").or_else(|| val.get("clock"));
                 if let Some(c) = obj {
+                    if let Some(edge) = c
+                        .get("edge_style")
+                        .or_else(|| c.get("mode"))
+                        .and_then(|v| v.as_str())
+                    {
+                        self.dock_mode = crate::island::IslandDockMode::from_str(edge);
+                    }
                     if let Some(e) = c.get("enabled").and_then(|v| v.as_bool()) {
                         self.enabled = e;
                     }
@@ -336,6 +343,27 @@ impl ClockWidget {
                     }
                 }
             }
+        }
+    }
+
+    pub fn save_config(&self) {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let dir = format!("{}/.config/liquid-glass", home);
+        let conf_path = format!("{}/config.json", dir);
+        let mut root_val = if let Ok(content) = std::fs::read_to_string(&conf_path) {
+            serde_json::from_str::<serde_json::Value>(&content)
+                .unwrap_or_else(|_| serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
+        let mut clock_obj = root_val
+            .get("clock")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+        clock_obj["edge_style"] = serde_json::json!(self.dock_mode.as_str());
+        root_val["clock"] = clock_obj;
+        if let Ok(formatted) = serde_json::to_string_pretty(&root_val) {
+            let _ = std::fs::write(&conf_path, formatted);
         }
     }
 
@@ -415,12 +443,17 @@ impl ClockWidget {
 
     pub fn is_inside(&self, px: f32, py: f32) -> bool {
         let cx = (self.width as f32) * 0.5;
-        let card_top = 8.0;
+        let card_top = self.dock_mode.dock_y();
+        let flare = if self.dock_mode.is_curved() && py <= (card_top + self.fillet_radius) {
+            self.fillet_radius
+        } else {
+            0.0
+        };
         if self.is_compact {
-            let half_w = COMPACT_W * 0.5;
+            let half_w = COMPACT_W * 0.5 + flare;
             px >= (cx - half_w)
                 && px <= (cx + half_w)
-                && (card_top..=(card_top + COMPACT_H)).contains(&py)
+                && (0.0..=(card_top + COMPACT_H)).contains(&py)
         } else {
             let half_w = CARD_W * 0.5;
             px >= (cx - half_w)
@@ -430,7 +463,7 @@ impl ClockWidget {
     }
 
     fn hit_test_tile(&self, px: f32, py: f32) -> Option<usize> {
-        let card_top = 8.0;
+        let card_top = self.dock_mode.dock_y();
         let cx = (self.width as f32) * 0.5;
         let tile_w = 160.0;
         let tile_h = 132.0;
@@ -449,7 +482,7 @@ impl ClockWidget {
     }
 
     fn hit_test_action_btn(&self, px: f32, py: f32) -> Option<usize> {
-        let card_top = 8.0;
+        let card_top = self.dock_mode.dock_y();
         let cx = (self.width as f32) * 0.5;
         let tx = cx + 86.0;
         let ty = card_top + 218.0;
@@ -482,7 +515,7 @@ impl ClockWidget {
             return;
         }
         let cx = self.width as i32 / 2;
-        let card_top = 8i32;
+        let card_top = self.dock_mode.dock_y() as i32;
         if self.is_hidden_by_window && self.is_compact {
             // Invisible 2px hair strip at top edge for instant touch wake-up
             let pill_w = COMPACT_W as i32;
@@ -494,10 +527,15 @@ impl ClockWidget {
             return;
         }
         if self.is_compact {
-            let pill_w = COMPACT_W as i32;
-            let pill_h = COMPACT_H as i32;
-            let pill_x = cx - pill_w / 2;
-            region.add(pill_x, card_top, pill_w, pill_h);
+            let flare = if self.dock_mode.is_curved() {
+                self.fillet_radius as i32
+            } else {
+                0
+            };
+            let pill_w = COMPACT_W as i32 + flare * 2;
+            let pill_h = card_top + COMPACT_H as i32;
+            let pill_x = cx - COMPACT_W as i32 / 2 - flare;
+            region.add(pill_x, 0, pill_w, pill_h);
         } else {
             let card_w = CARD_W as i32;
             let card_h = CARD_H as i32;
@@ -576,9 +614,12 @@ impl ClockWidget {
                 if !self.is_inside(px, py) {
                     return false;
                 }
-                // Right-click: cycle attachment mode (Floating→Straight→Curved→Floating)
+                // Right-click: cycle attachment mode (AttachedCurved→AttachedStraight→Floating)
                 if button == 273 {
-                    self.attachment_mode = (self.attachment_mode + 1) % 3;
+                    self.dock_mode = self.dock_mode.next();
+                    self.save_config();
+                    self.needs_input_region_update = true;
+                    self.needs_redraw = true;
                     return true;
                 }
                 if self.is_compact {
@@ -589,7 +630,7 @@ impl ClockWidget {
                 self.last_hover_time = Instant::now();
 
                 // Page indicator click (switch pages)
-                let card_top = 8.0f32;
+                let card_top = self.dock_mode.dock_y();
                 if py >= (card_top + CARD_H - 24.0)
                     && (px - (self.width as f32 * 0.5)).abs() <= 40.0
                 {
@@ -734,8 +775,8 @@ impl ClockWidget {
             let accent = Tokens::ACCENT;
             let accent_col = [accent[0], accent[1], accent[2], alpha_u8];
 
-            let card_top = 8.0f32;
-            let pill_cy = card_top + COMPACT_H * 0.5; // 8.0 + 16.0 = 24.0
+            let card_top = self.dock_mode.dock_y();
+            let pill_cy = card_top + COMPACT_H * 0.5;
 
             let now = Local::now();
 
@@ -872,7 +913,7 @@ impl ClockWidget {
             let exp_alpha = ((t - 0.1) / 0.9).clamp(0.0, 1.0);
             let alpha_u8 = (255.0 * exp_alpha) as u8;
             let slide_y = (1.0 - t) * -20.0;
-            let card_top = 8.0;
+            let card_top = self.dock_mode.dock_y();
 
             let col_p = if is_light {
                 [10, 14, 22, alpha_u8]
@@ -1537,7 +1578,7 @@ impl ClockWidget {
             let cx = (self.width as f32) * 0.5;
             let sw = self.width as f32;
             let sh = self.height as f32;
-            let card_top = 8.0;
+            let card_top = self.dock_mode.dock_y();
             let t = self.size_spring.value.clamp(0.0, 1.0);
 
             let surfaces: Vec<GlassSurface> = if t <= 0.05 {
@@ -1561,7 +1602,7 @@ impl ClockWidget {
                     .style_mode(self.style_mode)
                     .tint(0.0, 0.0, 1.0, is_light_f32)
                     .element_type(27.0)
-                    .deformation(0.0)
+                    .deformation(self.dock_mode.deformation())
                     .pointer_pos(px, py)]
             } else {
                 let slide_y = (1.0 - t) * -20.0;
@@ -1580,7 +1621,8 @@ impl ClockWidget {
                     .enumerate()
                     .map(|(i, (tcx, tcy))| {
                         let cur_cx = cx + (tcx - cx) * t;
-                        let cur_cy = 23.0 + (tcy - 23.0) * t;
+                        let init_cy = card_top + COMPACT_H * 0.5;
+                        let cur_cy = init_cy + (tcy - init_cy) * t;
                         let cur_w = (COMPACT_W * 0.45) * (1.0 - t) + tile_w * t;
                         let cur_h = 28.0 * (1.0 - t) + tile_h * t;
                         let cur_r = 14.0 * (1.0 - t) + tile_r * t;
