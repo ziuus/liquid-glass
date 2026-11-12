@@ -16,7 +16,7 @@ use smithay_client_toolkit::shell::wlr_layer::{
 };
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use wayland_backend::client::ObjectId;
 use wayland_client::protocol::{wl_region, wl_surface};
 use wayland_client::{Dispatch, Proxy, QueueHandle};
@@ -149,6 +149,13 @@ pub struct TodoWidget {
     pub fillet_radius: f32,
     pub last_hover_time: Instant,
     pub needs_input_region_update: bool,
+
+    #[allow(dead_code)]
+    pub is_window_overlapping: bool,
+    #[allow(dead_code)]
+    pub last_window_check: Instant,
+    pub is_hidden_by_window: bool,
+    pub dock_mode: crate::island::IslandDockMode,
 }
 
 impl TodoWidget {
@@ -291,6 +298,50 @@ impl TodoWidget {
             fillet_radius: 18.0,
             last_hover_time: Instant::now() - std::time::Duration::from_secs(60),
             needs_input_region_update: true,
+
+            is_window_overlapping: false,
+            last_window_check: Instant::now() - std::time::Duration::from_secs(60),
+            is_hidden_by_window: false,
+            dock_mode: crate::island::IslandDockMode::Floating,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn check_window_overlap(&mut self) {
+        if self.last_window_check.elapsed() < Duration::from_millis(400) {
+            return;
+        }
+        self.last_window_check = Instant::now();
+
+        let check_w = self.current_w as i32;
+        let mon_w = 1920;
+        let check_x = mon_w - self.pos_x - check_w;
+        let check_y = self.pos_y;
+        let check_h = 45i32;
+
+        let overlapping =
+            crate::island::IslandWidget::query_hyprland_overlap(check_x, check_y, check_w, check_h);
+        if overlapping != self.is_window_overlapping {
+            self.is_window_overlapping = overlapping;
+            self.needs_input_region_update = true;
+        }
+
+        if !overlapping {
+            // Empty desktop: always show tasks pill on wallpaper
+            self.is_hidden_by_window = false;
+        } else {
+            // Window overlapping: check cursor
+            if let Some((cx, cy)) = crate::island::IslandWidget::query_hyprland_cursor() {
+                let is_at_top_edge = (check_x - 40..=mon_w).contains(&cx) && cy <= 10;
+                if is_at_top_edge || self.is_hovered || !self.is_compact {
+                    self.is_hidden_by_window = false;
+                    self.last_hover_time = Instant::now();
+                } else if self.last_hover_time.elapsed() >= Duration::from_millis(1000) {
+                    self.is_hidden_by_window = true;
+                }
+            } else if !self.is_hovered && self.is_compact {
+                self.is_hidden_by_window = true;
+            }
         }
     }
 
@@ -381,6 +432,12 @@ impl TodoWidget {
     {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
+        if self.is_hidden_by_window && self.is_compact {
+            self.surface.set_input_region(Some(&region));
+            region.destroy();
+            self.surface.commit();
+            return;
+        }
         let cx = self.width as i32 / 2;
         let card_top = 8i32;
         if self.is_compact {
@@ -454,6 +511,24 @@ impl TodoWidget {
                 if !self.is_inside(px, py) {
                     return false;
                 }
+
+                // Right click toggles attachment mode: Floating -> Attached Straight -> Attached Curved Notch
+                if button == 273 {
+                    self.dock_mode = match self.dock_mode {
+                        crate::island::IslandDockMode::Floating => {
+                            crate::island::IslandDockMode::AttachedStraight
+                        }
+                        crate::island::IslandDockMode::AttachedStraight => {
+                            crate::island::IslandDockMode::AttachedCurved
+                        }
+                        crate::island::IslandDockMode::AttachedCurved => {
+                            crate::island::IslandDockMode::Floating
+                        }
+                    };
+                    self.needs_input_region_update = true;
+                    return true;
+                }
+
                 if self.is_compact {
                     self.expand();
                     return true;
@@ -1967,6 +2042,15 @@ impl TodoWidget {
     }
 
     pub fn draw(&mut self) -> bool {
+        if self.is_hidden_by_window && self.is_compact {
+            if let Some(renderer) = &mut self.renderer {
+                self.overlay_buffer.fill(0);
+                renderer.update_overlay(self.width, self.height, &self.overlay_buffer);
+                let _ = renderer.render(&[]);
+            }
+            return false;
+        }
+
         let (item_count, bitmask) = if self.active_tab == 0 {
             let visible_indices = self.filtered_indices();
             let mut bm = 0u32;

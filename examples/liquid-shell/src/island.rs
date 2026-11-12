@@ -844,7 +844,7 @@ impl IslandWidget {
                 }
                 true
             }
-            PointerEventKind::Press { .. } => {
+            PointerEventKind::Press { button, .. } => {
                 let lx = event.position.0 as f32;
                 let ly = event.position.1 as f32;
                 let inside = self.is_inside_island(lx, ly);
@@ -856,6 +856,18 @@ impl IslandWidget {
                     if self.mode != IslandMode::CompactPill && self.mode != IslandMode::Hidden {
                         self.set_mode(IslandMode::CompactPill);
                     }
+                    return true;
+                }
+
+                // Right click toggles attachment mode: Floating -> Attached Straight -> Attached Curved Notch
+                if button == 273 {
+                    self.dock_mode = match self.dock_mode {
+                        IslandDockMode::Floating => IslandDockMode::AttachedStraight,
+                        IslandDockMode::AttachedStraight => IslandDockMode::AttachedCurved,
+                        IslandDockMode::AttachedCurved => IslandDockMode::Floating,
+                    };
+                    self.needs_input_region_update = true;
+                    self.animating = true;
                     return true;
                 }
 

@@ -118,6 +118,9 @@ pub struct ClockWidget {
     pub is_window_overlapping: bool,
     pub last_window_check: Instant,
     pub is_hidden_by_window: bool,
+
+    // Attachment mode (right-click cycle)
+    pub attachment_mode: u8, // 0=Floating, 1=AttachedStraight, 2=AttachedCurved
 }
 
 impl ClockWidget {
@@ -251,6 +254,8 @@ impl ClockWidget {
             is_window_overlapping: false,
             last_window_check: Instant::now() - Duration::from_secs(60),
             is_hidden_by_window: false,
+
+            attachment_mode: 0,
         };
 
         widget.load_config();
@@ -259,7 +264,7 @@ impl ClockWidget {
     }
 
     pub fn check_window_overlap(&mut self) {
-        if self.last_window_check.elapsed() < Duration::from_millis(500) {
+        if self.last_window_check.elapsed() < Duration::from_millis(400) {
             return;
         }
         self.last_window_check = Instant::now();
@@ -276,8 +281,25 @@ impl ClockWidget {
             self.needs_input_region_update = true;
         }
 
-        // Always stay visible and interactive above apps
-        self.is_hidden_by_window = false;
+        if !overlapping {
+            // Empty desktop: always show compact pill
+            self.is_hidden_by_window = false;
+        } else {
+            // Window overlapping: hide unless cursor is near top-left edge or we're hovered/expanded
+            if let Some((cx, cy)) = crate::island::IslandWidget::query_hyprland_cursor() {
+                let mon_w = 1920i32;
+                let is_at_top_edge = cx <= (self.pos_x + check_w + 40) && cy <= 10;
+                if is_at_top_edge || self.is_hovered || !self.is_compact {
+                    self.is_hidden_by_window = false;
+                    self.last_hover_time = Instant::now();
+                } else if self.last_hover_time.elapsed() >= Duration::from_millis(1200) {
+                    self.is_hidden_by_window = true;
+                    let _ = mon_w; // suppress unused warning
+                }
+            } else if !self.is_hovered && self.is_compact {
+                self.is_hidden_by_window = true;
+            }
+        }
     }
 
     pub fn load_config(&mut self) {
@@ -443,7 +465,7 @@ impl ClockWidget {
     {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
-        if !self.enabled {
+        if !self.enabled || (self.is_hidden_by_window && self.is_compact) {
             self.surface.set_input_region(Some(&region));
             region.destroy();
             self.surface.commit();
@@ -519,11 +541,16 @@ impl ClockWidget {
                 }
                 true
             }
-            PointerEventKind::Press { .. } => {
+            PointerEventKind::Press { button, .. } => {
                 let px = event.position.0 as f32;
                 let py = event.position.1 as f32;
                 if !self.is_inside(px, py) {
                     return false;
+                }
+                // Right-click: cycle attachment mode (Floating→Straight→Curved→Floating)
+                if button == 273 {
+                    self.attachment_mode = (self.attachment_mode + 1) % 3;
+                    return true;
                 }
                 if self.is_compact {
                     self.expand();
@@ -616,7 +643,7 @@ impl ClockWidget {
         let t = self.size_spring.value.clamp(0.0, 1.0);
         let is_light = self.effective_is_light();
 
-        let ram_pct = if self.sys_stats.ram_total_gb > 0.0 {
+        let _ram_pct = if self.sys_stats.ram_total_gb > 0.0 {
             ((self.sys_stats.ram_used_gb / self.sys_stats.ram_total_gb) * 100.0).clamp(0.0, 100.0)
                 as u32
         } else {
@@ -624,139 +651,181 @@ impl ClockWidget {
         };
 
         // ══════════════════════════════════════════════════════════════
-        // 1. COMPACT OVERVIEW PILL (t < 0.35)
+        // 1. COMPACT OVERVIEW PILL — clean minimal design
+        //    Left: time (HH:MM) · Center: thin dividers · Right: status
         // ══════════════════════════════════════════════════════════════
         if t < 0.35 {
             let comp_alpha = ((0.35 - t) / 0.35).clamp(0.0, 1.0);
             let alpha_u8 = (255.0 * comp_alpha) as u8;
+            // High-contrast ink that works on any wallpaper
             let ink_col = if is_light {
-                [10, 14, 22, alpha_u8]
+                [8, 10, 18, alpha_u8]
             } else {
-                [255, 255, 255, alpha_u8]
+                [248, 250, 255, alpha_u8]
             };
             let sub_ink = if is_light {
-                [60, 75, 95, (190.0 * comp_alpha) as u8]
+                [80, 95, 115, (200.0 * comp_alpha) as u8]
             } else {
-                [180, 195, 220, (170.0 * comp_alpha) as u8]
+                [190, 205, 225, (180.0 * comp_alpha) as u8]
+            };
+            let divider_col = if is_light {
+                [0, 0, 0, (50.0 * comp_alpha) as u8]
+            } else {
+                [255, 255, 255, (40.0 * comp_alpha) as u8]
             };
 
-            let card_top = 8.0;
-            let pill_cy = card_top + 15.0;
+            let card_top = 8.0f32;
+            let pill_cy = card_top + COMPACT_H * 0.5;
 
-            // Lookmaxed telemetry: 3 symmetrically centered segments across 176px capsule
-            let cpu_str = format!("{}%", self.sys_stats.cpu_pct);
-            let ram_str = format!("{}%", ram_pct);
-            let bat_str = format!("{}%", self.sys_stats.bat_pct);
-
-            let font_size = 10.0;
-            let icon_w = 12.0f32;
-            let gap = 5.5f32;
-
-            // Segment 0: CPU (slot center at cx - 48.0)
-            let seg0_cx = cx - 48.0;
-            let cpu_w = self
+            // ── Time (left-center of pill) ──
+            let now = Local::now();
+            let time_str = now.format("%H:%M").to_string();
+            let time_size = 11.5f32;
+            let time_w = self
                 .font
-                .measure_text(&cpu_str, font_size, FontWeight::SemiBold);
-            let block0_w = icon_w + gap + cpu_w;
-            let start0_x = seg0_cx - block0_w * 0.5;
-            let cpu_icon_cx = start0_x + icon_w * 0.5;
-            let cpu_text_x = start0_x + icon_w + gap;
+                .measure_text(&time_str, time_size, FontWeight::Bold);
+            // Position: start of text at cx - 72 (pill left = cx - 88)
+            let time_x = cx - 72.0;
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                &time_str,
+                time_x,
+                pill_cy,
+                time_size,
+                ink_col,
+                [0, 0, 0, 0],
+                FontWeight::Bold,
+            );
 
-            UIFont::draw_cpu_icon(buf, self.width, self.height, cpu_icon_cx, pill_cy, ink_col);
+            // ── Thin hairline divider after time ──
+            let div1_x = cx - 72.0 + time_w + 10.0;
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                div1_x,
+                pill_cy,
+                0.5,
+                8.0,
+                0.5,
+                divider_col,
+            );
+
+            // ── CPU % (compact, no icon — just value) ──
+            let cpu_str = format!("{}%", self.sys_stats.cpu_pct);
+            let cpu_size = 10.0f32;
+            let cpu_x = div1_x + 10.0;
             self.font.draw_text_centered_y(
                 buf,
                 self.width,
                 self.height,
                 &cpu_str,
-                cpu_text_x,
-                pill_cy,
-                font_size,
-                ink_col,
-                col_shadow,
+                cpu_x,
+                pill_cy - 4.0,
+                cpu_size,
+                sub_ink,
+                [0, 0, 0, 0],
                 FontWeight::SemiBold,
             );
-
-            // Divider 1 (hairline dot centered at cx - 24.0)
-            UIFont::draw_rounded_rect_fill(
-                buf,
-                self.width,
-                self.height,
-                cx - 24.0,
-                pill_cy,
-                1.0,
-                1.0,
-                1.0,
-                sub_ink,
-            );
-
-            // Segment 1: RAM (slot center at cx)
-            let seg1_cx = cx;
-            let ram_w = self
-                .font
-                .measure_text(&ram_str, font_size, FontWeight::SemiBold);
-            let block1_w = icon_w + gap + ram_w;
-            let start1_x = seg1_cx - block1_w * 0.5;
-            let ram_icon_cx = start1_x + icon_w * 0.5;
-            let ram_text_x = start1_x + icon_w + gap;
-
-            UIFont::draw_ram_icon(buf, self.width, self.height, ram_icon_cx, pill_cy, ink_col);
+            // Label below
+            let cpu_lw = self.font.measure_text("CPU", 7.5, FontWeight::Medium);
             self.font.draw_text_centered_y(
                 buf,
                 self.width,
                 self.height,
-                &ram_str,
-                ram_text_x,
-                pill_cy,
-                font_size,
-                ink_col,
-                col_shadow,
-                FontWeight::SemiBold,
+                "CPU",
+                cpu_x
+                    + self
+                        .font
+                        .measure_text(&cpu_str, cpu_size, FontWeight::SemiBold)
+                        * 0.5
+                    - cpu_lw * 0.5,
+                pill_cy + 5.0,
+                7.5,
+                divider_col,
+                [0, 0, 0, 0],
+                FontWeight::Medium,
             );
 
-            // Divider 2 (hairline dot centered at cx + 24.0)
+            // ── Thin hairline divider ──
+            let div2_x = cpu_x
+                + self
+                    .font
+                    .measure_text(&cpu_str, cpu_size, FontWeight::SemiBold)
+                + 10.0;
             UIFont::draw_rounded_rect_fill(
                 buf,
                 self.width,
                 self.height,
-                cx + 24.0,
+                div2_x,
                 pill_cy,
-                1.0,
-                1.0,
-                1.0,
-                sub_ink,
+                0.5,
+                8.0,
+                0.5,
+                divider_col,
             );
 
-            // Segment 2: Battery (slot center at cx + 48.0)
-            let seg2_cx = cx + 48.0;
-            let bat_w = self
-                .font
-                .measure_text(&bat_str, font_size, FontWeight::SemiBold);
-            let block2_w = icon_w + gap + bat_w;
-            let start2_x = seg2_cx - block2_w * 0.5;
-            let bat_icon_cx = start2_x + icon_w * 0.5;
-            let bat_text_x = start2_x + icon_w + gap;
-
-            UIFont::draw_battery_icon(
-                buf,
-                self.width,
-                self.height,
-                bat_icon_cx,
-                pill_cy,
-                self.sys_stats.bat_pct,
-                self.sys_stats.bat_charging,
-                ink_col,
-            );
+            // ── Battery status (right segment) ──
+            let bat_pct = self.sys_stats.bat_pct;
+            let bat_str = format!("{}%", bat_pct);
+            let bat_x = div2_x + 10.0;
+            // Battery color: green OK, yellow caution, red low
+            let bat_ink = if bat_pct < 20 {
+                [255, 80, 70, alpha_u8]
+            } else if bat_pct < 40 {
+                [255, 180, 50, alpha_u8]
+            } else {
+                ink_col
+            };
+            if self.sys_stats.bat_charging {
+                // small amber dot to indicate charging
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    bat_x
+                        + self
+                            .font
+                            .measure_text(&bat_str, cpu_size, FontWeight::SemiBold)
+                        + 5.0,
+                    pill_cy - 4.0,
+                    2.5,
+                    2.5,
+                    2.5,
+                    [255, 190, 60, alpha_u8],
+                );
+            }
             self.font.draw_text_centered_y(
                 buf,
                 self.width,
                 self.height,
                 &bat_str,
-                bat_text_x,
-                pill_cy,
-                font_size,
-                ink_col,
-                col_shadow,
+                bat_x,
+                pill_cy - 4.0,
+                cpu_size,
+                bat_ink,
+                [0, 0, 0, 0],
                 FontWeight::SemiBold,
+            );
+            let bat_lw = self.font.measure_text("BAT", 7.5, FontWeight::Medium);
+            self.font.draw_text_centered_y(
+                buf,
+                self.width,
+                self.height,
+                "BAT",
+                bat_x
+                    + self
+                        .font
+                        .measure_text(&bat_str, cpu_size, FontWeight::SemiBold)
+                        * 0.5
+                    - bat_lw * 0.5,
+                pill_cy + 5.0,
+                7.5,
+                divider_col,
+                [0, 0, 0, 0],
+                FontWeight::Medium,
             );
         }
 
@@ -1352,7 +1421,7 @@ impl ClockWidget {
     }
 
     pub fn draw(&mut self) -> bool {
-        if !self.enabled {
+        if !self.enabled || (self.is_hidden_by_window && self.is_compact) {
             if let Some(renderer) = &mut self.renderer {
                 self.overlay_buffer.fill(0);
                 renderer.update_overlay(self.width, self.height, &self.overlay_buffer);

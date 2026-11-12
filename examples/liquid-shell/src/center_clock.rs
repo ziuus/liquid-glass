@@ -423,7 +423,7 @@ impl CenterHeroClock {
             // AM/PM Crystalline Badge snuggly aligned with proportional optical digits
             let get_dig_bounds = |d: u32| -> (f32, f32) {
                 if d == 1 {
-                    (-1.8, 0.3)
+                    (-1.3, 1.3)
                 } else {
                     (-2.4, 2.4)
                 }

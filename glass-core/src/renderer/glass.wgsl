@@ -419,8 +419,8 @@ fn draw_digit(p: vec2<f32>, dig: u32, scale: f32) -> f32 {
 // ── Soft Glowing Pulsing Colon SDF ──
 fn draw_colon(p: vec2<f32>, scale: f32) -> f32 {
     let q = p / scale;
-    let d_top = length(q - vec2<f32>(0.0, -1.8));
-    let d_bot = length(q - vec2<f32>(0.0, 1.8));
+    let d_top = length(q - vec2<f32>(0.0, -1.15));
+    let d_bot = length(q - vec2<f32>(0.0, 1.15));
     return min(d_top, d_bot) * scale;
 }
 
@@ -660,8 +660,8 @@ fn draw_apple_digit(p: vec2<f32>, dig: u32, scale: f32) -> f32 {
         }
         case 1u: {
             // Vertical rounded column with curved top beak
-            let stem = dist_segment(q, vec2<f32>(0.0, -5.0), vec2<f32>(0.0, 5.0));
-            let beak = dist_segment(q, vec2<f32>(-1.8, -3.2), vec2<f32>(0.0, -5.0));
+            let stem = dist_segment(q, vec2<f32>(0.5, -5.0), vec2<f32>(0.5, 5.0));
+            let beak = dist_segment(q, vec2<f32>(-1.3, -3.2), vec2<f32>(0.5, -5.0));
             d = min(stem, beak);
         }
         case 2u: {
@@ -735,7 +735,7 @@ fn draw_apple_digit(p: vec2<f32>, dig: u32, scale: f32) -> f32 {
 // ── Physical Liquid Glass 3D Text SDF (Pure 3D Snell Refraction Numerals) ──
 fn get_liquid_digit_bounds(dig: u32) -> vec2<f32> {
     if dig == 1u {
-        return vec2<f32>(-1.8, 0.3);
+        return vec2<f32>(-1.3, 1.3);
     }
     return vec2<f32>(-2.4, 2.4);
 }
@@ -1766,12 +1766,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let shadow_meniscus = smoothstep(1.8, 0.0, depth) * pow(shadow_facing, 2.0) * 0.035 * top_flush;
         base_surface = col + vec3<f32>(lit_highlight) - vec3<f32>(shadow_meniscus);
     } else {
-        // ── DARK / VIBRANT BACKDROP (e.g. Ferns): LIT SPECULAR + OPTICAL TRANSPARENCY ──
+        // ── DARK / VIBRANT BACKDROP (e.g. Ferns, Retro, Pitch Black): LIT SPECULAR + ADAPTIVE LEGIBILITY ──
         let digit_spec_boost = select(1.0, 1.85, is_liquid_text);
         let dark_spec = spec_line * 0.60 * digit_spec_boost;
         let dark_rim = smoothstep(1.2, 0.0, depth) * mix(0.18, 0.40, light_facing) * top_flush;
-        let digit_inner_fill = select(0.0, 0.012, is_liquid_text);
-        let liquid_lift = select(0.0, smoothstep(1.2, 0.0, depth) * 0.10 + digit_inner_fill, is_liquid_text);
+        let bg_lum = dot(col, vec3<f32>(0.299, 0.587, 0.114));
+        let adaptive_lift = select(0.0, (1.0 - smoothstep(0.0, 0.35, bg_lum)) * 0.14, is_liquid_text);
+        let digit_inner_fill = select(0.0, 0.012 + adaptive_lift, is_liquid_text);
+        let liquid_lift = select(0.0, smoothstep(1.2, 0.0, depth) * (0.10 + adaptive_lift * 0.5) + digit_inner_fill, is_liquid_text);
         base_surface = col + vec3<f32>(dark_spec + dark_rim + liquid_lift);
     }
 

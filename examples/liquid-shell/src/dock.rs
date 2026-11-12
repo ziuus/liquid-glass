@@ -684,12 +684,24 @@ impl DockWidget {
                 }
                 true
             }
-            PointerEventKind::Press { .. } => {
+            PointerEventKind::Press { button, .. } => {
                 let px = event.position.0 as f32;
                 let py = event.position.1 as f32;
                 if !self.is_inside(px, py) {
                     return false;
                 }
+
+                // Right click toggles attachment mode: Floating -> Attached Straight -> Attached Curved Notch
+                if button == 273 {
+                    self.dock_mode = match self.dock_mode {
+                        BottomDockMode::Floating => BottomDockMode::AttachedStraight,
+                        BottomDockMode::AttachedStraight => BottomDockMode::AttachedCurved,
+                        BottomDockMode::AttachedCurved => BottomDockMode::Floating,
+                    };
+                    self.needs_input_region_update = true;
+                    return true;
+                }
+
                 if self.is_compact {
                     self.expand();
                     return true;
