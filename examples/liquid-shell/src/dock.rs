@@ -218,6 +218,7 @@ pub struct DockWidget {
 
     pub is_window_overlapping: bool,
     pub last_window_check: Instant,
+    pub hot_edge_dwell_start: Option<Instant>,
     pub needs_redraw: bool,
 }
 
@@ -315,6 +316,7 @@ impl DockWidget {
 
             is_window_overlapping: false,
             last_window_check: Instant::now() - Duration::from_secs(60),
+            hot_edge_dwell_start: None,
             needs_redraw: true,
         };
 
@@ -324,7 +326,7 @@ impl DockWidget {
     }
 
     pub fn check_window_overlap(&mut self) {
-        if self.last_window_check.elapsed() < Duration::from_millis(300) {
+        if self.last_window_check.elapsed() < Duration::from_millis(150) {
             return;
         }
         self.last_window_check = Instant::now();
@@ -344,24 +346,65 @@ impl DockWidget {
 
         if !overlapping {
             // Empty desktop: dock should always show in all its glory!
+            self.hot_edge_dwell_start = None;
             if self.is_compact {
                 self.expand();
                 self.needs_redraw = true;
             }
         } else {
             // Windows are overlapping underneath the dock
-            if let Some((_cx, cy)) = crate::island::IslandWidget::query_hyprland_cursor() {
-                // If cursor is near bottom edge (y >= 980) or inside dock, keep expanded
-                if cy >= 980 || self.is_hovered {
-                    if self.is_compact {
+            if let Some((cx, cy)) = crate::island::IslandWidget::query_hyprland_cursor() {
+                let mon_w = 1920i32;
+                let mon_h = 1080i32;
+                let dock_w = if self.is_compact {
+                    self.compact_w as i32
+                } else {
+                    DOCK_EXPANDED_W as i32
+                };
+                let dock_left = (mon_w - dock_w) / 2;
+                let dock_right = dock_left + dock_w;
+
+                // Precision hot edge trigger: within 4px of screen bottom AND centered in dock zone
+                let is_at_bottom_edge =
+                    (dock_left - 30..=dock_right + 30).contains(&cx) && cy >= (mon_h - 4);
+                let is_inside_dock_area =
+                    (dock_left..=dock_right).contains(&cx) && cy >= (mon_h - 110);
+
+                if self.is_hovered || (is_inside_dock_area && !self.is_compact) {
+                    self.last_hover_time = Instant::now();
+                    self.hot_edge_dwell_start = None;
+                    if self.is_compact && self.hover_to_expand {
                         self.expand();
                         self.needs_redraw = true;
                     }
                     return;
                 }
+
+                if is_at_bottom_edge {
+                    let elapsed = self
+                        .hot_edge_dwell_start
+                        .get_or_insert_with(Instant::now)
+                        .elapsed();
+                    if elapsed >= Duration::from_millis(200) {
+                        self.last_hover_time = Instant::now();
+                        if self.is_compact {
+                            self.expand();
+                            self.needs_redraw = true;
+                        }
+                    }
+                    return;
+                } else {
+                    self.hot_edge_dwell_start = None;
+                }
+            } else {
+                self.hot_edge_dwell_start = None;
             }
-            // Outside dock while an app window overlaps: auto-hide so it doesn't block the app!
-            if !self.is_hovered && !self.is_compact {
+
+            // Outside dock while an app window overlaps: auto-hide after 800ms grace period
+            if !self.is_hovered
+                && !self.is_compact
+                && self.last_hover_time.elapsed() >= Duration::from_millis(800)
+            {
                 self.collapse();
                 self.needs_redraw = true;
             }
@@ -681,11 +724,6 @@ impl DockWidget {
                 self.pressed_item = None;
                 self.needs_redraw = true;
                 self.needs_input_region_update = true;
-                // Only collapse on leave if windows are overlapping underneath!
-                // On empty desktop, the dock always stays showing!
-                if self.is_window_overlapping && !self.is_compact {
-                    self.collapse();
-                }
                 true
             }
             PointerEventKind::Motion { .. } => {
