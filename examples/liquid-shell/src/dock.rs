@@ -217,8 +217,6 @@ pub struct DockWidget {
     pub pressed_item: Option<usize>,
 
     pub is_window_overlapping: bool,
-    pub is_hot_edge_hovered: bool,
-    pub hot_edge_dwell_start: Option<Instant>,
     pub last_window_check: Instant,
     pub needs_redraw: bool,
 }
@@ -316,8 +314,6 @@ impl DockWidget {
             pressed_item: None,
 
             is_window_overlapping: false,
-            is_hot_edge_hovered: false,
-            hot_edge_dwell_start: None,
             last_window_check: Instant::now() - Duration::from_secs(60),
             needs_redraw: true,
         };
@@ -328,12 +324,7 @@ impl DockWidget {
     }
 
     pub fn check_window_overlap(&mut self) {
-        let check_interval = if self.is_compact && self.is_window_overlapping {
-            Duration::from_millis(150)
-        } else {
-            Duration::from_millis(300)
-        };
-        if self.last_window_check.elapsed() < check_interval {
+        if self.last_window_check.elapsed() < Duration::from_millis(300) {
             return;
         }
         self.last_window_check = Instant::now();
@@ -353,52 +344,26 @@ impl DockWidget {
 
         if !overlapping {
             // Empty desktop: dock should always show in all its glory!
-            self.is_hot_edge_hovered = false;
-            self.hot_edge_dwell_start = None;
             if self.is_compact {
                 self.expand();
                 self.needs_redraw = true;
             }
         } else {
             // Windows are overlapping underneath the dock
-            if let Some((cx, cy)) = crate::island::IslandWidget::query_hyprland_cursor() {
-                // Hot bottom edge (cy >= 1079) with intentional dwell
-                let is_at_bottom_edge = cy >= 1079;
-                let dock_w = self.current_w as i32;
-                let dock_left = 960 - dock_w / 2;
-                let dock_right = dock_left + dock_w;
-                let is_inside_dock = (cx >= dock_left && cx <= dock_right) && cy >= (1080 - 110);
-
-                if is_at_bottom_edge {
-                    let now = Instant::now();
-                    let dwell = self.hot_edge_dwell_start.get_or_insert(now);
-                    if now.duration_since(*dwell) >= Duration::from_millis(150) {
-                        self.is_hot_edge_hovered = true;
-                        if self.is_compact {
-                            self.expand();
-                            self.needs_redraw = true;
-                        }
-                        self.last_hover_time = now;
+            if let Some((_cx, cy)) = crate::island::IslandWidget::query_hyprland_cursor() {
+                // If cursor is near bottom edge (y >= 980) or inside dock, keep expanded
+                if cy >= 980 || self.is_hovered {
+                    if self.is_compact {
+                        self.expand();
+                        self.needs_redraw = true;
                     }
-                } else {
-                    self.hot_edge_dwell_start = None;
-                    self.is_hot_edge_hovered = false;
-
-                    if !self.is_compact {
-                        if is_inside_dock || self.is_hovered {
-                            self.last_hover_time = Instant::now();
-                        } else if self.last_hover_time.elapsed() >= Duration::from_millis(350) {
-                            self.collapse();
-                            self.needs_redraw = true;
-                        }
-                    }
+                    return;
                 }
-            } else {
-                self.is_hot_edge_hovered = false;
-                if !self.is_compact {
-                    self.collapse();
-                    self.needs_redraw = true;
-                }
+            }
+            // Outside dock while an app window overlaps: auto-hide so it doesn't block the app!
+            if !self.is_hovered && !self.is_compact {
+                self.collapse();
+                self.needs_redraw = true;
             }
         }
     }
@@ -617,7 +582,9 @@ impl DockWidget {
         let region = compositor.wl_compositor().create_region(qh, ());
         let cx = self.width as i32 / 2;
         if self.is_window_overlapping && self.is_compact && !self.is_hovered {
-            // Keep region completely empty so apps receive 100% of mouse events
+            // Invisible 2px hair strip at bottom edge so apps are 100% clickable
+            let pill_y = self.height as i32 - 2;
+            region.add(cx - 200, pill_y, 400, 2);
             self.surface.set_input_region(Some(&region));
             region.destroy();
             self.surface.commit();

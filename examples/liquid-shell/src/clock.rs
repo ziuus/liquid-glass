@@ -116,8 +116,6 @@ pub struct ClockWidget {
     pub power_hold_progress: f32,
 
     pub is_window_overlapping: bool,
-    pub is_hot_edge_hovered: bool,
-    pub hot_edge_dwell_start: Option<Instant>,
     pub last_window_check: Instant,
     pub is_hidden_by_window: bool,
     pub needs_redraw: bool,
@@ -255,8 +253,6 @@ impl ClockWidget {
             power_hold_progress: 0.0,
 
             is_window_overlapping: false,
-            is_hot_edge_hovered: false,
-            hot_edge_dwell_start: None,
             last_window_check: Instant::now() - Duration::from_secs(60),
             is_hidden_by_window: false,
             needs_redraw: true,
@@ -270,12 +266,7 @@ impl ClockWidget {
     }
 
     pub fn check_window_overlap(&mut self) {
-        let check_interval = if self.is_hidden_by_window {
-            Duration::from_millis(150)
-        } else {
-            Duration::from_millis(300)
-        };
-        if self.last_window_check.elapsed() < check_interval {
+        if self.last_window_check.elapsed() < Duration::from_millis(300) {
             return;
         }
         self.last_window_check = Instant::now();
@@ -300,54 +291,17 @@ impl ClockWidget {
         if !overlapping {
             // Empty desktop: always show compact pill
             self.is_hidden_by_window = false;
-            self.is_hot_edge_hovered = false;
-            self.hot_edge_dwell_start = None;
         } else {
-            // Window overlapping: check global Hyprland cursor
+            // Window overlapping: hide unless cursor is near top-left hot edge or we're hovered/expanded
             if let Some((cx, cy)) = crate::island::IslandWidget::query_hyprland_cursor() {
-                // Clock is top-left: monitor x in [120, 316], cy <= 1 with intentional dwell
-                let is_at_top_edge = (120..=316).contains(&cx) && cy <= 1;
-
-                let pill_w = if self.is_compact {
-                    COMPACT_W as i32
-                } else {
-                    CARD_W as i32
-                };
-                let pill_h = if self.is_compact {
-                    COMPACT_H as i32 + 10
-                } else {
-                    CARD_H as i32 + 14
-                };
-                let pill_left = self.pos_x + (self.width as i32 / 2) - pill_w / 2;
-                let pill_right = pill_left + pill_w;
-                let is_inside_pill =
-                    (pill_left..=pill_right).contains(&cx) && (0..=pill_h).contains(&cy);
-
-                if is_at_top_edge {
-                    let now = Instant::now();
-                    let dwell = self.hot_edge_dwell_start.get_or_insert(now);
-                    if now.duration_since(*dwell) >= Duration::from_millis(150) {
-                        self.is_hot_edge_hovered = true;
-                        self.is_hidden_by_window = false;
-                        self.last_hover_time = now;
-                    }
-                } else {
-                    self.hot_edge_dwell_start = None;
-                    self.is_hot_edge_hovered = false;
-
-                    if !self.is_hidden_by_window {
-                        if is_inside_pill || !self.is_compact {
-                            self.last_hover_time = Instant::now();
-                        } else if self.last_hover_time.elapsed() >= Duration::from_millis(350) {
-                            self.is_hidden_by_window = true;
-                            if !self.is_compact {
-                                self.collapse();
-                            }
-                        }
-                    }
+                let is_at_top_edge = cx <= 340 && cy <= 12;
+                if is_at_top_edge || self.is_hovered || !self.is_compact {
+                    self.is_hidden_by_window = false;
+                    self.last_hover_time = Instant::now();
+                } else if self.last_hover_time.elapsed() >= Duration::from_millis(1200) {
+                    self.is_hidden_by_window = true;
                 }
-            } else if self.is_compact {
-                self.is_hot_edge_hovered = false;
+            } else if !self.is_hovered && self.is_compact {
                 self.is_hidden_by_window = true;
             }
         }
@@ -530,7 +484,10 @@ impl ClockWidget {
         let cx = self.width as i32 / 2;
         let card_top = 8i32;
         if self.is_hidden_by_window && self.is_compact {
-            // Keep region completely empty so underlying apps receive 100% of mouse events
+            // Invisible 2px hair strip at top edge for instant touch wake-up
+            let pill_w = COMPACT_W as i32;
+            let pill_x = cx - pill_w / 2;
+            region.add(pill_x, 0, pill_w, 2);
             self.surface.set_input_region(Some(&region));
             region.destroy();
             self.surface.commit();
@@ -557,12 +514,12 @@ impl ClockWidget {
             PointerEventKind::Enter { .. } => {
                 let px = event.position.0 as f32;
                 let py = event.position.1 as f32;
+                self.is_hidden_by_window = false;
+                self.needs_redraw = true;
+                self.needs_input_region_update = true;
                 let inside = self.is_inside(px, py);
                 self.is_hovered = inside;
-                if inside && !self.is_window_overlapping {
-                    self.is_hidden_by_window = false;
-                    self.needs_redraw = true;
-                    self.needs_input_region_update = true;
+                if inside {
                     self.last_hover_time = Instant::now();
                     if self.is_compact && self.hover_to_expand {
                         self.expand();
@@ -580,10 +537,6 @@ impl ClockWidget {
                 self.power_held = None;
                 self.last_hover_time = Instant::now();
                 self.needs_redraw = true;
-                if self.is_window_overlapping {
-                    self.is_hidden_by_window = true;
-                    self.needs_input_region_update = true;
-                }
                 if !self.is_compact {
                     self.collapse();
                 }
@@ -595,19 +548,17 @@ impl ClockWidget {
                 let nx = px / (self.width as f32);
                 let ny = py / (self.height as f32);
                 self.cursor_pos = [nx, ny];
+                self.last_hover_time = Instant::now();
 
                 let inside = self.is_inside(px, py);
                 self.is_hovered = inside;
-                if inside && !self.is_window_overlapping && self.is_hidden_by_window {
+                if self.is_hidden_by_window {
                     self.is_hidden_by_window = false;
                     self.needs_redraw = true;
                     self.needs_input_region_update = true;
                 }
-                if inside {
-                    self.last_hover_time = Instant::now();
-                    if self.is_compact && self.hover_to_expand {
-                        self.expand();
-                    }
+                if inside && self.is_compact && self.hover_to_expand {
+                    self.expand();
                 }
 
                 if !self.is_compact {
@@ -950,22 +901,46 @@ impl ClockWidget {
                 (cx + 86.0, card_top + 218.0 + slide_y), // Tile 3: Bottom-Right (2x2 Quick Controls)
             ];
 
-            // Subtle tactile hover fill (underlying WGPU glass surfaces provide physical refraction & caustics)
+            // Draw all 4 modular squircle glass card containers
             for (i, (tcx, tcy)) in centers.iter().enumerate() {
                 let is_tile_hover = self.hovered_tile == Some(i);
-                if is_tile_hover {
-                    UIFont::draw_rounded_rect_fill(
-                        buf,
-                        self.width,
-                        self.height,
-                        *tcx,
-                        *tcy,
-                        tile_w * 0.5,
-                        tile_h * 0.5,
-                        tile_r,
-                        [accent[0], accent[1], accent[2], (22.0 * exp_alpha) as u8],
-                    );
-                }
+                let fill_a = if is_tile_hover { 75.0 } else { 55.0 };
+                let bg_col = if is_light {
+                    [255, 255, 255, (fill_a * 1.5 * exp_alpha) as u8]
+                } else {
+                    [14, 22, 38, (fill_a * exp_alpha) as u8]
+                };
+                let stroke_col = if is_tile_hover {
+                    [accent[0], accent[1], accent[2], (180.0 * exp_alpha) as u8]
+                } else if is_light {
+                    [200, 215, 235, (120.0 * exp_alpha) as u8]
+                } else {
+                    [65, 130, 240, (75.0 * exp_alpha) as u8]
+                };
+
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    *tcx,
+                    *tcy,
+                    tile_w * 0.5,
+                    tile_h * 0.5,
+                    tile_r,
+                    bg_col,
+                );
+                UIFont::draw_rounded_rect_stroke(
+                    buf,
+                    self.width,
+                    self.height,
+                    *tcx,
+                    *tcy,
+                    tile_w * 0.5,
+                    tile_h * 0.5,
+                    tile_r,
+                    1.2,
+                    stroke_col,
+                );
             }
 
             // ─────────────────────────────────────────────────────────
@@ -1580,16 +1555,16 @@ impl ClockWidget {
                     .material(Material::LiquidGlass)
                     .shape(Shape::Capsule)
                     .bounds(x_norm, y_norm, w_norm, h_norm)
-                    .curvature(14.0)
-                    .bevel(14.0)
-                    .refraction(18.0)
-                    .dispersion(0.12)
+                    .curvature(2.0)
+                    .bevel(12.0)
+                    .refraction(10.0)
+                    .dispersion(0.05)
                     .blur(self.blur_radius)
-                    .specular(1.20)
-                    .fresnel(0.65)
+                    .specular(1.10)
+                    .fresnel(0.55)
                     .style_mode(self.style_mode)
                     .tint(0.0, 0.0, 1.0, is_light_f32)
-                    .element_type(27.0)
+                    .element_type(0.0)
                     .deformation(0.0)
                     .pointer_pos(px, py)]
             } else {
@@ -1623,13 +1598,13 @@ impl ClockWidget {
                             .material(Material::LiquidGlass)
                             .shape(Shape::RoundedRectangle { radius: cur_r })
                             .bounds(tx_norm, ty_norm, tw_norm, th_norm)
-                            .curvature(18.0)
-                            .bevel(14.0)
-                            .refraction(18.0)
-                            .dispersion(0.12)
+                            .curvature(14.0)
+                            .bevel(12.0)
+                            .refraction(12.0)
+                            .dispersion(0.06)
                             .blur(self.blur_radius)
-                            .specular(1.25)
-                            .fresnel(0.68)
+                            .specular(1.20)
+                            .fresnel(0.65)
                             .style_mode(self.style_mode)
                             .tint(0.0, 0.0, 1.0, is_light_f32)
                             .roughness(if i == 2 {
@@ -1637,24 +1612,15 @@ impl ClockWidget {
                             } else {
                                 0.0
                             })
-                            .element_type(27.0)
+                            .element_type(0.0)
                             .deformation(0.0)
                             .pointer_pos(px, py)
                     })
                     .collect()
             };
 
-            match renderer.render(&surfaces) {
-                Ok(_) => true,
-                Err(e) => {
-                    eprintln!(
-                        "[CLOCK RENDER ERROR] surfaces={} err={:?}",
-                        surfaces.len(),
-                        e
-                    );
-                    false
-                }
-            }
+            let _ = renderer.render(&surfaces);
+            true
         } else {
             false
         };
