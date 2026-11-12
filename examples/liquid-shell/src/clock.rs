@@ -3,7 +3,7 @@ use chrono::Local;
 use glass_core::font::{FontWeight, QuicksandFont, UIFont};
 use glass_core::geometry::Shape;
 use glass_core::renderer::GlassRenderer;
-use glass_core::{GlassSurface, Material, SharedGpu, Spring, SpringParams, Tokens};
+use glass_core::{GlassSurface, Material, SharedGpu, Spring, SpringParams};
 use glass_platform::wallpaper::WallpaperManager;
 use raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle,
@@ -772,8 +772,6 @@ impl ClockWidget {
             } else {
                 [255, 255, 255, (40.0 * comp_alpha) as u8]
             };
-            let accent = Tokens::ACCENT;
-            let accent_col = [accent[0], accent[1], accent[2], alpha_u8];
 
             let card_top = self.dock_mode.dock_y();
             let pill_cy = card_top + COMPACT_H * 0.5;
@@ -874,14 +872,6 @@ impl ClockWidget {
             let bat_icon_cx = col2_start_x + bat_icon_w * 0.5;
             let bat_text_x = col2_start_x + bat_icon_w + gap;
 
-            let bat_color = if bat_pct < 20 {
-                [255, 75, 65, alpha_u8]
-            } else if self.sys_stats.bat_charging {
-                accent_col
-            } else {
-                ink_col
-            };
-
             UIFont::draw_battery_icon(
                 buf,
                 self.width,
@@ -890,7 +880,7 @@ impl ClockWidget {
                 pill_cy,
                 bat_pct,
                 self.sys_stats.bat_charging,
-                bat_color,
+                ink_col,
             );
             self.font.draw_text_centered_y(
                 buf,
@@ -900,7 +890,7 @@ impl ClockWidget {
                 bat_text_x,
                 pill_cy,
                 bat_size,
-                bat_color,
+                ink_col,
                 col_shadow,
                 FontWeight::SemiBold,
             );
@@ -926,8 +916,6 @@ impl ClockWidget {
                 [215, 228, 245, (230.0 * exp_alpha) as u8]
             };
             let tile_base = if is_light { [0, 0, 0] } else { [255, 255, 255] };
-            let accent = Tokens::ACCENT;
-            let accent_col = [accent[0], accent[1], accent[2], alpha_u8];
 
             let now = Local::now();
 
@@ -946,6 +934,11 @@ impl ClockWidget {
             for (i, (tcx, tcy)) in centers.iter().enumerate() {
                 let is_tile_hover = self.hovered_tile == Some(i);
                 if is_tile_hover {
+                    let hover_fill = if is_light {
+                        [0, 0, 0, (14.0 * exp_alpha) as u8]
+                    } else {
+                        [255, 255, 255, (20.0 * exp_alpha) as u8]
+                    };
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
@@ -955,15 +948,19 @@ impl ClockWidget {
                         tile_w * 0.5,
                         tile_h * 0.5,
                         tile_r,
-                        [accent[0], accent[1], accent[2], (22.0 * exp_alpha) as u8],
+                        hover_fill,
                     );
                 }
                 let stroke_col = if is_tile_hover {
-                    [accent[0], accent[1], accent[2], (140.0 * exp_alpha) as u8]
+                    if is_light {
+                        [0, 0, 0, (50.0 * exp_alpha) as u8]
+                    } else {
+                        [255, 255, 255, (90.0 * exp_alpha) as u8]
+                    }
                 } else if is_light {
-                    [255, 255, 255, (60.0 * exp_alpha) as u8]
+                    [0, 0, 0, (18.0 * exp_alpha) as u8]
                 } else {
-                    [80, 150, 255, (40.0 * exp_alpha) as u8]
+                    [255, 255, 255, (26.0 * exp_alpha) as u8]
                 };
 
                 UIFont::draw_rounded_rect_stroke(
@@ -1022,7 +1019,7 @@ impl ClockWidget {
                 1.5,
                 10.0,
                 1.0,
-                accent_col,
+                [col_p[0], col_p[1], col_p[2], (140.0 * exp_alpha) as u8],
             );
             self.font.draw_text_centered_y(
                 buf,
@@ -1094,7 +1091,12 @@ impl ClockWidget {
                 12.0,
                 12.0,
                 8.0,
-                [accent[0], accent[1], accent[2], (36.0 * exp_alpha) as u8],
+                [
+                    tile_base[0],
+                    tile_base[1],
+                    tile_base[2],
+                    (28.0 * exp_alpha) as u8,
+                ],
             );
             UIFont::draw_cpu_icon(buf, self.width, self.height, tx1 + 46.0, ty1 - 14.0, col_p);
 
@@ -1138,9 +1140,11 @@ impl ClockWidget {
             let cpu_fw = rail_w * (self.sys_stats.cpu_pct as f32 / 100.0).clamp(0.04, 1.0);
             let cpu_fcx = (tx1 - rail_w * 0.5) + cpu_fw * 0.5;
             let cpu_col = if self.sys_stats.cpu_pct > 80 {
-                [255, 85, 85, alpha_u8]
+                [255, 69, 58, alpha_u8]
+            } else if is_light {
+                [10, 14, 22, alpha_u8]
             } else {
-                accent_col
+                [255, 255, 255, alpha_u8]
             };
             UIFont::draw_rounded_rect_fill(
                 buf,
@@ -1195,7 +1199,12 @@ impl ClockWidget {
                 12.0,
                 12.0,
                 8.0,
-                [accent[0], accent[1], accent[2], (36.0 * exp_alpha) as u8],
+                [
+                    tile_base[0],
+                    tile_base[1],
+                    tile_base[2],
+                    (28.0 * exp_alpha) as u8,
+                ],
             );
             UIFont::draw_battery_icon(
                 buf,
@@ -1237,7 +1246,7 @@ impl ClockWidget {
             for (i, lbl) in day_labels.iter().enumerate() {
                 let dx = dot_start_x + (i as f32) * dot_gap;
                 let is_today = i == today_idx;
-                let lbl_col = if is_today { accent_col } else { col_sub };
+                let lbl_col = if is_today { col_p } else { col_sub };
                 let lw = self.font.measure_text(lbl, 8.5, FontWeight::Bold);
                 self.font.draw_text_centered_y(
                     buf,
@@ -1253,7 +1262,7 @@ impl ClockWidget {
                 );
 
                 if i < today_idx {
-                    // Past completed day: filled cyan badge with checkmark ✓
+                    // Past completed day: Apple Emerald Green badge with checkmark ✓
                     UIFont::draw_rounded_rect_fill(
                         buf,
                         self.width,
@@ -1263,7 +1272,7 @@ impl ClockWidget {
                         6.5,
                         6.5,
                         6.5,
-                        [accent[0], accent[1], accent[2], (220.0 * exp_alpha) as u8],
+                        [52, 199, 89, (220.0 * exp_alpha) as u8],
                     );
                     UIFont::draw_check_icon(
                         buf,
@@ -1274,7 +1283,7 @@ impl ClockWidget {
                         [255, 255, 255, alpha_u8],
                     );
                 } else if is_today {
-                    // Today: pulsing cyan ring with active center
+                    // Today: crisp white / dark ring with active center
                     UIFont::draw_rounded_rect_stroke(
                         buf,
                         self.width,
@@ -1285,7 +1294,7 @@ impl ClockWidget {
                         6.5,
                         6.5,
                         1.5,
-                        [accent[0], accent[1], accent[2], alpha_u8],
+                        [col_p[0], col_p[1], col_p[2], alpha_u8],
                     );
                     UIFont::draw_rounded_rect_fill(
                         buf,
@@ -1296,7 +1305,7 @@ impl ClockWidget {
                         2.5,
                         2.5,
                         2.5,
-                        [accent[0], accent[1], accent[2], alpha_u8],
+                        [col_p[0], col_p[1], col_p[2], alpha_u8],
                     );
                 } else {
                     // Future day: subtle translucent ring
@@ -1403,15 +1412,17 @@ impl ClockWidget {
                     let btn_stroke_col = if is_hover {
                         if b_idx == 3 {
                             [255, 90, 90, alpha_u8]
+                        } else if is_light {
+                            [0, 0, 0, (70.0 * exp_alpha) as u8]
                         } else {
-                            accent_col
+                            [255, 255, 255, (100.0 * exp_alpha) as u8]
                         }
                     } else {
                         [
                             tile_base[0],
                             tile_base[1],
                             tile_base[2],
-                            (45.0 * exp_alpha) as u8,
+                            (35.0 * exp_alpha) as u8,
                         ]
                     };
 
@@ -1501,7 +1512,7 @@ impl ClockWidget {
             // Dot 0 (Page 0: System & Telemetry)
             let w0 = active_w * (1.0 - page_t) + inactive_w * page_t;
             let dot0_col = if page_t < 0.5 {
-                accent_col
+                col_p
             } else {
                 [
                     tile_base[0],
@@ -1525,7 +1536,7 @@ impl ClockWidget {
             // Dot 1 (Page 1: Quick Settings & Controls)
             let w1 = inactive_w * (1.0 - page_t) + active_w * page_t;
             let dot1_col = if page_t >= 0.5 {
-                accent_col
+                col_p
             } else {
                 [
                     tile_base[0],

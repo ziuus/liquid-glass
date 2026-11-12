@@ -1769,7 +1769,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         // ── DARK / VIBRANT BACKDROP (e.g. Ferns, Retro, Pitch Black): LIT SPECULAR + ADAPTIVE LEGIBILITY ──
         let digit_spec_boost = select(1.0, 1.85, is_liquid_text);
         let dark_spec = spec_line * 0.60 * digit_spec_boost;
-        let dark_rim = smoothstep(1.2, 0.0, depth) * mix(0.18, 0.40, light_facing) * top_flush;
+        let dark_rim = smoothstep(1.2, 0.0, depth) * (0.35 * light_facing) * top_flush;
         let bg_lum = dot(col, vec3<f32>(0.299, 0.587, 0.114));
         let adaptive_lift = select(0.0, (1.0 - smoothstep(0.0, 0.35, bg_lum)) * 0.14, is_liquid_text);
         let digit_inner_fill = select(0.0, 0.012 + adaptive_lift, is_liquid_text);

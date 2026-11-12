@@ -1391,14 +1391,45 @@ impl UIFont {
         charging: bool,
         color: [u8; 4],
     ) {
-        // Outer body (half_w = 5.5, half_h = 3.5, r = 1.2, stroke = 1.1)
-        Self::draw_rounded_rect_stroke(buf, width, height, cx - 0.8, cy, 5.5, 3.5, 1.2, 1.1, color);
+        let alpha = color[3];
+        // Outer body (half_w = 5.5, half_h = 3.5, r = 1.2, stroke = 1.0)
+        let stroke_color = [color[0], color[1], color[2], ((alpha as f32) * 0.65) as u8];
+        Self::draw_rounded_rect_stroke(
+            buf,
+            width,
+            height,
+            cx - 0.8,
+            cy,
+            5.5,
+            3.5,
+            1.2,
+            1.0,
+            stroke_color,
+        );
         // Positive terminal cap (+ right nipple)
-        Self::draw_rounded_rect_fill(buf, width, height, cx + 5.6, cy, 0.7, 1.6, 0.5, color);
+        Self::draw_rounded_rect_fill(
+            buf,
+            width,
+            height,
+            cx + 5.6,
+            cy,
+            0.7,
+            1.6,
+            0.5,
+            stroke_color,
+        );
 
-        // Fill indicator
+        // Fill indicator & color
+        let fill_color = if charging {
+            [52, 199, 89, alpha] // Apple Battery Emerald Green
+        } else if pct < 20 {
+            [255, 149, 10, alpha] // Low battery amber/red
+        } else {
+            [color[0], color[1], color[2], ((alpha as f32) * 0.85) as u8]
+        };
+
         let fill_pct = (pct as f32 / 100.0).clamp(0.08, 1.0);
-        let max_w = 8.6f32;
+        let max_w = 8.4f32;
         let cur_w = max_w * fill_pct;
         let fill_cx = (cx - 0.8) - (max_w - cur_w) * 0.5;
         Self::draw_rounded_rect_fill(
@@ -1410,12 +1441,12 @@ impl UIFont {
             cur_w * 0.5,
             2.0,
             0.6,
-            color,
+            fill_color,
         );
 
-        // Bolt if charging
+        // Bolt if charging: crisp white lightning bolt
         if charging {
-            let bolt_col = color;
+            let bolt_col = [255, 255, 255, alpha];
             Self::draw_segment(
                 buf,
                 width,
@@ -1446,53 +1477,59 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        // Outer chip package (half = 4.8 x 4.8, r = 1.2, stroke = 1.1)
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 4.8, 4.8, 1.2, 1.1, color);
+        // Outer chip package (half = 4.2 x 4.2, r = 1.0, stroke = 1.0)
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 4.2, 4.2, 1.0, 1.0, color);
         // Core die outline
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 2.0, 2.0, 0.6, 1.0, color);
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 1.8, 1.8, 0.5, 0.8, color);
 
-        // Pins (2 on each of the 4 sides, stroke = 1.0, length = 1.4)
-        let pin_len = 1.4f32;
-        for &offset in &[-2.2f32, 2.2f32] {
+        // 2 precision pins per side (stroke = 0.8, length = 1.2)
+        let pin_len = 1.2f32;
+        let pin_col = [
+            color[0],
+            color[1],
+            color[2],
+            ((color[3] as f32) * 0.75) as u8,
+        ];
+        for &offset in &[-1.8f32, 1.8f32] {
             // Top pins
             Self::draw_segment(
                 buf,
                 width,
                 height,
-                (cx + offset, cy - 4.8),
-                (cx + offset, cy - 4.8 - pin_len),
-                1.0,
-                color,
+                (cx + offset, cy - 4.2),
+                (cx + offset, cy - 4.2 - pin_len),
+                0.8,
+                pin_col,
             );
             // Bottom pins
             Self::draw_segment(
                 buf,
                 width,
                 height,
-                (cx + offset, cy + 4.8),
-                (cx + offset, cy + 4.8 + pin_len),
-                1.0,
-                color,
+                (cx + offset, cy + 4.2),
+                (cx + offset, cy + 4.2 + pin_len),
+                0.8,
+                pin_col,
             );
             // Left pins
             Self::draw_segment(
                 buf,
                 width,
                 height,
-                (cx - 4.8, cy + offset),
-                (cx - 4.8 - pin_len, cy + offset),
-                1.0,
-                color,
+                (cx - 4.2, cy + offset),
+                (cx - 4.2 - pin_len, cy + offset),
+                0.8,
+                pin_col,
             );
             // Right pins
             Self::draw_segment(
                 buf,
                 width,
                 height,
-                (cx + 4.8, cy + offset),
-                (cx + 4.8 + pin_len, cy + offset),
-                1.0,
-                color,
+                (cx + 4.2, cy + offset),
+                (cx + 4.2 + pin_len, cy + offset),
+                0.8,
+                pin_col,
             );
         }
     }
