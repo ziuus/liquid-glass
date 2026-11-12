@@ -1181,6 +1181,148 @@ impl UIFont {
         );
     }
 
+    /// Draw a precision vector replay/undo loop icon (counter-clockwise arc with arrowhead)
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_replay_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        r: f32,
+        color: [u8; 4],
+    ) {
+        let arc_r = r * 0.72;
+        let min_x = (cx - arc_r - 3.0).max(0.0) as u32;
+        let max_x = (cx + arc_r + 3.0).min(width as f32 - 1.0) as u32;
+        let min_y = (cy - arc_r - 3.0).max(0.0) as u32;
+        let max_y = (cy + arc_r + 3.0).min(height as f32 - 1.0) as u32;
+
+        for y in min_y..=max_y {
+            for x in min_x..=max_x {
+                let px = x as f32 + 0.5;
+                let py = y as f32 + 0.5;
+                let dist = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
+                let d_ring = (dist - arc_r).abs() - 0.70;
+
+                let angle = (py - cy).atan2(px - cx);
+                let in_gap = (-2.7..-1.1).contains(&angle);
+                if !in_gap {
+                    let cov = (1.0 - d_ring).clamp(0.0, 1.0);
+                    let alpha = ((cov * color[3] as f32).round() as u32).min(255);
+                    if alpha > 0 {
+                        let idx = ((y * width + x) * 4) as usize;
+                        if idx + 3 < buf.len() {
+                            let inv_a = 255 - alpha;
+                            buf[idx] =
+                                ((color[0] as u32 * alpha + buf[idx] as u32 * inv_a) / 255) as u8;
+                            buf[idx + 1] = ((color[1] as u32 * alpha + buf[idx + 1] as u32 * inv_a)
+                                / 255) as u8;
+                            buf[idx + 2] = ((color[2] as u32 * alpha + buf[idx + 2] as u32 * inv_a)
+                                / 255) as u8;
+                            buf[idx + 3] = (buf[idx + 3] as u32 + alpha).min(255) as u8;
+                        }
+                    }
+                }
+            }
+        }
+
+        let ax = cx + arc_r * (-1.1f32).cos();
+        let ay = cy + arc_r * (-1.1f32).sin();
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (ax - 3.6, ay - 1.8),
+            (ax + 0.5, ay),
+            1.2,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (ax - 0.8, ay + 3.8),
+            (ax + 0.5, ay),
+            1.2,
+            color,
+        );
+    }
+
+    /// Draw a precision vector airplay/output device icon (tray with upward arrow)
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_airplay_icon(
+        buf: &mut [u8],
+        width: u32,
+        height: u32,
+        cx: f32,
+        cy: f32,
+        r: f32,
+        color: [u8; 4],
+    ) {
+        let hw = r * 0.75;
+        let hh = r * 0.70;
+        let stroke = 1.25;
+
+        // Tray: left wall, bottom floor, right wall
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - hw, cy - hh * 0.1),
+            (cx - hw, cy + hh),
+            stroke,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - hw, cy + hh),
+            (cx + hw, cy + hh),
+            stroke,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx + hw, cy - hh * 0.1),
+            (cx + hw, cy + hh),
+            stroke,
+            color,
+        );
+
+        // Upward arrow: center stem and chevron wings
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx, cy + hh * 0.35),
+            (cx, cy - hh),
+            stroke,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - hw * 0.55, cy - hh * 0.35),
+            (cx, cy - hh),
+            stroke,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx + hw * 0.55, cy - hh * 0.35),
+            (cx, cy - hh),
+            stroke,
+            color,
+        );
+    }
+
     /// Draw a precision Lucide-grade Power Off icon (circle with top vertical bar)
     pub fn draw_power_icon(
         buf: &mut [u8],

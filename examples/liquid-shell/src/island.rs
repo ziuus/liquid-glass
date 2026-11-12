@@ -203,6 +203,7 @@ pub struct NotificationData {
 pub struct MusicState {
     pub title: String,
     pub artist: String,
+    pub album: String,
     pub is_playing: bool,
     pub progress: f32,
     pub duration_sec: f32,
@@ -601,6 +602,7 @@ impl IslandWidget {
             music: MusicState {
                 title: "No Media Playing".to_string(),
                 artist: String::new(),
+                album: String::new(),
                 is_playing: false,
                 progress: 0.0,
                 duration_sec: 0.0,
@@ -1577,7 +1579,7 @@ impl IslandWidget {
                     .args([
                         "metadata",
                         "--format",
-                        "{{title}}||{{artist}}||{{mpris:length}}||{{mpris:artUrl}}",
+                        "{{title}}||{{artist}}||{{mpris:length}}||{{mpris:artUrl}}||{{album}}",
                     ])
                     .output()
                 {
@@ -1617,6 +1619,9 @@ impl IslandWidget {
                                     }
                                 }
                             }
+                        }
+                        if parts.len() > 4 && !parts[4].is_empty() {
+                            self.music.album = parts[4].trim().to_string();
                         }
                     }
                 }
@@ -2076,24 +2081,13 @@ impl IslandWidget {
     ) {
         match mode {
             IslandMode::MusicExpanded => {
-                // Header: NOW PLAYING
-                let header_y = island_top + 22.0;
-                self.font.draw_text(
-                    buf,
-                    self.width,
-                    self.height,
-                    "NOW PLAYING",
-                    cx - island_w * 0.5 + 32.0,
-                    header_y,
-                    11.0,
-                    col_dim,
-                    FontWeight::Bold,
-                );
+                // Tier 1: Circular Album Art + Track Title + Artist • Album
+                let disc_cx = cx - island_w * 0.5 + 46.0;
+                let disc_cy = island_top + 36.0;
+                let disc_r = 21.0;
 
-                // Album Art Thumbnail or Spinning Vinyl Disc (radius = 23.0)
-                let disc_cx = cx - island_w * 0.5 + 50.0;
-                let disc_cy = island_top + 68.0;
                 if let Some(thumb) = &self.music.art_thumbnail {
+                    // Full circular thumbnail clip (corner_radius = 21.0)
                     UIFont::draw_rounded_thumbnail(
                         buf,
                         self.width,
@@ -2101,9 +2095,9 @@ impl IslandWidget {
                         disc_cx,
                         disc_cy,
                         thumb,
-                        46,
-                        46,
-                        8.0,
+                        42,
+                        42,
+                        disc_r,
                     );
                     UIFont::draw_rounded_rect_stroke(
                         buf,
@@ -2111,9 +2105,9 @@ impl IslandWidget {
                         self.height,
                         disc_cx,
                         disc_cy,
-                        23.0,
-                        23.0,
-                        8.0,
+                        disc_r,
+                        disc_r,
+                        disc_r,
                         1.0,
                         if is_light {
                             [0, 0, 0, 45]
@@ -2128,66 +2122,180 @@ impl IslandWidget {
                         self.height,
                         disc_cx,
                         disc_cy,
-                        23.0,
+                        disc_r,
                         self.music.disc_rotation,
                         is_light,
                     );
                 }
 
-                // Dynamic Multi-Bar Audio Frequency Spectrum Visualizer (placed in center channel)
-                let vis_cx = cx + 42.0;
-                let vis_cy = island_top + 68.0;
-                let t_sec = self.start_time.elapsed().as_secs_f32();
-                UIFont::draw_audio_visualizer(
-                    buf,
-                    self.width,
-                    self.height,
-                    vis_cx,
-                    vis_cy,
-                    t_sec,
-                    self.music.is_playing,
-                    col_ink,
-                );
-
-                // Track details
-                let title_x = cx - island_w * 0.5 + 88.0;
-                let title = safe_truncate(&self.music.title, 20);
+                // Track Title & Subtitle
+                let title_x = cx - island_w * 0.5 + 78.0;
+                let title = if !self.music.title.is_empty() {
+                    safe_truncate(&self.music.title, 26)
+                } else {
+                    "No Media Playing".to_string()
+                };
                 self.font.draw_text(
                     buf,
                     self.width,
                     self.height,
                     &title,
                     title_x,
-                    island_top + 58.0,
+                    island_top + 28.0,
                     Tokens::TYPE_BODY,
                     col_ink,
                     FontWeight::Bold,
                 );
+
+                let subtitle =
+                    if !self.music.album.is_empty() && self.music.album != self.music.title {
+                        format!("{} • {}", self.music.artist, self.music.album)
+                    } else if !self.music.artist.is_empty() {
+                        self.music.artist.clone()
+                    } else {
+                        "Ready to stream".to_string()
+                    };
+                let subtitle = safe_truncate(&subtitle, 32);
                 self.font.draw_text(
                     buf,
                     self.width,
                     self.height,
-                    &self.music.artist,
+                    &subtitle,
                     title_x,
-                    island_top + 78.0,
+                    island_top + 46.0,
                     Tokens::TYPE_BODY_SM,
                     col_dim,
                     FontWeight::Medium,
                 );
 
-                // Transport Controls: Prev, Play/Pause, Next
-                let ctrl_y = island_top + 68.0;
-                let play_cx = cx + island_w * 0.5 - 64.0;
-                let prev_cx = play_cx - 44.0;
-                let next_cx = play_cx + 44.0;
+                // Tier 2: Floating Timestamps & Continuous Seekbar
+                let bar_w = island_w - 56.0;
+                let bar_y = island_top + 88.0;
+                let is_media_active = self.music.is_playing || self.music.duration_sec > 0.0;
 
-                let is_media_active = self.music.is_playing;
+                // Timestamps (placed above rail, aligned to bar ends)
+                let (elapsed_str, rem_str) = if self.music.duration_sec > 0.0 {
+                    let elapsed_m = (self.music.elapsed_sec / 60.0).floor() as u32;
+                    let elapsed_s = (self.music.elapsed_sec % 60.0).floor() as u32;
+                    let rem_sec = (self.music.duration_sec - self.music.elapsed_sec).max(0.0);
+                    let rem_m = (rem_sec / 60.0).floor() as u32;
+                    let rem_s = (rem_sec % 60.0).floor() as u32;
+                    (
+                        format!("{}:{:02}", elapsed_m, elapsed_s),
+                        format!("-{}:{:02}", rem_m, rem_s),
+                    )
+                } else {
+                    ("0:00".to_string(), "-0:00".to_string())
+                };
+
+                let time_col = [col_dim[0], col_dim[1], col_dim[2], 210];
+                self.font.draw_text(
+                    buf,
+                    self.width,
+                    self.height,
+                    &elapsed_str,
+                    cx - bar_w * 0.5,
+                    island_top + 74.0,
+                    10.5,
+                    time_col,
+                    FontWeight::Medium,
+                );
+
+                let rem_w = self.font.measure_text(&rem_str, 10.5, FontWeight::Medium);
+                self.font.draw_text(
+                    buf,
+                    self.width,
+                    self.height,
+                    &rem_str,
+                    cx + bar_w * 0.5 - rem_w,
+                    island_top + 74.0,
+                    10.5,
+                    time_col,
+                    FontWeight::Medium,
+                );
+
+                // Inactive rail background (4px tall)
+                let track_bg = if is_light {
+                    [160, 170, 190, 80]
+                } else {
+                    [140, 155, 185, 75]
+                };
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    cx,
+                    bar_y,
+                    bar_w * 0.5,
+                    2.0,
+                    2.0,
+                    track_bg,
+                );
+
+                // Active rail fill and scrubber knob
+                let fill_w = (bar_w * self.music.progress.clamp(0.0, 1.0)).max(2.0);
+                let fill_cx = cx - bar_w * 0.5 + fill_w * 0.5;
+                let active_rail_col = if is_light {
+                    [20, 24, 34, 240]
+                } else {
+                    [255, 255, 255, 245]
+                };
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    fill_cx,
+                    bar_y,
+                    fill_w * 0.5,
+                    2.0,
+                    2.0,
+                    active_rail_col,
+                );
+
+                // Scrubber knob (circular white knob with subtle border)
+                let knob_x = cx - bar_w * 0.5 + fill_w;
+                let knob_col = if is_light {
+                    [20, 24, 34, 255]
+                } else {
+                    [255, 255, 255, 255]
+                };
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    knob_x,
+                    bar_y,
+                    5.0,
+                    5.0,
+                    5.0,
+                    knob_col,
+                );
+
+                // Tier 3: Balanced Transport Controls (Replay | Prev | Play/Pause | Next | Output)
+                let ctrl_y = island_top + 122.0;
+                let replay_cx = cx - bar_w * 0.5 + 16.0;
+                let prev_cx = cx - 44.0;
+                let play_cx = cx;
+                let next_cx = cx + 44.0;
+                let output_cx = cx + bar_w * 0.5 - 16.0;
+
                 let ctrl_col = if is_media_active {
                     col_ink
                 } else {
-                    // Dimmed to 40% when idle / no active playback
-                    [col_ink[0], col_ink[1], col_ink[2], 102]
+                    [col_ink[0], col_ink[1], col_ink[2], 120]
                 };
+                let sec_col = [col_dim[0], col_dim[1], col_dim[2], 200];
+
+                // Replay / Loop (secondary action left)
+                UIFont::draw_replay_icon(
+                    buf,
+                    self.width,
+                    self.height,
+                    replay_cx,
+                    ctrl_y,
+                    8.5,
+                    sec_col,
+                );
 
                 // Previous
                 UIFont::draw_prev_icon(
@@ -2196,51 +2304,11 @@ impl IslandWidget {
                     self.height,
                     prev_cx,
                     ctrl_y,
-                    8.5,
+                    9.0,
                     ctrl_col,
                 );
 
-                // Play / Pause Button with circle fill (half_w = 18.0, half_h = 18.0)
-                let btn_circle_fill = if is_media_active {
-                    if is_light {
-                        [20, 24, 34, 255]
-                    } else {
-                        [245, 248, 255, 255]
-                    }
-                } else {
-                    // Muted 24% fill when idle
-                    if is_light {
-                        [20, 24, 34, 60]
-                    } else {
-                        [245, 248, 255, 60]
-                    }
-                };
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    play_cx,
-                    ctrl_y,
-                    18.0,
-                    18.0,
-                    18.0,
-                    btn_circle_fill,
-                );
-
-                let play_icon_col = if is_media_active {
-                    if is_light {
-                        [255, 255, 255, 255]
-                    } else {
-                        [10, 14, 20, 255]
-                    }
-                } else {
-                    // Muted play icon when idle
-                    if is_light {
-                        [20, 24, 34, 180]
-                    } else {
-                        [245, 248, 255, 180]
-                    }
-                };
+                // Play / Pause (clean unboxed vector glyphs matching inspiration)
                 if self.music.is_playing {
                     UIFont::draw_pause_icon(
                         buf,
@@ -2248,8 +2316,8 @@ impl IslandWidget {
                         self.height,
                         play_cx,
                         ctrl_y,
-                        7.5,
-                        play_icon_col,
+                        9.5,
+                        ctrl_col,
                     );
                 } else {
                     UIFont::draw_play_icon(
@@ -2258,8 +2326,8 @@ impl IslandWidget {
                         self.height,
                         play_cx,
                         ctrl_y,
-                        8.0,
-                        play_icon_col,
+                        9.5,
+                        ctrl_col,
                     );
                 }
 
@@ -2270,76 +2338,20 @@ impl IslandWidget {
                     self.height,
                     next_cx,
                     ctrl_y,
-                    8.5,
+                    9.0,
                     ctrl_col,
                 );
 
-                // Progress Bar (at y = 104.0)
-                let bar_y = island_top + 104.0;
-                let bar_w = island_w - 64.0;
-                let bar_x = cx;
-                // High-contrast track back (half_w = bar_w * 0.5, half_h = 2.0)
-                let track_bg = if is_media_active {
-                    if is_light {
-                        [160, 170, 190, 200]
-                    } else {
-                        [140, 155, 185, 160]
-                    }
-                } else {
-                    // Flat muted idle track back
-                    if is_light {
-                        [160, 170, 190, 75]
-                    } else {
-                        [140, 155, 185, 55]
-                    }
-                };
-                UIFont::draw_rounded_rect_fill(
+                // Airplay / Output Device (secondary action right)
+                UIFont::draw_airplay_icon(
                     buf,
                     self.width,
                     self.height,
-                    bar_x,
-                    bar_y,
-                    bar_w * 0.5,
-                    2.0,
-                    2.0,
-                    track_bg,
+                    output_cx,
+                    ctrl_y,
+                    8.5,
+                    sec_col,
                 );
-
-                // Active fill and scrubber only shown when media is active
-                if is_media_active {
-                    let fill_w = bar_w * self.music.progress;
-                    if fill_w > 2.0 {
-                        let fill_cx = cx - bar_w * 0.5 + fill_w * 0.5;
-                        UIFont::draw_rounded_rect_fill(
-                            buf,
-                            self.width,
-                            self.height,
-                            fill_cx,
-                            bar_y,
-                            fill_w * 0.5,
-                            2.0,
-                            2.0,
-                            col_ink,
-                        );
-                        // Scrubber knob
-                        let knob_x = cx - bar_w * 0.5 + fill_w;
-                        UIFont::draw_rounded_rect_fill(
-                            buf,
-                            self.width,
-                            self.height,
-                            knob_x,
-                            bar_y,
-                            4.0,
-                            4.0,
-                            4.0,
-                            if is_light {
-                                [20, 24, 32, 255]
-                            } else {
-                                [255, 255, 255, 255]
-                            },
-                        );
-                    }
-                }
             }
             IslandMode::Notification => {
                 if let Some(notif) = &self.active_notif {
@@ -2496,7 +2508,7 @@ impl IslandWidget {
 
                 for (idx, app) in self.quick_access.iter().enumerate() {
                     let cx = start_x + (idx as f32) * item_w;
-                    let cy = island_top + 65.0;
+                    let cy = island_top + 78.0;
 
                     let is_tile_hover = self.is_hovered
                         && (cur_lx - cx).abs() <= (item_w - 10.0) * 0.5
@@ -2605,7 +2617,7 @@ impl IslandWidget {
 
                 let item_w = (island_w - 52.0) / 4.0;
                 let start_x = cx - island_w * 0.5 + 26.0 + item_w * 0.5;
-                let cy = island_top + 65.0;
+                let cy = island_top + 78.0;
 
                 for (idx, (lbl, val, _accent)) in stat_items.iter().enumerate() {
                     let cx = start_x + (idx as f32) * item_w;
@@ -2727,7 +2739,7 @@ impl IslandWidget {
 
                 let item_w = (island_w - 52.0) / 4.0;
                 let start_x = cx - island_w * 0.5 + 26.0 + item_w * 0.5;
-                let cy = island_top + 65.0;
+                let cy = island_top + 78.0;
 
                 let cur_lx = self.cursor_pos[0] * (self.width as f32);
                 let cur_ly = self.cursor_pos[1] * (self.height as f32);
@@ -3035,13 +3047,18 @@ impl IslandWidget {
         }
 
         // Track navigation button exemption (allows rapid skipping without triggering double-click collapse)
-        let ctrl_y = island_top + 68.0;
-        let play_cx = island_cx + island_w * 0.5 - 64.0;
+        let ctrl_y = island_top + 122.0;
+        let play_cx = island_cx;
         let prev_cx = play_cx - 44.0;
         let next_cx = play_cx + 44.0;
+        let bar_w = island_w - 56.0;
+        let replay_cx = island_cx - bar_w * 0.5 + 16.0;
+        let output_cx = island_cx + bar_w * 0.5 - 16.0;
         let is_track_nav = self.mode == IslandMode::MusicExpanded
             && (((lx - prev_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt() <= 20.0
-                || ((lx - next_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt() <= 20.0);
+                || ((lx - next_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt() <= 20.0
+                || ((lx - replay_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt() <= 20.0
+                || ((lx - output_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt() <= 20.0);
 
         // Double-click detection: collapses expanded island or expands compact pill
         if !is_track_nav {
@@ -3065,10 +3082,10 @@ impl IslandWidget {
         self.last_click_pos = [lx, ly];
 
         // Page dot clicks across all expanded modes
-        let dot_start_x = island_cx + island_w * 0.5 - 65.0;
-        let dot_y = island_top + 22.0;
-        if ly >= dot_y - 10.0
-            && ly <= dot_y + 10.0
+        let dot_start_x = island_cx + island_w * 0.5 - 56.0;
+        let dot_y = island_top + 24.0;
+        if ly >= dot_y - 12.0
+            && ly <= dot_y + 12.0
             && lx >= dot_start_x - 8.0
             && lx <= dot_start_x + 45.0
         {
@@ -3099,6 +3116,8 @@ impl IslandWidget {
                 let d_play = ((lx - play_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt();
                 let d_prev = ((lx - prev_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt();
                 let d_next = ((lx - next_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt();
+                let d_replay = ((lx - replay_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt();
+                let d_output = ((lx - output_cx).powi(2) + (ly - ctrl_y).powi(2)).sqrt();
 
                 if d_play <= 22.0 {
                     let _ = Command::new("playerctl").args(["play-pause"]).spawn();
@@ -3107,8 +3126,13 @@ impl IslandWidget {
                     let _ = Command::new("playerctl").args(["previous"]).spawn();
                 } else if d_next <= 20.0 {
                     let _ = Command::new("playerctl").args(["next"]).spawn();
-                } else if ly > island_top + 80.0 {
-                    let bar_w = island_w - 64.0;
+                } else if d_replay <= 20.0 {
+                    let _ = Command::new("playerctl").args(["position", "0"]).spawn();
+                    self.music.elapsed_sec = 0.0;
+                    self.music.progress = 0.0;
+                } else if d_output <= 20.0 {
+                    let _ = Command::new("pavucontrol").spawn();
+                } else if ly >= island_top + 68.0 && ly <= island_top + 98.0 {
                     let bar_left = island_cx - bar_w * 0.5;
                     let ratio = ((lx - bar_left) / bar_w).clamp(0.0, 1.0);
                     self.music.progress = ratio;
@@ -3135,7 +3159,7 @@ impl IslandWidget {
 
                 for (idx, app) in self.quick_access.iter().enumerate() {
                     let cx = start_x + (idx as f32) * item_w;
-                    let cy = island_top + 65.0;
+                    let cy = island_top + 78.0;
                     if (lx - cx).abs() <= item_w * 0.45 && (ly - cy).abs() <= 28.0 {
                         let _ = Command::new("sh").args(["-c", &app.command]).spawn();
                         self.set_mode(IslandMode::CompactPill);
@@ -3147,7 +3171,7 @@ impl IslandWidget {
             IslandMode::PowerMenu => {
                 let item_w = (island_w - 52.0) / 4.0;
                 let start_x = island_cx - island_w * 0.5 + 26.0 + item_w * 0.5;
-                let cy = island_top + 64.0;
+                let cy = island_top + 78.0;
 
                 for idx in 0..4 {
                     let cx = start_x + (idx as f32) * item_w;

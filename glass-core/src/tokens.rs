@@ -24,7 +24,7 @@ impl Tokens {
     pub const ISLAND_COMPACT_W: f32 = 230.0;
     pub const ISLAND_COMPACT_H: f32 = 38.0;
     pub const ISLAND_EXPANDED_W: f32 = 460.0;
-    pub const ISLAND_EXPANDED_H: f32 = 120.0;
+    pub const ISLAND_EXPANDED_H: f32 = 148.0;
 
     // ── Palette (Single Crisp Accent + Semantic Statuses) ──
     /// Single unified accent: Apple electric cyan-blue

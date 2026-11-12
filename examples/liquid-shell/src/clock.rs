@@ -794,6 +794,9 @@ impl ClockWidget {
                 [170, 185, 215, (190.0 * exp_alpha) as u8]
             };
             let tile_base = if is_light { [0, 0, 0] } else { [255, 255, 255] };
+            // Single accent from design tokens — all metric values and
+            // interactive highlights share it; only true statuses keep hue.
+            let accent = Tokens::ACCENT;
 
             // ── SEGMENTED TOP TAB SWITCHER (VITALS | APPS | POWER) ──
             let tab_y = 28.0 + slide_y;
@@ -814,7 +817,7 @@ impl ClockWidget {
                 ],
             );
 
-            // Smooth spring sliding indicator pill
+            // Smooth spring sliding indicator pill — clearly visible active state
             let ind_x = (cx - 86.0) + self.page_spring.value * 86.0;
             UIFont::draw_rounded_rect_fill(
                 buf,
@@ -829,7 +832,7 @@ impl ClockWidget {
                     tile_base[0],
                     tile_base[1],
                     tile_base[2],
-                    (45.0 * exp_alpha) as u8,
+                    (72.0 * exp_alpha) as u8,
                 ],
             );
             UIFont::draw_rounded_rect_stroke(
@@ -846,7 +849,7 @@ impl ClockWidget {
                     tile_base[0],
                     tile_base[1],
                     tile_base[2],
-                    (80.0 * exp_alpha) as u8,
+                    (120.0 * exp_alpha) as u8,
                 ],
             );
 
@@ -897,13 +900,13 @@ impl ClockWidget {
                     [170, 185, 215, (190.0 * page_alpha) as u8]
                 };
 
-                // Subtitle Header
+                // Subtitle Header (sentence case per HIG)
                 let sub_y = 52.0 + slide_y;
                 self.font.draw_text_centered_y(
                     buf,
                     self.width,
                     self.height,
-                    "SYSTEM HEALTH",
+                    "System health",
                     px_c - 146.0,
                     sub_y,
                     10.5,
@@ -912,7 +915,7 @@ impl ClockWidget {
                     FontWeight::Bold,
                 );
                 let up_str = format!(
-                    "UPTIME {}h {}m",
+                    "Up {}h {}m",
                     self.sys_stats.uptime_hrs, self.sys_stats.uptime_mins
                 );
                 let up_w = self.font.measure_text(&up_str, 10.5, FontWeight::Bold);
@@ -929,23 +932,19 @@ impl ClockWidget {
                     FontWeight::Bold,
                 );
 
-                // Row 1: CPU Metric Tile
-                let cpu_y = 90.0 + slide_y;
+                // Row 1: CPU Metric (chromeless — floats on glass)
+                let cpu_y = 88.0 + slide_y;
+                // Accent icon chip
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
                     self.height,
-                    px_c,
-                    cpu_y,
-                    146.0,
-                    22.0,
+                    px_c - 128.0,
+                    cpu_y - 4.0,
+                    15.0,
+                    15.0,
                     10.0,
-                    [
-                        tile_base[0],
-                        tile_base[1],
-                        tile_base[2],
-                        (14.0 * page_alpha) as u8,
-                    ],
+                    [accent[0], accent[1], accent[2], (34.0 * page_alpha) as u8],
                 );
                 UIFont::draw_cpu_icon(
                     buf,
@@ -969,12 +968,11 @@ impl ClockWidget {
                 );
                 let cpu_val = format!("{}%", self.sys_stats.cpu_pct);
                 let cpu_w = self.font.measure_text(&cpu_val, 13.5, FontWeight::Bold);
+                // Accent for normal state; red reserved for genuine overload
                 let cpu_col = if self.sys_stats.cpu_pct > 80 {
                     [255, 85, 85, a8]
-                } else if is_light {
-                    [16, 115, 220, a8]
                 } else {
-                    [86, 185, 255, a8]
+                    [accent[0], accent[1], accent[2], a8]
                 };
                 self.font.draw_text_centered_y(
                     buf,
@@ -983,7 +981,7 @@ impl ClockWidget {
                     &cpu_val,
                     px_c + 138.0 - cpu_w,
                     cpu_y - 4.0,
-                    13.5,
+                    16.5,
                     cpu_col,
                     col_shadow,
                     FontWeight::Bold,
@@ -998,13 +996,13 @@ impl ClockWidget {
                     px_c,
                     track_y,
                     track_w * 0.5,
-                    2.5,
+                    3.0,
                     2.5,
                     [
                         tile_base[0],
                         tile_base[1],
                         tile_base[2],
-                        (25.0 * page_alpha) as u8,
+                        (36.0 * page_alpha) as u8,
                     ],
                 );
                 let cpu_fw = track_w * (self.sys_stats.cpu_pct as f32 / 100.0).clamp(0.02, 1.0);
@@ -1016,28 +1014,24 @@ impl ClockWidget {
                     cpu_fcx,
                     track_y,
                     cpu_fw * 0.5,
-                    2.5,
+                    3.0,
                     2.5,
                     cpu_col,
                 );
 
-                // Row 2: MEMORY Metric Tile
-                let ram_y = 146.0 + slide_y;
+                // Row 2: MEMORY Metric (chromeless)
+                let ram_y = 148.0 + slide_y;
+                // Accent icon chip
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
                     self.height,
-                    px_c,
-                    ram_y,
-                    146.0,
-                    22.0,
+                    px_c - 128.0,
+                    ram_y - 4.0,
+                    15.0,
+                    15.0,
                     10.0,
-                    [
-                        tile_base[0],
-                        tile_base[1],
-                        tile_base[2],
-                        (14.0 * page_alpha) as u8,
-                    ],
+                    [accent[0], accent[1], accent[2], (34.0 * page_alpha) as u8],
                 );
                 UIFont::draw_ram_icon(
                     buf,
@@ -1064,11 +1058,7 @@ impl ClockWidget {
                     self.sys_stats.ram_used_gb, self.sys_stats.ram_total_gb
                 );
                 let ram_w = self.font.measure_text(&ram_val, 12.5, FontWeight::Bold);
-                let ram_col = if is_light {
-                    [120, 60, 225, a8]
-                } else {
-                    [178, 135, 255, a8]
-                };
+                let ram_col = [accent[0], accent[1], accent[2], a8];
                 self.font.draw_text_centered_y(
                     buf,
                     self.width,
@@ -1076,7 +1066,7 @@ impl ClockWidget {
                     &ram_val,
                     px_c + 138.0 - ram_w,
                     ram_y - 4.0,
-                    12.5,
+                    15.0,
                     ram_col,
                     col_shadow,
                     FontWeight::Bold,
@@ -1089,13 +1079,13 @@ impl ClockWidget {
                     px_c,
                     ram_track_y,
                     track_w * 0.5,
-                    2.5,
+                    3.0,
                     2.5,
                     [
                         tile_base[0],
                         tile_base[1],
                         tile_base[2],
-                        (25.0 * page_alpha) as u8,
+                        (36.0 * page_alpha) as u8,
                     ],
                 );
                 let ram_fw = track_w * (ram_pct as f32 / 100.0).clamp(0.02, 1.0);
@@ -1107,28 +1097,24 @@ impl ClockWidget {
                     ram_fcx,
                     ram_track_y,
                     ram_fw * 0.5,
-                    2.5,
+                    3.0,
                     2.5,
                     ram_col,
                 );
 
-                // Row 3: BATTERY Metric Tile
-                let bat_y = 202.0 + slide_y;
+                // Row 3: BATTERY Metric (chromeless)
+                let bat_y = 208.0 + slide_y;
+                // Accent icon chip
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
                     self.height,
-                    px_c,
-                    bat_y,
-                    146.0,
-                    22.0,
+                    px_c - 128.0,
+                    bat_y - 4.0,
+                    15.0,
+                    15.0,
                     10.0,
-                    [
-                        tile_base[0],
-                        tile_base[1],
-                        tile_base[2],
-                        (14.0 * page_alpha) as u8,
-                    ],
+                    [accent[0], accent[1], accent[2], (34.0 * page_alpha) as u8],
                 );
                 UIFont::draw_battery_icon(
                     buf,
@@ -1170,10 +1156,8 @@ impl ClockWidget {
                     }
                 } else if self.sys_stats.bat_pct <= 20 {
                     [255, 140, 10, a8]
-                } else if is_light {
-                    [20, 28, 42, a8]
                 } else {
-                    [245, 248, 255, a8]
+                    col_p
                 };
                 self.font.draw_text_centered_y(
                     buf,
@@ -1182,7 +1166,7 @@ impl ClockWidget {
                     &bat_val,
                     px_c + 138.0 - bat_w,
                     bat_y - 4.0,
-                    12.5,
+                    15.0,
                     bat_col,
                     col_shadow,
                     FontWeight::Bold,
@@ -1195,13 +1179,13 @@ impl ClockWidget {
                     px_c,
                     bat_track_y,
                     track_w * 0.5,
-                    2.5,
+                    3.0,
                     2.5,
                     [
                         tile_base[0],
                         tile_base[1],
                         tile_base[2],
-                        (25.0 * page_alpha) as u8,
+                        (36.0 * page_alpha) as u8,
                     ],
                 );
                 let bat_fw = track_w * (self.sys_stats.bat_pct as f32 / 100.0).clamp(0.02, 1.0);
@@ -1213,7 +1197,7 @@ impl ClockWidget {
                     bat_fcx,
                     bat_track_y,
                     bat_fw * 0.5,
-                    2.5,
+                    3.0,
                     2.5,
                     bat_col,
                 );
@@ -1243,7 +1227,7 @@ impl ClockWidget {
                     buf,
                     self.width,
                     self.height,
-                    "QUICK LAUNCH",
+                    "Quick launch",
                     px_c - 146.0,
                     sub_y,
                     10.5,
@@ -1255,7 +1239,7 @@ impl ClockWidget {
                     buf,
                     self.width,
                     self.height,
-                    "CLICK TO LAUNCH",
+                    "Click to launch",
                     px_c + 54.0,
                     sub_y,
                     10.5,
@@ -1279,14 +1263,14 @@ impl ClockWidget {
                             tile_base[0],
                             tile_base[1],
                             tile_base[2],
-                            (40.0 * page_alpha) as u8,
+                            (34.0 * page_alpha) as u8,
                         ]
                     } else {
                         [
                             tile_base[0],
                             tile_base[1],
                             tile_base[2],
-                            (14.0 * page_alpha) as u8,
+                            (12.0 * page_alpha) as u8,
                         ]
                     };
                     UIFont::draw_rounded_rect_fill(
@@ -1315,7 +1299,7 @@ impl ClockWidget {
                                 tile_base[0],
                                 tile_base[1],
                                 tile_base[2],
-                                (90.0 * page_alpha) as u8,
+                                (0.0 * page_alpha) as u8,
                             ],
                         );
                     }
@@ -1382,20 +1366,16 @@ impl ClockWidget {
                     );
 
                     let hint_col = if is_hover {
-                        if is_light {
-                            [16, 115, 220, a8]
-                        } else {
-                            [86, 185, 255, a8]
-                        }
+                        [accent[0], accent[1], accent[2], a8]
                     } else {
                         col_p_sub
                     };
-                    let hint_w = self.font.measure_text("LAUNCH ↵", 10.0, FontWeight::Bold);
+                    let hint_w = self.font.measure_text("Launch ↵", 10.0, FontWeight::Bold);
                     self.font.draw_text_centered_y(
                         buf,
                         self.width,
                         self.height,
-                        "LAUNCH ↵",
+                        "Launch ↵",
                         px_c + 140.0 - hint_w,
                         row_y,
                         10.0,
@@ -1430,7 +1410,7 @@ impl ClockWidget {
                     buf,
                     self.width,
                     self.height,
-                    "SYSTEM CONTROLS",
+                    "System controls",
                     px_c - 146.0,
                     sub_y,
                     10.5,
@@ -1442,7 +1422,7 @@ impl ClockWidget {
                     buf,
                     self.width,
                     self.height,
-                    "SESSION POWER",
+                    "Session power",
                     px_c + 60.0,
                     sub_y,
                     10.5,
@@ -1469,7 +1449,7 @@ impl ClockWidget {
                                 tile_base[0],
                                 tile_base[1],
                                 tile_base[2],
-                                (40.0 * page_alpha) as u8,
+                                (34.0 * page_alpha) as u8,
                             ]
                         }
                     } else {
@@ -1477,7 +1457,7 @@ impl ClockWidget {
                             tile_base[0],
                             tile_base[1],
                             tile_base[2],
-                            (14.0 * page_alpha) as u8,
+                            (12.0 * page_alpha) as u8,
                         ]
                     };
                     UIFont::draw_rounded_rect_fill(
@@ -1499,7 +1479,7 @@ impl ClockWidget {
                                 tile_base[0],
                                 tile_base[1],
                                 tile_base[2],
-                                (90.0 * page_alpha) as u8,
+                                (0.0 * page_alpha) as u8,
                             ]
                         };
                         UIFont::draw_rounded_rect_stroke(
@@ -1585,11 +1565,7 @@ impl ClockWidget {
                     let act_col = if is_hover && idx == 3 {
                         [255, 90, 90, a8]
                     } else if is_hover {
-                        if is_light {
-                            [16, 115, 220, a8]
-                        } else {
-                            [86, 185, 255, a8]
-                        }
+                        [accent[0], accent[1], accent[2], a8]
                     } else {
                         col_p_sub
                     };
@@ -1695,12 +1671,12 @@ impl ClockWidget {
                 })
                 .bounds(x_norm, y_norm, w_norm, h_norm)
                 .curvature(self.fillet_radius)
-                .bevel(16.0)
-                .refraction(16.0)
-                .dispersion(0.12)
+                .bevel(7.0)
+                .refraction(7.0)
+                .dispersion(0.05)
                 .blur(self.blur_radius)
-                .specular(1.10)
-                .fresnel(0.60)
+                .specular(0.85)
+                .fresnel(0.45)
                 .style_mode(self.style_mode)
                 .tint(0.0, 0.0, 1.0, is_light_f32)
                 .roughness(self.sys_stats.bat_pct as f32)
