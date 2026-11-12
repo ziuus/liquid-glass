@@ -839,7 +839,11 @@ fn main() {
 
         let now_local = chrono::Local::now();
         let cur_min = now_local.minute();
-        if clock_active || app.clock.is_hovered || app.clock.needs_redraw || cur_min != last_minute
+        if clock_active
+            || app.clock.is_hovered
+            || app.clock.is_hot_edge_hovered
+            || app.clock.needs_redraw
+            || cur_min != last_minute
         {
             last_minute = cur_min;
             app.clock.draw();
@@ -854,13 +858,21 @@ fn main() {
             let _ = conn.flush();
         }
 
-        if todo_active || app.todo.is_hovered || app.todo.needs_redraw {
+        if todo_active
+            || app.todo.is_hovered
+            || app.todo.is_hot_edge_hovered
+            || app.todo.needs_redraw
+        {
             app.todo.draw();
             app.todo.needs_redraw = false;
             let _ = conn.flush();
         }
 
-        if dock_active || app.dock.is_hovered || app.dock.needs_redraw {
+        if dock_active
+            || app.dock.is_hovered
+            || app.dock.is_hot_edge_hovered
+            || app.dock.needs_redraw
+        {
             app.dock.draw();
             app.dock.needs_redraw = false;
             let _ = conn.flush();
@@ -871,9 +883,12 @@ fn main() {
             || clock_active
             || dock_active
             || app.clock.is_hovered
+            || app.clock.is_hot_edge_hovered
             || app.island.is_hovered
             || app.todo.is_hovered
-            || app.dock.is_hovered;
+            || app.todo.is_hot_edge_hovered
+            || app.dock.is_hovered
+            || app.dock.is_hot_edge_hovered;
 
         let timeout_ms = if animating {
             16
@@ -883,8 +898,12 @@ fn main() {
             || (app.island.mode != IslandMode::CompactPill && app.island.mode != IslandMode::Hidden)
         {
             50
-        } else if app.island.mode == IslandMode::Hidden {
-            250
+        } else if app.island.is_window_overlapping
+            || app.clock.is_window_overlapping
+            || app.todo.is_window_overlapping
+            || app.dock.is_window_overlapping
+        {
+            100
         } else {
             let sec = now_local.second();
             let sub_ms = now_local.timestamp_subsec_millis();

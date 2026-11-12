@@ -152,6 +152,8 @@ pub struct TodoWidget {
 
     #[allow(dead_code)]
     pub is_window_overlapping: bool,
+    pub is_hot_edge_hovered: bool,
+    pub hot_edge_dwell_start: Option<Instant>,
     #[allow(dead_code)]
     pub last_window_check: Instant,
     pub is_hidden_by_window: bool,
@@ -301,6 +303,8 @@ impl TodoWidget {
             needs_input_region_update: true,
 
             is_window_overlapping: false,
+            is_hot_edge_hovered: false,
+            hot_edge_dwell_start: None,
             last_window_check: Instant::now() - std::time::Duration::from_secs(60),
             is_hidden_by_window: false,
             needs_redraw: true,
@@ -309,7 +313,12 @@ impl TodoWidget {
     }
 
     pub fn check_window_overlap(&mut self) {
-        if self.last_window_check.elapsed() < Duration::from_millis(300) {
+        let check_interval = if self.is_hidden_by_window {
+            Duration::from_millis(150)
+        } else {
+            Duration::from_millis(300)
+        };
+        if self.last_window_check.elapsed() < check_interval {
             return;
         }
         self.last_window_check = Instant::now();
@@ -336,17 +345,54 @@ impl TodoWidget {
         if !overlapping {
             // Empty desktop: always show tasks pill on wallpaper
             self.is_hidden_by_window = false;
+            self.is_hot_edge_hovered = false;
+            self.hot_edge_dwell_start = None;
         } else {
-            // Window overlapping: check cursor
+            // Window overlapping: check global Hyprland cursor
             if let Some((cx, cy)) = crate::island::IslandWidget::query_hyprland_cursor() {
-                let is_at_top_edge = cx >= 1550 && cy <= 12;
-                if is_at_top_edge || self.is_hovered || !self.is_compact {
-                    self.is_hidden_by_window = false;
-                    self.last_hover_time = Instant::now();
-                } else if self.last_hover_time.elapsed() >= Duration::from_millis(1000) {
-                    self.is_hidden_by_window = true;
+                // Todo pill is top-right: x in [1580, 1800], cy <= 1 with intentional dwell
+                let is_at_top_edge = (1580..=1800).contains(&cx) && cy <= 1;
+
+                let pill_w = if self.is_compact {
+                    COMPACT_W as i32
+                } else {
+                    CARD_W as i32
+                };
+                let pill_h = if self.is_compact {
+                    COMPACT_H as i32 + 10
+                } else {
+                    CARD_H as i32 + 14
+                };
+                let pill_left = pill_cx_on_mon - pill_w / 2;
+                let pill_right = pill_left + pill_w;
+                let is_inside_pill =
+                    (pill_left..=pill_right).contains(&cx) && (0..=pill_h).contains(&cy);
+
+                if is_at_top_edge {
+                    let now = Instant::now();
+                    let dwell = self.hot_edge_dwell_start.get_or_insert(now);
+                    if now.duration_since(*dwell) >= Duration::from_millis(150) {
+                        self.is_hot_edge_hovered = true;
+                        self.is_hidden_by_window = false;
+                        self.last_hover_time = now;
+                    }
+                } else {
+                    self.hot_edge_dwell_start = None;
+                    self.is_hot_edge_hovered = false;
+
+                    if !self.is_hidden_by_window {
+                        if is_inside_pill || !self.is_compact {
+                            self.last_hover_time = Instant::now();
+                        } else if self.last_hover_time.elapsed() >= Duration::from_millis(350) {
+                            self.is_hidden_by_window = true;
+                            if !self.is_compact {
+                                self.collapse();
+                            }
+                        }
+                    }
                 }
-            } else if !self.is_hovered && self.is_compact {
+            } else if self.is_compact {
+                self.is_hot_edge_hovered = false;
                 self.is_hidden_by_window = true;
             }
         }
@@ -445,11 +491,7 @@ impl TodoWidget {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
         if self.is_hidden_by_window && self.is_compact {
-            let cx = self.width as i32 / 2;
-            let pill_w = COMPACT_W as i32;
-            let pill_x = cx - pill_w / 2;
-            // 2px top strip for immediate hover wake-up
-            region.add(pill_x, 0, pill_w, 2);
+            // Keep region completely empty so underlying apps receive 100% of mouse events
             self.surface.set_input_region(Some(&region));
             region.destroy();
             self.surface.commit();
@@ -478,12 +520,12 @@ impl TodoWidget {
             PointerEventKind::Enter { .. } => {
                 let px = event.position.0 as f32;
                 let py = event.position.1 as f32;
-                self.is_hidden_by_window = false;
-                self.needs_redraw = true;
-                self.needs_input_region_update = true;
                 let inside = self.is_inside(px, py);
                 self.is_hovered = inside;
-                if inside {
+                if inside && !self.is_window_overlapping {
+                    self.is_hidden_by_window = false;
+                    self.needs_redraw = true;
+                    self.needs_input_region_update = true;
                     self.last_hover_time = Instant::now();
                     if self.is_compact && self.hover_to_expand {
                         self.expand();
@@ -496,6 +538,10 @@ impl TodoWidget {
                 self.cursor_pos = [-10.0, -10.0];
                 self.last_hover_time = Instant::now();
                 self.needs_redraw = true;
+                if self.is_window_overlapping {
+                    self.is_hidden_by_window = true;
+                    self.needs_input_region_update = true;
+                }
                 if !self.is_compact {
                     self.collapse();
                 }
@@ -507,17 +553,19 @@ impl TodoWidget {
                 let new_x = px / self.width as f32;
                 let new_y = py / self.height as f32;
                 self.cursor_pos = [new_x, new_y];
-                self.last_hover_time = Instant::now();
 
                 let inside = self.is_inside(px, py);
                 self.is_hovered = inside;
-                if self.is_hidden_by_window {
+                if inside && !self.is_window_overlapping && self.is_hidden_by_window {
                     self.is_hidden_by_window = false;
                     self.needs_redraw = true;
                     self.needs_input_region_update = true;
                 }
-                if inside && self.is_compact && self.hover_to_expand {
-                    self.expand();
+                if inside {
+                    self.last_hover_time = Instant::now();
+                    if self.is_compact && self.hover_to_expand {
+                        self.expand();
+                    }
                 }
 
                 if let Some(row) = self.task_pressed_row {
@@ -2237,16 +2285,16 @@ impl TodoWidget {
                 })
                 .bounds(x_norm, y_norm, w_norm, h_norm)
                 .curvature(self.fillet_radius)
-                .bevel(12.0)
-                .refraction(12.0)
-                .dispersion(0.08)
+                .bevel(14.0)
+                .refraction(18.0)
+                .dispersion(0.12)
                 .blur(self.blur_radius)
                 .tint(0.0, progress_packed, 1.0, is_light_f32)
                 .roughness(-1.0)
-                .specular(1.10)
-                .fresnel(0.55)
+                .specular(1.20)
+                .fresnel(0.65)
                 .style_mode(self.style_mode)
-                .element_type(0.0)
+                .element_type(27.0)
                 .deformation(0.0)
                 .pointer_pos(px, py);
 

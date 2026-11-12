@@ -1761,20 +1761,54 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     } else if effective_light > 0.5 {
         // ── LIGHT / WHITE BACKDROP: CRYSTALLINE SPECULAR GLINT + SHADOW-SIDE OPTICAL GROUNDING ──
-        // Zero white outline on bottom or sides. Lit side gets clean glint; shadow side gets subtle 3.5% grounding
-        let lit_highlight = spec_line * 0.30;
-        let shadow_meniscus = smoothstep(1.8, 0.0, depth) * pow(shadow_facing, 2.0) * 0.035 * top_flush;
-        base_surface = col + vec3<f32>(lit_highlight) - vec3<f32>(shadow_meniscus);
+        // Clean crystalline floating pill over bright/cloud backgrounds (Reference Image 1)
+        let lit_highlight = spec_line * 0.45;
+        let shadow_meniscus = smoothstep(2.0, 0.0, depth) * pow(shadow_facing, 2.0) * 0.05 * top_flush;
+        var light_glass_body = vec3<f32>(0.0);
+        if style_mode >= 1.5 && !is_liquid_text {
+            // Luminous crystalline refraction meniscus along the curved bevel (Reference Image 1)
+            let bevel_refr = smoothstep(bezel * 0.85, 0.0, depth) * 0.12 * (0.8 + light_facing * 0.6);
+            let inner_volumetric = 0.055;
+            light_glass_body = vec3<f32>(bevel_refr + inner_volumetric);
+        }
+        base_surface = col + vec3<f32>(lit_highlight) + light_glass_body - vec3<f32>(shadow_meniscus);
     } else {
-        // ── DARK / VIBRANT BACKDROP (e.g. Ferns, Retro, Pitch Black): LIT SPECULAR + ADAPTIVE LEGIBILITY ──
+        // ── DARK / VIBRANT BACKDROP: LUMINESCENT CYAN/SAPPHIRE CAUSTICS & DEEP TRANSMISSION BODY ──
+        // Authentic physical optical lensing matching Reference Image 2
         let digit_spec_boost = select(1.0, 1.85, is_liquid_text);
-        let dark_spec = spec_line * 0.60 * digit_spec_boost;
+        let dark_spec = spec_line * 0.70 * digit_spec_boost;
         let dark_rim = smoothstep(1.2, 0.0, depth) * mix(0.18, 0.40, light_facing) * top_flush;
         let bg_lum = dot(col, vec3<f32>(0.299, 0.587, 0.114));
         let adaptive_lift = select(0.0, (1.0 - smoothstep(0.0, 0.35, bg_lum)) * 0.14, is_liquid_text);
         let digit_inner_fill = select(0.0, 0.012 + adaptive_lift, is_liquid_text);
         let liquid_lift = select(0.0, smoothstep(1.2, 0.0, depth) * (0.10 + adaptive_lift * 0.5) + digit_inner_fill, is_liquid_text);
-        base_surface = col + vec3<f32>(dark_spec + dark_rim + liquid_lift);
+
+        // Physical volumetric glass transmission and bevel meniscus caustics:
+        // Crystalline silicate glass catches ambient diffuse light across its curved surface,
+        // producing the glowing sapphire/cyan curved meniscus caustics from Reference Image 2.
+        var glass_volumetric = vec3<f32>(0.0);
+        if style_mode >= 1.5 && !is_liquid_text {
+            let dark_depth = 1.0 - smoothstep(0.0, 0.35, bg_lum);
+            // Rich dark sapphire/slate volumetric transmission body (Reference Image 2)
+            let slab_body = vec3<f32>(0.035, 0.055, 0.095) * dark_depth;
+            let diffuse_lift = vec3<f32>(0.045, 0.050, 0.065) * dark_depth;
+
+            // Electric sapphire/cyan optical caustic color (Reference Image 2)
+            let cyan_caustic_col = vec3<f32>(0.16, 0.62, 1.0);
+
+            // Razor-sharp 1.2px optical meniscus caustic rim along curved edges
+            let caustic_rim = smoothstep(1.4, 0.0, depth) * (0.32 + light_facing * 0.48) * cyan_caustic_col * top_flush;
+
+            // Smooth curved bevel meniscus caustic band (concentrates refracted light across curved corner)
+            let caustic_bevel = smoothstep(bezel * 0.85, 0.0, depth) * (0.14 + light_facing * 0.22) * cyan_caustic_col;
+
+            // Soft outer ambient glass bloom
+            let caustic_bloom = smoothstep(bezel * 1.3, 0.0, depth) * 0.06 * cyan_caustic_col * (0.6 + light_facing * 0.6);
+
+            glass_volumetric = slab_body + diffuse_lift + caustic_rim + caustic_bevel + caustic_bloom;
+        }
+
+        base_surface = col + vec3<f32>(dark_spec + dark_rim + liquid_lift) + glass_volumetric;
     }
 
     let app = render_element_appearance(local_px, half_size, params.padding, params.tint.y, params.time, params.tint, effective_light);

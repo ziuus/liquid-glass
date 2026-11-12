@@ -1705,8 +1705,8 @@ impl IslandWidget {
         } else {
             // Apps/windows are overlapping underneath the island zone
             if let Some((cx, cy)) = Self::query_hyprland_cursor() {
-                // Reaching top edge: x in [780, 1140], y <= 6
-                let is_at_top_edge = (780..=1140).contains(&cx) && cy <= 6;
+                // Reaching top edge: x in [780, 1140], cy <= 1 with dwell to avoid accidental triggers
+                let is_at_top_edge = (780..=1140).contains(&cx) && cy <= 1;
                 let island_w = self.current_w as i32;
                 let island_left = (mon_w - island_w) / 2;
                 let island_right = island_left + island_w;
@@ -1715,19 +1715,22 @@ impl IslandWidget {
                     (island_left..=island_right).contains(&cx) && (0..=island_bottom).contains(&cy);
 
                 if is_at_top_edge {
-                    if self.mode == IslandMode::Hidden {
-                        self.set_mode(IslandMode::CompactPill);
+                    let now = Instant::now();
+                    let dwell = self.hot_edge_dwell_start.get_or_insert(now);
+                    if now.duration_since(*dwell) >= Duration::from_millis(150) {
+                        if self.mode == IslandMode::Hidden {
+                            self.set_mode(IslandMode::CompactPill);
+                        }
+                        self.last_interaction = now;
                     }
-                    self.last_interaction = Instant::now();
-                    self.hot_edge_dwell_start = None;
                 } else if is_inside_island && self.mode != IslandMode::Hidden {
                     self.last_interaction = Instant::now();
                     self.hot_edge_dwell_start = None;
                 } else {
                     self.hot_edge_dwell_start = None;
-                    // Outside the island while an app is underneath: auto-hide after brief idle
+                    // Outside the island while an app is underneath: auto-hide immediately after 350ms
                     if self.mode != IslandMode::Hidden
-                        && self.last_interaction.elapsed() >= Duration::from_millis(1200)
+                        && self.last_interaction.elapsed() >= Duration::from_millis(350)
                     {
                         self.set_mode(IslandMode::Hidden);
                     }
@@ -1781,17 +1784,27 @@ impl IslandWidget {
         });
         let sock_path = format!("{}/hypr/{}/.socket.sock", xdg, his);
 
-        // 1. Get active workspace ID
+        // 1. Get active workspace ID & fullscreen status
         let mut active_ws_id = None;
+        let mut has_fullscreen = false;
         if let Ok(mut stream) = UnixStream::connect(&sock_path) {
             if stream.write_all(b"j/activeworkspace").is_ok() {
                 let mut resp = Vec::new();
                 if stream.read_to_end(&mut resp).is_ok() {
                     if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&resp) {
                         active_ws_id = val.get("id").and_then(|id| id.as_i64());
+                        has_fullscreen = val
+                            .get("hasfullscreen")
+                            .and_then(|f| f.as_bool())
+                            .unwrap_or(false);
                     }
                 }
             }
+        }
+
+        // Fullscreen app (e.g. VLC playing video): 100% covers entire screen
+        if has_fullscreen {
+            return true;
         }
 
         let ws_id = match active_ws_id {
