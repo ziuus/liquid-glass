@@ -27,8 +27,8 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::ZwlrL
 pub const CARD_PAD: f32 = 24.0;
 pub const CARD_W: f32 = 340.0;
 pub const CARD_H: f32 = 286.0;
-pub const COMPACT_W: f32 = 176.0;
-pub const COMPACT_H: f32 = 30.0;
+pub const COMPACT_W: f32 = 168.0;
+pub const COMPACT_H: f32 = 32.0;
 
 pub struct WaylandWindow {
     pub surface: wl_surface::WlSurface,
@@ -118,6 +118,7 @@ pub struct ClockWidget {
     pub is_window_overlapping: bool,
     pub last_window_check: Instant,
     pub is_hidden_by_window: bool,
+    pub needs_redraw: bool,
 
     // Attachment mode (right-click cycle)
     pub attachment_mode: u8, // 0=Floating, 1=AttachedStraight, 2=AttachedCurved
@@ -168,7 +169,7 @@ impl ClockWidget {
         let layer_surface = layer_shell.create_layer_surface(
             qh,
             surface.clone(),
-            Layer::Bottom,
+            Layer::Overlay,
             Some("liquid-glass-control-hub"),
             None,
         );
@@ -254,6 +255,7 @@ impl ClockWidget {
             is_window_overlapping: false,
             last_window_check: Instant::now() - Duration::from_secs(60),
             is_hidden_by_window: false,
+            needs_redraw: true,
 
             attachment_mode: 0,
         };
@@ -264,41 +266,49 @@ impl ClockWidget {
     }
 
     pub fn check_window_overlap(&mut self) {
-        if self.last_window_check.elapsed() < Duration::from_millis(400) {
+        if self.last_window_check.elapsed() < Duration::from_millis(300) {
             return;
         }
         self.last_window_check = Instant::now();
 
-        let check_x = self.pos_x;
-        let check_y = 0i32;
+        // Calculate monitor coordinates of the compact pill
+        // Surface left: pos_x = 24. Inside surface, pill is centered at width/2 = 194.
+        // Pill center on monitor: 24 + 194 = 218.
         let check_w = self.current_w as i32;
-        let check_h = 45i32;
+        let check_x = self.pos_x + (self.width as i32 / 2) - check_w / 2;
+        let check_y = 0i32;
+        let check_h = 50i32;
 
         let overlapping =
             crate::island::IslandWidget::query_hyprland_overlap(check_x, check_y, check_w, check_h);
         if overlapping != self.is_window_overlapping {
             self.is_window_overlapping = overlapping;
             self.needs_input_region_update = true;
+            self.needs_redraw = true;
         }
 
+        let was_hidden = self.is_hidden_by_window;
         if !overlapping {
             // Empty desktop: always show compact pill
             self.is_hidden_by_window = false;
         } else {
-            // Window overlapping: hide unless cursor is near top-left edge or we're hovered/expanded
+            // Window overlapping: hide unless cursor is near top-left hot edge or we're hovered/expanded
             if let Some((cx, cy)) = crate::island::IslandWidget::query_hyprland_cursor() {
-                let mon_w = 1920i32;
-                let is_at_top_edge = cx <= (self.pos_x + check_w + 40) && cy <= 10;
+                let is_at_top_edge = cx <= 340 && cy <= 12;
                 if is_at_top_edge || self.is_hovered || !self.is_compact {
                     self.is_hidden_by_window = false;
                     self.last_hover_time = Instant::now();
                 } else if self.last_hover_time.elapsed() >= Duration::from_millis(1200) {
                     self.is_hidden_by_window = true;
-                    let _ = mon_w; // suppress unused warning
                 }
             } else if !self.is_hovered && self.is_compact {
                 self.is_hidden_by_window = true;
             }
+        }
+
+        if was_hidden != self.is_hidden_by_window {
+            self.needs_input_region_update = true;
+            self.needs_redraw = true;
         }
     }
 
@@ -465,7 +475,7 @@ impl ClockWidget {
     {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
-        if !self.enabled || (self.is_hidden_by_window && self.is_compact) {
+        if !self.enabled {
             self.surface.set_input_region(Some(&region));
             region.destroy();
             self.surface.commit();
@@ -473,6 +483,16 @@ impl ClockWidget {
         }
         let cx = self.width as i32 / 2;
         let card_top = 8i32;
+        if self.is_hidden_by_window && self.is_compact {
+            // Invisible 2px hair strip at top edge for instant touch wake-up
+            let pill_w = COMPACT_W as i32;
+            let pill_x = cx - pill_w / 2;
+            region.add(pill_x, 0, pill_w, 2);
+            self.surface.set_input_region(Some(&region));
+            region.destroy();
+            self.surface.commit();
+            return;
+        }
         if self.is_compact {
             let pill_w = COMPACT_W as i32;
             let pill_h = COMPACT_H as i32;
@@ -494,6 +514,9 @@ impl ClockWidget {
             PointerEventKind::Enter { .. } => {
                 let px = event.position.0 as f32;
                 let py = event.position.1 as f32;
+                self.is_hidden_by_window = false;
+                self.needs_redraw = true;
+                self.needs_input_region_update = true;
                 let inside = self.is_inside(px, py);
                 self.is_hovered = inside;
                 if inside {
@@ -513,6 +536,7 @@ impl ClockWidget {
                 self.hovered_btn = None;
                 self.power_held = None;
                 self.last_hover_time = Instant::now();
+                self.needs_redraw = true;
                 if !self.is_compact {
                     self.collapse();
                 }
@@ -528,6 +552,11 @@ impl ClockWidget {
 
                 let inside = self.is_inside(px, py);
                 self.is_hovered = inside;
+                if self.is_hidden_by_window {
+                    self.is_hidden_by_window = false;
+                    self.needs_redraw = true;
+                    self.needs_input_region_update = true;
+                }
                 if inside && self.is_compact && self.hover_to_expand {
                     self.expand();
                 }
@@ -558,6 +587,17 @@ impl ClockWidget {
                 }
 
                 self.last_hover_time = Instant::now();
+
+                // Page indicator click (switch pages)
+                let card_top = 8.0f32;
+                if py >= (card_top + CARD_H - 24.0)
+                    && (px - (self.width as f32 * 0.5)).abs() <= 40.0
+                {
+                    self.current_page = 1 - self.current_page;
+                    self.page_spring.set_target(self.current_page as f32);
+                    self.needs_redraw = true;
+                    return true;
+                }
 
                 // Check 2x2 action buttons in Tile 3 (Bottom-Right)
                 if let Some(btn_idx) = self.hit_test_action_btn(px, py) {
@@ -593,7 +633,27 @@ impl ClockWidget {
                 self.power_held = None;
                 true
             }
-            _ => false,
+            PointerEventKind::Axis {
+                vertical,
+                horizontal,
+                ..
+            } => {
+                if !self.is_compact {
+                    let v = vertical.absolute;
+                    let h = horizontal.absolute;
+                    if v > 0.5 || h > 0.5 {
+                        self.current_page = 1;
+                        self.page_spring.set_target(1.0);
+                        self.needs_redraw = true;
+                    } else if v < -0.5 || h < -0.5 {
+                        self.current_page = 0;
+                        self.page_spring.set_target(0.0);
+                        self.needs_redraw = true;
+                    }
+                    return true;
+                }
+                false
+            }
         }
     }
 
@@ -651,41 +711,75 @@ impl ClockWidget {
         };
 
         // ══════════════════════════════════════════════════════════════
-        // 1. COMPACT OVERVIEW PILL — clean minimal design
-        //    Left: time (HH:MM) · Center: thin dividers · Right: status
+        // 1. COMPACT TELEMETRY PILL (t < 0.35) — 100% Symmetrical 3-Zone
         // ══════════════════════════════════════════════════════════════
         if t < 0.35 {
             let comp_alpha = ((0.35 - t) / 0.35).clamp(0.0, 1.0);
             let alpha_u8 = (255.0 * comp_alpha) as u8;
-            // High-contrast ink that works on any wallpaper
             let ink_col = if is_light {
-                [8, 10, 18, alpha_u8]
+                [10, 14, 24, alpha_u8]
             } else {
-                [248, 250, 255, alpha_u8]
+                [250, 252, 255, alpha_u8]
             };
             let sub_ink = if is_light {
-                [80, 95, 115, (200.0 * comp_alpha) as u8]
+                [45, 60, 80, (210.0 * comp_alpha) as u8]
             } else {
-                [190, 205, 225, (180.0 * comp_alpha) as u8]
+                [200, 215, 235, (200.0 * comp_alpha) as u8]
             };
-            let divider_col = if is_light {
-                [0, 0, 0, (50.0 * comp_alpha) as u8]
+            let div_ink = if is_light {
+                [25, 40, 60, (50.0 * comp_alpha) as u8]
             } else {
                 [255, 255, 255, (40.0 * comp_alpha) as u8]
             };
+            let accent = Tokens::ACCENT;
+            let accent_col = [accent[0], accent[1], accent[2], alpha_u8];
 
             let card_top = 8.0f32;
-            let pill_cy = card_top + COMPACT_H * 0.5;
+            let pill_cy = card_top + COMPACT_H * 0.5; // 8.0 + 16.0 = 24.0
 
-            // ── Time (left-center of pill) ──
             let now = Local::now();
+
+            // ── Symmetrical 3-column layout across 168px capsule ──
+            // Center of surface is cx. Capsule spans cx - 84.0 to cx + 84.0.
+            // Col 0 center: cx - 52.0
+            // Divider 1: cx - 26.0
+            // Col 1 center: cx
+            // Divider 2: cx + 26.0
+            // Col 2 center: cx + 52.0
+
+            // Divider 1
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                cx - 26.0,
+                pill_cy,
+                0.5,
+                6.0,
+                0.5,
+                div_ink,
+            );
+
+            // Divider 2
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                cx + 26.0,
+                pill_cy,
+                0.5,
+                6.0,
+                0.5,
+                div_ink,
+            );
+
+            // ── Col 0: Time (HH:MM) ──
             let time_str = now.format("%H:%M").to_string();
-            let time_size = 11.5f32;
+            let time_size = 11.0f32;
             let time_w = self
                 .font
                 .measure_text(&time_str, time_size, FontWeight::Bold);
-            // Position: start of text at cx - 72 (pill left = cx - 88)
-            let time_x = cx - 72.0;
+            let time_x = (cx - 52.0) - time_w * 0.5;
             self.font.draw_text_centered_y(
                 buf,
                 self.width,
@@ -695,137 +789,79 @@ impl ClockWidget {
                 pill_cy,
                 time_size,
                 ink_col,
-                [0, 0, 0, 0],
+                col_shadow,
                 FontWeight::Bold,
             );
 
-            // ── Thin hairline divider after time ──
-            let div1_x = cx - 72.0 + time_w + 10.0;
-            UIFont::draw_rounded_rect_fill(
-                buf,
-                self.width,
-                self.height,
-                div1_x,
-                pill_cy,
-                0.5,
-                8.0,
-                0.5,
-                divider_col,
-            );
-
-            // ── CPU % (compact, no icon — just value) ──
+            // ── Col 1: CPU % (Micro Icon + Value on same baseline) ──
             let cpu_str = format!("{}%", self.sys_stats.cpu_pct);
-            let cpu_size = 10.0f32;
-            let cpu_x = div1_x + 10.0;
+            let cpu_size = 10.5f32;
+            let cpu_w = self
+                .font
+                .measure_text(&cpu_str, cpu_size, FontWeight::SemiBold);
+            let icon_w = 11.0f32;
+            let gap = 4.0f32;
+            let col1_w = icon_w + gap + cpu_w;
+            let col1_start_x = cx - col1_w * 0.5;
+            let cpu_icon_cx = col1_start_x + icon_w * 0.5;
+            let cpu_text_x = col1_start_x + icon_w + gap;
+
+            UIFont::draw_cpu_icon(buf, self.width, self.height, cpu_icon_cx, pill_cy, sub_ink);
             self.font.draw_text_centered_y(
                 buf,
                 self.width,
                 self.height,
                 &cpu_str,
-                cpu_x,
-                pill_cy - 4.0,
+                cpu_text_x,
+                pill_cy,
                 cpu_size,
-                sub_ink,
-                [0, 0, 0, 0],
+                ink_col,
+                col_shadow,
                 FontWeight::SemiBold,
             );
-            // Label below
-            let cpu_lw = self.font.measure_text("CPU", 7.5, FontWeight::Medium);
-            self.font.draw_text_centered_y(
-                buf,
-                self.width,
-                self.height,
-                "CPU",
-                cpu_x
-                    + self
-                        .font
-                        .measure_text(&cpu_str, cpu_size, FontWeight::SemiBold)
-                        * 0.5
-                    - cpu_lw * 0.5,
-                pill_cy + 5.0,
-                7.5,
-                divider_col,
-                [0, 0, 0, 0],
-                FontWeight::Medium,
-            );
 
-            // ── Thin hairline divider ──
-            let div2_x = cpu_x
-                + self
-                    .font
-                    .measure_text(&cpu_str, cpu_size, FontWeight::SemiBold)
-                + 10.0;
-            UIFont::draw_rounded_rect_fill(
-                buf,
-                self.width,
-                self.height,
-                div2_x,
-                pill_cy,
-                0.5,
-                8.0,
-                0.5,
-                divider_col,
-            );
-
-            // ── Battery status (right segment) ──
+            // ── Col 2: Battery (Micro Icon + Value on same baseline) ──
             let bat_pct = self.sys_stats.bat_pct;
             let bat_str = format!("{}%", bat_pct);
-            let bat_x = div2_x + 10.0;
-            // Battery color: green OK, yellow caution, red low
-            let bat_ink = if bat_pct < 20 {
-                [255, 80, 70, alpha_u8]
-            } else if bat_pct < 40 {
-                [255, 180, 50, alpha_u8]
+            let bat_size = 10.5f32;
+            let bat_w = self
+                .font
+                .measure_text(&bat_str, bat_size, FontWeight::SemiBold);
+            let bat_icon_w = 13.0f32;
+            let col2_w = bat_icon_w + gap + bat_w;
+            let col2_start_x = (cx + 52.0) - col2_w * 0.5;
+            let bat_icon_cx = col2_start_x + bat_icon_w * 0.5;
+            let bat_text_x = col2_start_x + bat_icon_w + gap;
+
+            let bat_color = if bat_pct < 20 {
+                [255, 75, 65, alpha_u8]
+            } else if self.sys_stats.bat_charging {
+                accent_col
             } else {
                 ink_col
             };
-            if self.sys_stats.bat_charging {
-                // small amber dot to indicate charging
-                UIFont::draw_rounded_rect_fill(
-                    buf,
-                    self.width,
-                    self.height,
-                    bat_x
-                        + self
-                            .font
-                            .measure_text(&bat_str, cpu_size, FontWeight::SemiBold)
-                        + 5.0,
-                    pill_cy - 4.0,
-                    2.5,
-                    2.5,
-                    2.5,
-                    [255, 190, 60, alpha_u8],
-                );
-            }
+
+            UIFont::draw_battery_icon(
+                buf,
+                self.width,
+                self.height,
+                bat_icon_cx,
+                pill_cy,
+                bat_pct,
+                self.sys_stats.bat_charging,
+                bat_color,
+            );
             self.font.draw_text_centered_y(
                 buf,
                 self.width,
                 self.height,
                 &bat_str,
-                bat_x,
-                pill_cy - 4.0,
-                cpu_size,
-                bat_ink,
-                [0, 0, 0, 0],
+                bat_text_x,
+                pill_cy,
+                bat_size,
+                bat_color,
+                col_shadow,
                 FontWeight::SemiBold,
-            );
-            let bat_lw = self.font.measure_text("BAT", 7.5, FontWeight::Medium);
-            self.font.draw_text_centered_y(
-                buf,
-                self.width,
-                self.height,
-                "BAT",
-                bat_x
-                    + self
-                        .font
-                        .measure_text(&bat_str, cpu_size, FontWeight::SemiBold)
-                        * 0.5
-                    - bat_lw * 0.5,
-                pill_cy + 5.0,
-                7.5,
-                divider_col,
-                [0, 0, 0, 0],
-                FontWeight::Medium,
             );
         }
 
@@ -1417,6 +1453,61 @@ impl ClockWidget {
                     }
                 }
             }
+
+            // ── Page Indicator Dots (bottom of expanded panel) ──
+            let dot_y = card_top + CARD_H - 12.0 + slide_y;
+            let page_t = self.page_spring.value.clamp(0.0, 1.0);
+            let active_w = 14.0f32;
+            let inactive_w = 5.0f32;
+            let dot_h = 4.0f32;
+
+            // Dot 0 (Page 0: System & Telemetry)
+            let w0 = active_w * (1.0 - page_t) + inactive_w * page_t;
+            let dot0_col = if page_t < 0.5 {
+                accent_col
+            } else {
+                [
+                    tile_base[0],
+                    tile_base[1],
+                    tile_base[2],
+                    (70.0 * exp_alpha) as u8,
+                ]
+            };
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                cx - 10.0,
+                dot_y,
+                w0 * 0.5,
+                dot_h * 0.5,
+                2.0,
+                dot0_col,
+            );
+
+            // Dot 1 (Page 1: Quick Settings & Controls)
+            let w1 = inactive_w * (1.0 - page_t) + active_w * page_t;
+            let dot1_col = if page_t >= 0.5 {
+                accent_col
+            } else {
+                [
+                    tile_base[0],
+                    tile_base[1],
+                    tile_base[2],
+                    (70.0 * exp_alpha) as u8,
+                ]
+            };
+            UIFont::draw_rounded_rect_fill(
+                buf,
+                self.width,
+                self.height,
+                cx + 10.0,
+                dot_y,
+                w1 * 0.5,
+                dot_h * 0.5,
+                2.0,
+                dot1_col,
+            );
         }
     }
 

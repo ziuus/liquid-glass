@@ -218,6 +218,7 @@ pub struct DockWidget {
 
     pub is_window_overlapping: bool,
     pub last_window_check: Instant,
+    pub needs_redraw: bool,
 }
 
 impl DockWidget {
@@ -314,6 +315,7 @@ impl DockWidget {
 
             is_window_overlapping: false,
             last_window_check: Instant::now() - Duration::from_secs(60),
+            needs_redraw: true,
         };
 
         widget.load_config();
@@ -322,7 +324,7 @@ impl DockWidget {
     }
 
     pub fn check_window_overlap(&mut self) {
-        if self.last_window_check.elapsed() < Duration::from_millis(500) {
+        if self.last_window_check.elapsed() < Duration::from_millis(300) {
             return;
         }
         self.last_window_check = Instant::now();
@@ -337,12 +339,14 @@ impl DockWidget {
         if overlapping != self.is_window_overlapping {
             self.is_window_overlapping = overlapping;
             self.needs_input_region_update = true;
+            self.needs_redraw = true;
         }
 
         if !overlapping {
             // Empty desktop: dock should always show in all its glory!
             if self.is_compact {
                 self.expand();
+                self.needs_redraw = true;
             }
         } else {
             // Windows are overlapping underneath the dock
@@ -351,6 +355,7 @@ impl DockWidget {
                 if cy >= 980 || self.is_hovered {
                     if self.is_compact {
                         self.expand();
+                        self.needs_redraw = true;
                     }
                     return;
                 }
@@ -358,6 +363,7 @@ impl DockWidget {
             // Outside dock while an app window overlaps: auto-hide so it doesn't block the app!
             if !self.is_hovered && !self.is_compact {
                 self.collapse();
+                self.needs_redraw = true;
             }
         }
     }
@@ -575,6 +581,15 @@ impl DockWidget {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
         let cx = self.width as i32 / 2;
+        if self.is_window_overlapping && self.is_compact && !self.is_hovered {
+            // Invisible 2px hair strip at bottom edge so apps are 100% clickable
+            let pill_y = self.height as i32 - 2;
+            region.add(cx - 200, pill_y, 400, 2);
+            self.surface.set_input_region(Some(&region));
+            region.destroy();
+            self.surface.commit();
+            return;
+        }
         if self.is_compact {
             let pill_w = self.compact_w as i32;
             let pill_h = (self.height as i32 - DOCK_COMPACT_Y as i32).max(10);
@@ -647,6 +662,8 @@ impl DockWidget {
             PointerEventKind::Enter { .. } => {
                 let px = event.position.0 as f32;
                 let py = event.position.1 as f32;
+                self.needs_redraw = true;
+                self.needs_input_region_update = true;
                 let inside = self.is_inside(px, py);
                 self.is_hovered = inside;
                 if inside {
@@ -662,6 +679,8 @@ impl DockWidget {
                 self.cursor_pos = [-10.0, -10.0];
                 self.last_hover_time = Instant::now();
                 self.pressed_item = None;
+                self.needs_redraw = true;
+                self.needs_input_region_update = true;
                 // Only collapse on leave if windows are overlapping underneath!
                 // On empty desktop, the dock always stays showing!
                 if self.is_window_overlapping && !self.is_compact {
@@ -1057,6 +1076,19 @@ impl DockWidget {
     }
 
     pub fn draw(&mut self) -> bool {
+        if self.is_window_overlapping
+            && self.is_compact
+            && !self.is_hovered
+            && self.size_spring.is_at_rest()
+        {
+            if let Some(renderer) = &mut self.renderer {
+                self.overlay_buffer.fill(0);
+                renderer.update_overlay(self.width, self.height, &self.overlay_buffer);
+                let _ = renderer.render(&[]);
+            }
+            return false;
+        }
+
         self.poll_hyprland_clients();
         self.render_ui_overlay();
 

@@ -155,6 +155,7 @@ pub struct TodoWidget {
     #[allow(dead_code)]
     pub last_window_check: Instant,
     pub is_hidden_by_window: bool,
+    pub needs_redraw: bool,
     pub dock_mode: crate::island::IslandDockMode,
 }
 
@@ -186,7 +187,7 @@ impl TodoWidget {
         let layer_surface = layer_shell.create_layer_surface(
             qh,
             surface.clone(),
-            Layer::Top,
+            Layer::Overlay,
             Some("liquid-glass-todo"),
             None,
         );
@@ -302,37 +303,43 @@ impl TodoWidget {
             is_window_overlapping: false,
             last_window_check: Instant::now() - std::time::Duration::from_secs(60),
             is_hidden_by_window: false,
+            needs_redraw: true,
             dock_mode: crate::island::IslandDockMode::Floating,
         }
     }
 
-    #[allow(dead_code)]
     pub fn check_window_overlap(&mut self) {
-        if self.last_window_check.elapsed() < Duration::from_millis(400) {
+        if self.last_window_check.elapsed() < Duration::from_millis(300) {
             return;
         }
         self.last_window_check = Instant::now();
 
         let check_w = self.current_w as i32;
-        let mon_w = 1920;
-        let check_x = mon_w - self.pos_x - check_w;
-        let check_y = self.pos_y;
-        let check_h = 45i32;
+        let mon_w = 1920i32;
+        // Surface is right-anchored with margin 24. Width is self.width (408).
+        // Inside surface, pill is centered at width/2 = 204.
+        // Pill center on monitor is mon_w - 24 - 204 = 1692.
+        let pill_cx_on_mon = mon_w - 24 - (self.width as i32 / 2);
+        let check_x = pill_cx_on_mon - check_w / 2;
+        let check_y = 0i32;
+        let check_h = 50i32;
 
         let overlapping =
             crate::island::IslandWidget::query_hyprland_overlap(check_x, check_y, check_w, check_h);
         if overlapping != self.is_window_overlapping {
             self.is_window_overlapping = overlapping;
             self.needs_input_region_update = true;
+            self.needs_redraw = true;
         }
 
+        let was_hidden = self.is_hidden_by_window;
         if !overlapping {
             // Empty desktop: always show tasks pill on wallpaper
             self.is_hidden_by_window = false;
         } else {
             // Window overlapping: check cursor
             if let Some((cx, cy)) = crate::island::IslandWidget::query_hyprland_cursor() {
-                let is_at_top_edge = (check_x - 40..=mon_w).contains(&cx) && cy <= 10;
+                let is_at_top_edge = cx >= 1550 && cy <= 12;
                 if is_at_top_edge || self.is_hovered || !self.is_compact {
                     self.is_hidden_by_window = false;
                     self.last_hover_time = Instant::now();
@@ -342,6 +349,11 @@ impl TodoWidget {
             } else if !self.is_hovered && self.is_compact {
                 self.is_hidden_by_window = true;
             }
+        }
+
+        if was_hidden != self.is_hidden_by_window {
+            self.needs_input_region_update = true;
+            self.needs_redraw = true;
         }
     }
 
@@ -433,6 +445,11 @@ impl TodoWidget {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
         if self.is_hidden_by_window && self.is_compact {
+            let cx = self.width as i32 / 2;
+            let pill_w = COMPACT_W as i32;
+            let pill_x = cx - pill_w / 2;
+            // 2px top strip for immediate hover wake-up
+            region.add(pill_x, 0, pill_w, 2);
             self.surface.set_input_region(Some(&region));
             region.destroy();
             self.surface.commit();
@@ -461,6 +478,9 @@ impl TodoWidget {
             PointerEventKind::Enter { .. } => {
                 let px = event.position.0 as f32;
                 let py = event.position.1 as f32;
+                self.is_hidden_by_window = false;
+                self.needs_redraw = true;
+                self.needs_input_region_update = true;
                 let inside = self.is_inside(px, py);
                 self.is_hovered = inside;
                 if inside {
@@ -475,6 +495,7 @@ impl TodoWidget {
                 self.is_hovered = false;
                 self.cursor_pos = [-10.0, -10.0];
                 self.last_hover_time = Instant::now();
+                self.needs_redraw = true;
                 if !self.is_compact {
                     self.collapse();
                 }
@@ -490,6 +511,11 @@ impl TodoWidget {
 
                 let inside = self.is_inside(px, py);
                 self.is_hovered = inside;
+                if self.is_hidden_by_window {
+                    self.is_hidden_by_window = false;
+                    self.needs_redraw = true;
+                    self.needs_input_region_update = true;
+                }
                 if inside && self.is_compact && self.hover_to_expand {
                     self.expand();
                 }

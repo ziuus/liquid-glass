@@ -759,6 +759,7 @@ fn main() {
         app.island.check_window_overlap();
         app.dock.check_window_overlap();
         app.clock.check_window_overlap();
+        app.todo.check_window_overlap();
         app.todo.check_todos();
         app.todo.check_calendar();
 
@@ -838,9 +839,11 @@ fn main() {
 
         let now_local = chrono::Local::now();
         let cur_min = now_local.minute();
-        if clock_active || app.clock.is_hovered || cur_min != last_minute {
+        if clock_active || app.clock.is_hovered || app.clock.needs_redraw || cur_min != last_minute
+        {
             last_minute = cur_min;
             app.clock.draw();
+            app.clock.needs_redraw = false;
             app.center_hero.draw();
             let _ = conn.flush();
         }
@@ -851,13 +854,15 @@ fn main() {
             let _ = conn.flush();
         }
 
-        if todo_active {
+        if todo_active || app.todo.is_hovered || app.todo.needs_redraw {
             app.todo.draw();
+            app.todo.needs_redraw = false;
             let _ = conn.flush();
         }
 
-        if dock_active || app.dock.is_hovered {
+        if dock_active || app.dock.is_hovered || app.dock.needs_redraw {
             app.dock.draw();
+            app.dock.needs_redraw = false;
             let _ = conn.flush();
         }
 
