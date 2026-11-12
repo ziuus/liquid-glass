@@ -149,7 +149,7 @@ impl ClockWidget {
         let width = (CARD_W + CARD_PAD * 2.0) as u32; // 388
         let height = (CARD_H + CARD_PAD * 2.0) as u32; // 334
         let pos_x = 24i32;
-        let pos_y = 0i32; // Flush against top screen edge
+        let pos_y = 10i32; // Floating top margin with full 360-degree rounded corners
 
         let surface = compositor.create_surface(qh);
         let layer_surface = layer_shell.create_layer_surface(
@@ -162,7 +162,7 @@ impl ClockWidget {
 
         layer_surface.set_anchor(Anchor::TOP | Anchor::LEFT);
         layer_surface.set_size(width, height);
-        layer_surface.set_margin(0, 0, 0, pos_x);
+        layer_surface.set_margin(pos_y, 0, 0, pos_x);
         layer_surface.set_exclusive_zone(0);
         layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
         layer_surface.commit();
@@ -385,17 +385,23 @@ impl ClockWidget {
 
     pub fn is_inside(&self, px: f32, py: f32) -> bool {
         let cx = (self.width as f32) * 0.5;
+        let card_top = 8.0;
         if self.is_compact {
             let half_w = COMPACT_W * 0.5;
-            px >= (cx - half_w) && px <= (cx + half_w) && (0.0..=COMPACT_H).contains(&py)
+            px >= (cx - half_w)
+                && px <= (cx + half_w)
+                && (card_top..=(card_top + COMPACT_H)).contains(&py)
         } else {
             let half_w = CARD_W * 0.5;
-            px >= (cx - half_w) && px <= (cx + half_w) && (0.0..=CARD_H).contains(&py)
+            px >= (cx - half_w)
+                && px <= (cx + half_w)
+                && (card_top..=(card_top + CARD_H)).contains(&py)
         }
     }
 
     fn hit_test_tab(&self, px: f32, py: f32) -> Option<usize> {
-        if py < 14.0 || py > 44.0 {
+        let card_top = 8.0;
+        if py < (card_top + 14.0) || py > (card_top + 44.0) {
             return None;
         }
         let cx = (self.width as f32) * 0.5;
@@ -412,11 +418,12 @@ impl ClockWidget {
 
     fn hit_test_row(&self, px: f32, py: f32) -> Option<usize> {
         let cx = (self.width as f32) * 0.5;
+        let card_top = 8.0;
         if px < (cx - 150.0) || px > (cx + 150.0) {
             return None;
         }
         for i in 0..4 {
-            let row_cy = 78.0 + (i as f32) * 44.0;
+            let row_cy = card_top + 74.0 + (i as f32) * 44.0;
             if (py - row_cy).abs() <= 20.0 {
                 return Some(i);
             }
@@ -437,16 +444,17 @@ impl ClockWidget {
             return;
         }
         let cx = self.width as i32 / 2;
+        let card_top = 8i32;
         if self.is_compact {
             let pill_w = COMPACT_W as i32;
             let pill_h = COMPACT_H as i32;
             let pill_x = cx - pill_w / 2;
-            region.add(pill_x, 0, pill_w, pill_h);
+            region.add(pill_x, card_top, pill_w, pill_h);
         } else {
             let card_w = CARD_W as i32;
             let card_h = CARD_H as i32;
             let card_x = cx - card_w / 2;
-            region.add(card_x, 0, card_w, card_h);
+            region.add(card_x, card_top, card_w, card_h);
         }
         self.surface.set_input_region(Some(&region));
         region.destroy();
@@ -537,7 +545,7 @@ impl ClockWidget {
 
                 // Check pagination dot clicks at bottom
                 let cx = (self.width as f32) * 0.5;
-                if (254.0..=276.0).contains(&py) {
+                if (262.0..=284.0).contains(&py) {
                     for i in 0..3 {
                         let dot_x = cx - 24.0 + (i as f32) * 24.0;
                         if (px - dot_x).abs() <= 16.0 {
@@ -656,7 +664,8 @@ impl ClockWidget {
                 [180, 195, 220, (170.0 * comp_alpha) as u8]
             };
 
-            let pill_cy = 15.0;
+            let card_top = 8.0;
+            let pill_cy = card_top + 15.0;
 
             // Lookmaxed telemetry: 3 symmetrically centered segments across 176px capsule
             let cpu_str = format!("{}%", self.sys_stats.cpu_pct);
@@ -782,6 +791,7 @@ impl ClockWidget {
             let exp_alpha = ((t - 0.1) / 0.9).clamp(0.0, 1.0);
             let alpha_u8 = (255.0 * exp_alpha) as u8;
             let slide_y = (1.0 - t) * -24.0;
+            let card_top = 8.0;
 
             let col_primary = if is_light {
                 [10, 14, 22, alpha_u8]
@@ -789,17 +799,15 @@ impl ClockWidget {
                 [255, 255, 255, alpha_u8]
             };
             let col_secondary = if is_light {
-                [60, 75, 95, (200.0 * exp_alpha) as u8]
+                [45, 60, 80, (230.0 * exp_alpha) as u8]
             } else {
-                [170, 185, 215, (190.0 * exp_alpha) as u8]
+                [215, 228, 245, (230.0 * exp_alpha) as u8]
             };
             let tile_base = if is_light { [0, 0, 0] } else { [255, 255, 255] };
-            // Single accent from design tokens — all metric values and
-            // interactive highlights share it; only true statuses keep hue.
             let accent = Tokens::ACCENT;
 
             // ── SEGMENTED TOP TAB SWITCHER (VITALS | APPS | POWER) ──
-            let tab_y = 28.0 + slide_y;
+            let tab_y = card_top + 26.0 + slide_y;
             UIFont::draw_rounded_rect_fill(
                 buf,
                 self.width,
@@ -813,7 +821,7 @@ impl ClockWidget {
                     tile_base[0],
                     tile_base[1],
                     tile_base[2],
-                    (16.0 * exp_alpha) as u8,
+                    (20.0 * exp_alpha) as u8,
                 ],
             );
 
@@ -832,7 +840,7 @@ impl ClockWidget {
                     tile_base[0],
                     tile_base[1],
                     tile_base[2],
-                    (72.0 * exp_alpha) as u8,
+                    (80.0 * exp_alpha) as u8,
                 ],
             );
             UIFont::draw_rounded_rect_stroke(
@@ -849,7 +857,7 @@ impl ClockWidget {
                     tile_base[0],
                     tile_base[1],
                     tile_base[2],
-                    (120.0 * exp_alpha) as u8,
+                    (130.0 * exp_alpha) as u8,
                 ],
             );
 
@@ -878,7 +886,6 @@ impl ClockWidget {
             }
 
             // ── ACTIVE SLIDING PAGE CONTENT ──
-            // Render pages with horizontal translation based on page_spring
             let cur_p = self.page_spring.value;
 
             // ─────────────────────────────────────────────────────────
@@ -895,13 +902,13 @@ impl ClockWidget {
                     [255, 255, 255, a8]
                 };
                 let col_p_sub = if is_light {
-                    [60, 75, 95, (200.0 * page_alpha) as u8]
+                    [45, 60, 80, (230.0 * page_alpha) as u8]
                 } else {
-                    [170, 185, 215, (190.0 * page_alpha) as u8]
+                    [215, 228, 245, (230.0 * page_alpha) as u8]
                 };
 
-                // Subtitle Header (sentence case per HIG)
-                let sub_y = 52.0 + slide_y;
+                // Subtitle Header
+                let sub_y = card_top + 50.0 + slide_y;
                 self.font.draw_text_centered_y(
                     buf,
                     self.width,
@@ -932,8 +939,43 @@ impl ClockWidget {
                     FontWeight::Bold,
                 );
 
-                // Row 1: CPU Metric (chromeless — floats on glass)
-                let cpu_y = 88.0 + slide_y;
+                // Row 1: CPU Metric in Glass Squircle Micro-tile
+                let cpu_y = card_top + 84.0 + slide_y;
+                let track_w = 260.0;
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    px_c,
+                    cpu_y + 3.0,
+                    146.0,
+                    24.0,
+                    12.0,
+                    [
+                        tile_base[0],
+                        tile_base[1],
+                        tile_base[2],
+                        (14.0 * page_alpha) as u8,
+                    ],
+                );
+                UIFont::draw_rounded_rect_stroke(
+                    buf,
+                    self.width,
+                    self.height,
+                    px_c,
+                    cpu_y + 3.0,
+                    146.0,
+                    24.0,
+                    12.0,
+                    1.0,
+                    [
+                        tile_base[0],
+                        tile_base[1],
+                        tile_base[2],
+                        (26.0 * page_alpha) as u8,
+                    ],
+                );
+
                 // Accent icon chip
                 UIFont::draw_rounded_rect_fill(
                     buf,
@@ -941,10 +983,10 @@ impl ClockWidget {
                     self.height,
                     px_c - 128.0,
                     cpu_y - 4.0,
-                    15.0,
-                    15.0,
-                    10.0,
-                    [accent[0], accent[1], accent[2], (34.0 * page_alpha) as u8],
+                    13.0,
+                    13.0,
+                    9.0,
+                    [accent[0], accent[1], accent[2], (40.0 * page_alpha) as u8],
                 );
                 UIFont::draw_cpu_icon(
                     buf,
@@ -968,8 +1010,9 @@ impl ClockWidget {
                 );
                 let cpu_val = format!("{}%", self.sys_stats.cpu_pct);
                 let cpu_w = self.font.measure_text(&cpu_val, 13.5, FontWeight::Bold);
-                // Accent for normal state; red reserved for genuine overload
-                let cpu_col = if self.sys_stats.cpu_pct > 80 {
+                let is_cpu_hot = self.sys_stats.cpu_pct > 80;
+                let cpu_val_col = if is_cpu_hot { [255, 85, 85, a8] } else { col_p };
+                let cpu_bar_col = if is_cpu_hot {
                     [255, 85, 85, a8]
                 } else {
                     [accent[0], accent[1], accent[2], a8]
@@ -981,14 +1024,13 @@ impl ClockWidget {
                     &cpu_val,
                     px_c + 138.0 - cpu_w,
                     cpu_y - 4.0,
-                    16.5,
-                    cpu_col,
+                    15.0,
+                    cpu_val_col,
                     col_shadow,
                     FontWeight::Bold,
                 );
                 // CPU Bar Track & Fill
-                let track_y = cpu_y + 11.0;
-                let track_w = 260.0;
+                let track_y = cpu_y + 13.0;
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
@@ -1002,7 +1044,7 @@ impl ClockWidget {
                         tile_base[0],
                         tile_base[1],
                         tile_base[2],
-                        (36.0 * page_alpha) as u8,
+                        (75.0 * page_alpha) as u8,
                     ],
                 );
                 let cpu_fw = track_w * (self.sys_stats.cpu_pct as f32 / 100.0).clamp(0.02, 1.0);
@@ -1016,11 +1058,44 @@ impl ClockWidget {
                     cpu_fw * 0.5,
                     3.0,
                     2.5,
-                    cpu_col,
+                    cpu_bar_col,
                 );
 
-                // Row 2: MEMORY Metric (chromeless)
-                let ram_y = 148.0 + slide_y;
+                // Row 2: MEMORY Metric in Glass Squircle Micro-tile
+                let ram_y = card_top + 144.0 + slide_y;
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    px_c,
+                    ram_y + 3.0,
+                    146.0,
+                    24.0,
+                    12.0,
+                    [
+                        tile_base[0],
+                        tile_base[1],
+                        tile_base[2],
+                        (14.0 * page_alpha) as u8,
+                    ],
+                );
+                UIFont::draw_rounded_rect_stroke(
+                    buf,
+                    self.width,
+                    self.height,
+                    px_c,
+                    ram_y + 3.0,
+                    146.0,
+                    24.0,
+                    12.0,
+                    1.0,
+                    [
+                        tile_base[0],
+                        tile_base[1],
+                        tile_base[2],
+                        (26.0 * page_alpha) as u8,
+                    ],
+                );
                 // Accent icon chip
                 UIFont::draw_rounded_rect_fill(
                     buf,
@@ -1028,10 +1103,10 @@ impl ClockWidget {
                     self.height,
                     px_c - 128.0,
                     ram_y - 4.0,
-                    15.0,
-                    15.0,
-                    10.0,
-                    [accent[0], accent[1], accent[2], (34.0 * page_alpha) as u8],
+                    13.0,
+                    13.0,
+                    9.0,
+                    [accent[0], accent[1], accent[2], (40.0 * page_alpha) as u8],
                 );
                 UIFont::draw_ram_icon(
                     buf,
@@ -1058,7 +1133,6 @@ impl ClockWidget {
                     self.sys_stats.ram_used_gb, self.sys_stats.ram_total_gb
                 );
                 let ram_w = self.font.measure_text(&ram_val, 12.5, FontWeight::Bold);
-                let ram_col = [accent[0], accent[1], accent[2], a8];
                 self.font.draw_text_centered_y(
                     buf,
                     self.width,
@@ -1066,12 +1140,12 @@ impl ClockWidget {
                     &ram_val,
                     px_c + 138.0 - ram_w,
                     ram_y - 4.0,
-                    15.0,
-                    ram_col,
+                    14.0,
+                    col_p,
                     col_shadow,
                     FontWeight::Bold,
                 );
-                let ram_track_y = ram_y + 11.0;
+                let ram_track_y = ram_y + 13.0;
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
@@ -1085,11 +1159,12 @@ impl ClockWidget {
                         tile_base[0],
                         tile_base[1],
                         tile_base[2],
-                        (36.0 * page_alpha) as u8,
+                        (75.0 * page_alpha) as u8,
                     ],
                 );
                 let ram_fw = track_w * (ram_pct as f32 / 100.0).clamp(0.02, 1.0);
                 let ram_fcx = (px_c - track_w * 0.5) + ram_fw * 0.5;
+                let ram_bar_col = [accent[0], accent[1], accent[2], a8];
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
@@ -1099,11 +1174,44 @@ impl ClockWidget {
                     ram_fw * 0.5,
                     3.0,
                     2.5,
-                    ram_col,
+                    ram_bar_col,
                 );
 
-                // Row 3: BATTERY Metric (chromeless)
-                let bat_y = 208.0 + slide_y;
+                // Row 3: BATTERY Metric in Glass Squircle Micro-tile
+                let bat_y = card_top + 204.0 + slide_y;
+                UIFont::draw_rounded_rect_fill(
+                    buf,
+                    self.width,
+                    self.height,
+                    px_c,
+                    bat_y + 3.0,
+                    146.0,
+                    24.0,
+                    12.0,
+                    [
+                        tile_base[0],
+                        tile_base[1],
+                        tile_base[2],
+                        (14.0 * page_alpha) as u8,
+                    ],
+                );
+                UIFont::draw_rounded_rect_stroke(
+                    buf,
+                    self.width,
+                    self.height,
+                    px_c,
+                    bat_y + 3.0,
+                    146.0,
+                    24.0,
+                    12.0,
+                    1.0,
+                    [
+                        tile_base[0],
+                        tile_base[1],
+                        tile_base[2],
+                        (26.0 * page_alpha) as u8,
+                    ],
+                );
                 // Accent icon chip
                 UIFont::draw_rounded_rect_fill(
                     buf,
@@ -1111,10 +1219,10 @@ impl ClockWidget {
                     self.height,
                     px_c - 128.0,
                     bat_y - 4.0,
-                    15.0,
-                    15.0,
-                    10.0,
-                    [accent[0], accent[1], accent[2], (34.0 * page_alpha) as u8],
+                    13.0,
+                    13.0,
+                    9.0,
+                    [accent[0], accent[1], accent[2], (40.0 * page_alpha) as u8],
                 );
                 UIFont::draw_battery_icon(
                     buf,
@@ -1148,17 +1256,6 @@ impl ClockWidget {
                     }
                 );
                 let bat_w = self.font.measure_text(&bat_val, 12.5, FontWeight::Bold);
-                let bat_col = if self.sys_stats.bat_charging {
-                    if is_light {
-                        [16, 140, 65, a8]
-                    } else {
-                        [78, 216, 138, a8]
-                    }
-                } else if self.sys_stats.bat_pct <= 20 {
-                    [255, 140, 10, a8]
-                } else {
-                    col_p
-                };
                 self.font.draw_text_centered_y(
                     buf,
                     self.width,
@@ -1166,12 +1263,12 @@ impl ClockWidget {
                     &bat_val,
                     px_c + 138.0 - bat_w,
                     bat_y - 4.0,
-                    15.0,
-                    bat_col,
+                    14.0,
+                    col_p,
                     col_shadow,
                     FontWeight::Bold,
                 );
-                let bat_track_y = bat_y + 11.0;
+                let bat_track_y = bat_y + 13.0;
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
@@ -1185,11 +1282,22 @@ impl ClockWidget {
                         tile_base[0],
                         tile_base[1],
                         tile_base[2],
-                        (36.0 * page_alpha) as u8,
+                        (75.0 * page_alpha) as u8,
                     ],
                 );
                 let bat_fw = track_w * (self.sys_stats.bat_pct as f32 / 100.0).clamp(0.02, 1.0);
                 let bat_fcx = (px_c - track_w * 0.5) + bat_fw * 0.5;
+                let bat_bar_col = if self.sys_stats.bat_charging {
+                    if is_light {
+                        [16, 140, 65, a8]
+                    } else {
+                        [78, 216, 138, a8]
+                    }
+                } else if self.sys_stats.bat_pct <= 20 {
+                    [255, 140, 10, a8]
+                } else {
+                    [accent[0], accent[1], accent[2], a8]
+                };
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
@@ -1199,7 +1307,7 @@ impl ClockWidget {
                     bat_fw * 0.5,
                     3.0,
                     2.5,
-                    bat_col,
+                    bat_bar_col,
                 );
             }
 
@@ -1217,12 +1325,12 @@ impl ClockWidget {
                     [255, 255, 255, a8]
                 };
                 let col_p_sub = if is_light {
-                    [60, 75, 95, (200.0 * page_alpha) as u8]
+                    [45, 60, 80, (230.0 * page_alpha) as u8]
                 } else {
-                    [170, 185, 215, (190.0 * page_alpha) as u8]
+                    [215, 228, 245, (230.0 * page_alpha) as u8]
                 };
 
-                let sub_y = 52.0 + slide_y;
+                let sub_y = card_top + 50.0 + slide_y;
                 self.font.draw_text_centered_y(
                     buf,
                     self.width,
@@ -1256,7 +1364,7 @@ impl ClockWidget {
                 ];
 
                 for (idx, (title, sub, icon_idx)) in apps.iter().enumerate() {
-                    let row_y = 78.0 + (idx as f32) * 44.0 + slide_y;
+                    let row_y = card_top + 74.0 + (idx as f32) * 44.0 + slide_y;
                     let is_hover = self.current_page == 1 && self.hovered_row == Some(idx);
                     let row_bg = if is_hover {
                         [
@@ -1270,7 +1378,7 @@ impl ClockWidget {
                             tile_base[0],
                             tile_base[1],
                             tile_base[2],
-                            (12.0 * page_alpha) as u8,
+                            (14.0 * page_alpha) as u8,
                         ]
                     };
                     UIFont::draw_rounded_rect_fill(
@@ -1299,7 +1407,7 @@ impl ClockWidget {
                                 tile_base[0],
                                 tile_base[1],
                                 tile_base[2],
-                                (0.0 * page_alpha) as u8,
+                                (40.0 * page_alpha) as u8,
                             ],
                         );
                     }
@@ -1400,12 +1508,12 @@ impl ClockWidget {
                     [255, 255, 255, a8]
                 };
                 let col_p_sub = if is_light {
-                    [60, 75, 95, (200.0 * page_alpha) as u8]
+                    [45, 60, 80, (230.0 * page_alpha) as u8]
                 } else {
-                    [170, 185, 215, (190.0 * page_alpha) as u8]
+                    [215, 228, 245, (230.0 * page_alpha) as u8]
                 };
 
-                let sub_y = 52.0 + slide_y;
+                let sub_y = card_top + 50.0 + slide_y;
                 self.font.draw_text_centered_y(
                     buf,
                     self.width,
@@ -1439,7 +1547,7 @@ impl ClockWidget {
                 ];
 
                 for (idx, (title, sub, action, icon_idx)) in power_ops.iter().enumerate() {
-                    let row_y = 78.0 + (idx as f32) * 44.0 + slide_y;
+                    let row_y = card_top + 74.0 + (idx as f32) * 44.0 + slide_y;
                     let is_hover = self.current_page == 2 && self.hovered_row == Some(idx);
                     let row_bg = if is_hover {
                         if idx == 3 {
@@ -1457,7 +1565,7 @@ impl ClockWidget {
                             tile_base[0],
                             tile_base[1],
                             tile_base[2],
-                            (12.0 * page_alpha) as u8,
+                            (14.0 * page_alpha) as u8,
                         ]
                     };
                     UIFont::draw_rounded_rect_fill(
@@ -1479,7 +1587,7 @@ impl ClockWidget {
                                 tile_base[0],
                                 tile_base[1],
                                 tile_base[2],
-                                (0.0 * page_alpha) as u8,
+                                (40.0 * page_alpha) as u8,
                             ]
                         };
                         UIFont::draw_rounded_rect_stroke(
@@ -1586,7 +1694,7 @@ impl ClockWidget {
             }
 
             // ── PAGINATION DOTS (BOTTOM CAROUSEL INDICATOR) ──
-            let dot_y = 265.0 + slide_y;
+            let dot_y = card_top + 264.0 + slide_y;
             for i in 0..3 {
                 let dx = cx - 24.0 + (i as f32) * 24.0;
                 let is_cur = self.current_page == i;
@@ -1654,7 +1762,8 @@ impl ClockWidget {
             let cx = (self.width as f32) * 0.5;
             let card_left = cx - self.current_w * 0.5;
             let x_norm = card_left / (self.width as f32);
-            let y_norm = 0.0; // Flush with top screen edge
+            let card_top = 8.0;
+            let y_norm = card_top / (self.height as f32);
             let w_norm = self.current_w / (self.width as f32);
             let h_norm = self.current_h / (self.height as f32);
 
@@ -1671,17 +1780,17 @@ impl ClockWidget {
                 })
                 .bounds(x_norm, y_norm, w_norm, h_norm)
                 .curvature(self.fillet_radius)
-                .bevel(7.0)
-                .refraction(7.0)
-                .dispersion(0.05)
+                .bevel(12.0)
+                .refraction(12.0)
+                .dispersion(0.08)
                 .blur(self.blur_radius)
-                .specular(0.85)
-                .fresnel(0.45)
+                .specular(1.10)
+                .fresnel(0.55)
                 .style_mode(self.style_mode)
                 .tint(0.0, 0.0, 1.0, is_light_f32)
                 .roughness(self.sys_stats.bat_pct as f32)
-                .element_type(25.0)
-                .deformation(if self.is_docked { 2.0 } else { 0.0 })
+                .element_type(0.0)
+                .deformation(0.0)
                 .pointer_pos(px, py);
 
             let surfaces = vec![control_hub_card];

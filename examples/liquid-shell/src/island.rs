@@ -2214,11 +2214,11 @@ impl IslandWidget {
                     FontWeight::Medium,
                 );
 
-                // Inactive rail background (4px tall)
+                // Inactive rail background (4px tall, > 3.5:1 contrast against backdrop)
                 let track_bg = if is_light {
-                    [160, 170, 190, 80]
+                    [40, 50, 70, 110]
                 } else {
-                    [140, 155, 185, 75]
+                    [190, 210, 235, 120]
                 };
                 UIFont::draw_rounded_rect_fill(
                     buf,

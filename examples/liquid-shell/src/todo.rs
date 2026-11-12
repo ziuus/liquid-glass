@@ -173,7 +173,7 @@ impl TodoWidget {
         let width = (CARD_W + CARD_PAD * 2.0) as u32; // 408
         let height = (CARD_H + CARD_PAD * 2.0) as u32; // 503
         let pos_x = 1920i32 - width as i32 - 24; // 1488 (top right corner)
-        let pos_y = 0i32; // flush against top screen edge
+        let pos_y = 10i32; // Floating top margin with full 360-degree rounded corners
 
         let surface = compositor.create_surface(qh);
         let layer_surface = layer_shell.create_layer_surface(
@@ -186,7 +186,7 @@ impl TodoWidget {
 
         layer_surface.set_anchor(Anchor::TOP | Anchor::RIGHT);
         layer_surface.set_size(width, height);
-        layer_surface.set_margin(0, 24, 0, 0);
+        layer_surface.set_margin(pos_y, 24, 0, 0);
         layer_surface.set_exclusive_zone(0);
         layer_surface.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
         layer_surface.commit();
@@ -361,14 +361,17 @@ impl TodoWidget {
 
     pub fn is_inside(&self, px: f32, py: f32) -> bool {
         let cx = (self.width as f32) * 0.5;
+        let card_top = 8.0;
         if self.is_compact {
             let half_w = COMPACT_W * 0.5;
-            px >= (cx - half_w) && px <= (cx + half_w) && (0.0..=COMPACT_H).contains(&py)
+            px >= (cx - half_w)
+                && px <= (cx + half_w)
+                && (card_top..=(card_top + COMPACT_H)).contains(&py)
         } else {
             let half_w = CARD_W * 0.5;
             px >= (cx - half_w)
                 && px <= (cx + half_w)
-                && (0.0..=(self.target_h + 6.0)).contains(&py)
+                && (card_top..=(card_top + self.target_h + 6.0)).contains(&py)
         }
     }
 
@@ -379,16 +382,17 @@ impl TodoWidget {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
         let cx = self.width as i32 / 2;
+        let card_top = 8i32;
         if self.is_compact {
             let pill_w = COMPACT_W as i32;
             let pill_h = COMPACT_H as i32;
             let pill_x = cx - pill_w / 2;
-            region.add(pill_x, 0, pill_w, pill_h);
+            region.add(pill_x, card_top, pill_w, pill_h);
         } else {
             let card_w = CARD_W as i32;
             let card_h = (self.target_h + 6.0) as i32;
             let card_x = cx - card_w / 2;
-            region.add(card_x, 0, card_w, card_h);
+            region.add(card_x, card_top, card_w, card_h);
         }
         self.surface.set_input_region(Some(&region));
         region.destroy();
@@ -468,7 +472,7 @@ impl TodoWidget {
                 let half_w = CARD_W * 0.5;
                 let half_h = CARD_H * 0.5;
                 let local_x = lx - half_w;
-                let local_y = ly - half_h;
+                let local_y = (ly - 8.0) - half_h;
 
                 let mut touched_row = None;
                 if self.active_tab == 0 && !is_right {
@@ -725,7 +729,7 @@ impl TodoWidget {
         let half_w = CARD_W * 0.5;
         let half_h = CARD_H * 0.5;
         let local_x = lx - half_w;
-        let local_y = ly - half_h;
+        let local_y = (ly - 8.0) - half_h;
 
         // Check Top Tabs & Header Settings Button (tab_y = -195.0, cy = 32.5)
         if (local_y - (-195.0)).abs() <= 22.0 {
@@ -1549,13 +1553,13 @@ impl TodoWidget {
                 (
                     [12, 16, 24, 255],
                     [35, 45, 60, 245], // Ink at ~75% equivalent (> 5.5:1 contrast against light background)
-                    [35, 45, 60, 245],
+                    [12, 16, 24, 255],
                 )
             } else {
                 (
                     [255, 255, 255, 255],
-                    [180, 190, 205, 230],
-                    [175, 185, 200, 210],
+                    [215, 225, 245, 230],
+                    [245, 248, 255, 255],
                 )
             };
 
@@ -1993,6 +1997,8 @@ impl TodoWidget {
         let t = self.size_spring.value.clamp(0.0, 1.0);
         let cx = (self.width as f32) * 0.5;
 
+        let card_top = 8.0;
+
         // 1. Render expanded content into overlay_buf if t > 0.05
         if t > 0.05 {
             let content_w = CARD_W as usize;
@@ -2007,7 +2013,8 @@ impl TodoWidget {
             let stride_dst = self.width as usize * 4;
 
             for row in 0..content_h {
-                let target_y = (row as i32 + slide_y).clamp(0, (self.height as i32) - 1) as usize;
+                let target_y = (row as i32 + slide_y + card_top as i32)
+                    .clamp(0, (self.height as i32) - 1) as usize;
                 let src_start = row * stride_src;
                 let dst_start = target_y * stride_dst + dst_x * 4;
                 if dst_start + stride_src <= overlay_buf.len()
@@ -2039,13 +2046,13 @@ impl TodoWidget {
             };
             let shadow_col = [0, 0, 0, 0];
 
-            // Center of compact pill: cx, y = 18.0
+            let pill_cy = card_top + 15.0; // 23.0
             UIFont::draw_check_icon(
                 &mut overlay_buf,
                 self.width,
                 self.height,
                 cx - 36.0,
-                18.0,
+                pill_cy,
                 ink_col,
             );
             self.font.draw_text_centered_y(
@@ -2054,7 +2061,7 @@ impl TodoWidget {
                 self.height,
                 "Tasks",
                 cx - 22.0,
-                18.0,
+                pill_cy,
                 13.5,
                 ink_col,
                 shadow_col,
@@ -2076,16 +2083,16 @@ impl TodoWidget {
                 self.width,
                 self.height,
                 badge_cx,
-                18.0,
+                pill_cy,
                 (badge_w + 10.0) * 0.5,
                 9.0,
                 5.0,
                 badge_bg,
             );
             let badge_text_x = badge_cx - badge_w * 0.5;
-            let badge_baseline = self
-                .font
-                .vertical_center_baseline(18.0, 12.0, FontWeight::Bold);
+            let badge_baseline =
+                self.font
+                    .vertical_center_baseline(pill_cy, 12.0, FontWeight::Bold);
             self.font.draw_text_with_shadow(
                 &mut overlay_buf,
                 self.width,
@@ -2109,7 +2116,7 @@ impl TodoWidget {
 
             let card_left = cx - self.current_w * 0.5;
             let x_norm = card_left / (self.width as f32);
-            let y_norm = 0.0;
+            let y_norm = card_top / (self.height as f32);
             let w_norm = self.current_w / (self.width as f32);
             let h_norm = self.current_h / (self.height as f32);
 
@@ -2120,17 +2127,17 @@ impl TodoWidget {
                 })
                 .bounds(x_norm, y_norm, w_norm, h_norm)
                 .curvature(self.fillet_radius)
-                .bevel(22.0)
-                .refraction(20.0)
-                .dispersion(0.14)
+                .bevel(12.0)
+                .refraction(12.0)
+                .dispersion(0.08)
                 .blur(self.blur_radius)
                 .tint(0.0, progress_packed, 1.0, is_light_f32)
                 .roughness(-1.0)
                 .specular(1.10)
-                .fresnel(0.60)
+                .fresnel(0.55)
                 .style_mode(self.style_mode)
-                .element_type(26.0)
-                .deformation(if self.is_docked { 2.0 } else { 0.0 })
+                .element_type(0.0)
+                .deformation(0.0)
                 .pointer_pos(px, py);
 
             let surfaces = vec![todo_card];

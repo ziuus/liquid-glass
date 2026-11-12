@@ -469,6 +469,62 @@ impl DockWidget {
         self.wallpaper_crop = Some(crop);
     }
 
+    /// Sample wallpaper luminance locally around a given surface coordinate (e.g. icon center).
+    /// Prevents icons over bright orange stripes from failing WCAG contrast when the average
+    /// wallpaper brightness across the wide dock is dark.
+    pub fn local_is_light(
+        crop_opt: Option<&[u8]>,
+        w: usize,
+        h: usize,
+        cx: f32,
+        cy: f32,
+        fallback_is_light: bool,
+    ) -> bool {
+        if let Some(crop) = crop_opt {
+            if crop.len() != w * h * 4 || w == 0 || h == 0 {
+                return fallback_is_light;
+            }
+            let box_r = 18i32;
+            let icx = cx as i32;
+            let icy = cy as i32;
+            let mut total_lum = 0.0f64;
+            let mut count = 0usize;
+            for dy in -box_r..=box_r {
+                let y = icy + dy;
+                if y < 0 || y >= h as i32 {
+                    continue;
+                }
+                for dx in -box_r..=box_r {
+                    let x = icx + dx;
+                    if x < 0 || x >= w as i32 {
+                        continue;
+                    }
+                    let idx = (y as usize * w + x as usize) * 4;
+                    if idx + 2 < crop.len() {
+                        let r = crop[idx] as f64 / 255.0;
+                        let g = crop[idx + 1] as f64 / 255.0;
+                        let b = crop[idx + 2] as f64 / 255.0;
+                        let to_lin = |c: f64| {
+                            if c <= 0.04045 {
+                                c / 12.92
+                            } else {
+                                ((c + 0.055) / 1.055).powf(2.4)
+                            }
+                        };
+                        let y_lin = 0.2126 * to_lin(r) + 0.7152 * to_lin(g) + 0.0722 * to_lin(b);
+                        total_lum += y_lin;
+                        count += 1;
+                    }
+                }
+            }
+            if count > 0 {
+                let avg = (total_lum / count as f64) as f32;
+                return avg > 0.38;
+            }
+        }
+        fallback_is_light
+    }
+
     pub fn expand(&mut self) {
         if self.is_compact {
             self.is_compact = false;
@@ -742,11 +798,6 @@ impl DockWidget {
         } else {
             [255, 255, 255, 255]
         };
-        let col_dim = if is_light {
-            [90, 100, 115, 220]
-        } else {
-            [180, 195, 215, 220]
-        };
         let col_hover_tile = if is_light {
             [0, 0, 0, 24]
         } else {
@@ -819,11 +870,30 @@ impl DockWidget {
                 );
             }
 
-            // Draw Icon
-            let icon_col = if self.pressed_item == Some(idx) {
-                col_dim
+            // Draw Icon with per-icon adaptive luminance
+            let item_is_light = Self::local_is_light(
+                self.wallpaper_crop.as_deref(),
+                self.width as usize,
+                self.height as usize,
+                item_cx,
+                item_cy,
+                is_light,
+            );
+            let item_ink = if item_is_light {
+                [14, 18, 26, 255]
             } else {
-                col_ink
+                [255, 255, 255, 255]
+            };
+            let item_dim = if item_is_light {
+                [45, 55, 75, 230]
+            } else {
+                [200, 215, 235, 230]
+            };
+
+            let icon_col = if self.pressed_item == Some(idx) {
+                item_dim
+            } else {
+                item_ink
             };
 
             match item.icon.as_str() {
@@ -899,30 +969,36 @@ impl DockWidget {
             // Running status dot / pill
             let dot_y = dock_top + dock_h - 7.0;
             if item.is_focused {
-                // Focused app: elongated luminous pill
+                // Focused app: luminous pill using token accent
+                let focus_col = [Tokens::ACCENT[0], Tokens::ACCENT[1], Tokens::ACCENT[2], 255];
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
                     self.height,
                     item_cx,
                     dot_y,
-                    4.5,
-                    1.6,
-                    1.2,
-                    col_ink,
+                    5.5,
+                    2.0,
+                    1.5,
+                    focus_col,
                 );
             } else if item.is_running {
-                // Running app: sleek precision dot
+                // Running app: high-contrast sleek dot
+                let run_col = if item_is_light {
+                    [16, 22, 32, 255]
+                } else {
+                    [255, 255, 255, 240]
+                };
                 UIFont::draw_rounded_rect_fill(
                     buf,
                     self.width,
                     self.height,
                     item_cx,
                     dot_y,
-                    1.8,
-                    1.8,
-                    1.8,
-                    col_dim,
+                    2.4,
+                    2.4,
+                    2.4,
+                    run_col,
                 );
             }
         }
