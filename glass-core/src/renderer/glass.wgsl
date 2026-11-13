@@ -228,6 +228,18 @@ fn dist_segment(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
     return length(pa - ba * h);
 }
 
+// ── Precision circular arc SDF helper (exact Lipschitz-1 distance, continuous normals) ──
+fn dist_arc(p: vec2<f32>, c: vec2<f32>, r: f32, a0: f32, a1: f32) -> f32 {
+    let d = p - c;
+    var ang = atan2(d.y, d.x);
+    if ang < a0 {
+        ang += 6.2831853;
+    }
+    let ang_c = clamp(ang, a0, a1);
+    let closest = c + vec2<f32>(cos(ang_c), sin(ang_c)) * r;
+    return length(p - closest);
+}
+
 // ── Precision Vector Letter SDFs for Authentic Camera Toolbar Typography ──
 fn draw_letter(p: vec2<f32>, ch: u32, scale: f32) -> f32 {
     let q = p / scale;
@@ -720,12 +732,11 @@ fn draw_apple_digit(p: vec2<f32>, dig: u32, scale: f32) -> f32 {
             d = min(top_ring, bot_ring);
         }
         case 9u: {
-            // Upper circular bowl with vertical right stem curving gently left at base
+            // Upper circular bowl with vertical right stem curving smoothly into bottom hook
             let top_loop = abs(length(q - vec2<f32>(0.0, -2.3)) - 2.5);
             let stem = dist_segment(q, vec2<f32>(2.5, -2.3), vec2<f32>(2.5, 1.6));
-            let base_curve = abs(length(q - vec2<f32>(0.5, 1.6)) - 2.0);
-            let base_clipped = select(999.0, base_curve, q.x <= 2.5 && q.y >= 1.6 && q.x >= -1.2);
-            d = min(min(top_loop, stem), base_clipped);
+            let base_arc = dist_arc(q, vec2<f32>(0.5, 1.6), 2.0, 0.0, 2.45);
+            d = min(min(top_loop, stem), base_arc);
         }
         default: {}
     }
@@ -737,7 +748,7 @@ fn get_liquid_digit_bounds(dig: u32) -> vec2<f32> {
     if dig == 1u {
         return vec2<f32>(-1.3, 1.3);
     }
-    return vec2<f32>(-2.4, 2.4);
+    return vec2<f32>(-2.5, 2.5);
 }
 
 fn eval_liquid_text_sdf(p: vec2<f32>, tint: vec4<f32>) -> f32 {
