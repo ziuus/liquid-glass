@@ -3265,23 +3265,23 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>, wakeup_fd: Option<i32>) {
                         send_evt(IslandIpcEvent::ShowMode(IslandMode::Hidden));
                     } else if trimmed == "show" || trimmed == "compact" {
                         send_evt(IslandIpcEvent::ShowMode(IslandMode::CompactPill));
-                    } else if trimmed == "music" {
+                    } else if trimmed == "music" || trimmed == "slide_music" || trimmed == "slide:music" {
                         send_evt(IslandIpcEvent::ShowMode(IslandMode::MusicExpanded));
-                    } else if trimmed == "sys" || trimmed == "system" {
+                    } else if trimmed == "sys" || trimmed == "system" || trimmed == "slide_system" || trimmed == "slide:system" || trimmed == "slide_sys" {
                         send_evt(IslandIpcEvent::ShowMode(IslandMode::SystemOverview));
-                    } else if trimmed == "power" {
+                    } else if trimmed == "power" || trimmed == "slide_power" || trimmed == "slide:power" {
                         send_evt(IslandIpcEvent::ShowMode(IslandMode::PowerMenu));
-                    } else if trimmed == "apps" || trimmed == "quick" {
+                    } else if trimmed == "apps" || trimmed == "quick" || trimmed == "slide_apps" || trimmed == "slide:apps" {
                         send_evt(IslandIpcEvent::ShowMode(IslandMode::QuickAccess));
-                    } else if trimmed == "todo" || trimmed == "tasks" {
+                    } else if trimmed == "todo" || trimmed == "tasks" || trimmed == "toggle_todo" || trimmed == "toggle_tasks" {
                         send_evt(IslandIpcEvent::ToggleTodo);
-                    } else if trimmed == "clock" {
+                    } else if trimmed == "clock" || trimmed == "toggle_clock" {
                         send_evt(IslandIpcEvent::ToggleClock);
-                    } else if trimmed == "dock" || trimmed == "bar" {
+                    } else if trimmed == "dock" || trimmed == "bar" || trimmed == "toggle_dock" {
                         send_evt(IslandIpcEvent::ToggleAppDock);
-                    } else if trimmed == "next" {
+                    } else if trimmed == "next" || trimmed == "next_slide" || trimmed == "slide_next" {
                         send_evt(IslandIpcEvent::NextMenu);
-                    } else if trimmed == "prev" {
+                    } else if trimmed == "prev" || trimmed == "prev_slide" || trimmed == "slide_prev" {
                         send_evt(IslandIpcEvent::PrevMenu);
                     } else if trimmed == "style obsidian"
                         || trimmed == "obsidian"

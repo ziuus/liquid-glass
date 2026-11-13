@@ -69,13 +69,12 @@ let island = GlassSurface::new()
     .material(Material::LiquidGlass)
     .shape(Shape::Capsule)
     .bounds(0.35, 0.02, 0.30, 0.08) // Normalized [x, y, w, h]
-    .curvature(0.06)
+    .curvature(14.0)
     .bevel(14.0)
-    .refraction(0.75)               // Snell's law deflection
-    .dispersion(0.025)              // Cauchy RGB splitting
-    .blur(4.0)                      // Subtle interior frosted diffusion
+    .refraction(16.0)               // Snell's law deflection
+    .dispersion(0.12)               // Cauchy RGB splitting
     .specular(1.20)                 // Directional sunlight glint
-    .fresnel(0.75);
+    .fresnel(0.65);
 
 // 2. Single-pass render
 renderer.render(&[island])?;

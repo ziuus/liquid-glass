@@ -1194,7 +1194,6 @@ dependencies = [
  "env_logger",
  "glass-core",
  "glass-platform",
- "glass-ui",
  "image",
  "libc",
  "log",

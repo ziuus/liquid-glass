@@ -16,8 +16,9 @@ if [ "$1" = "--uninstall" ] || [ "$1" = "uninstall" ]; then
     systemctl --user disable liquid-shell.service 2>/dev/null || true
     rm -f "$SYSTEMD_USER_DIR/liquid-shell.service"
     rm -f "$BIN_DIR/liquid-shell"
+    rm -f "$BIN_DIR/island-ctl"
     rm -f "$AUTOSTART_DIR/liquid-shell.desktop"
-    echo "==> Removed binary, systemd service, and autostart entry."
+    echo "==> Removed binaries, systemd service, and autostart entry."
     echo "==> Config remains at $CONFIG_DIR (remove manually if desired)."
     exit 0
 fi
@@ -32,9 +33,10 @@ fi
 echo "==> Building liquid-shell (release profile)..."
 cargo build --release -p liquid-shell
 
-echo "==> Installing binary to $BIN_DIR/liquid-shell..."
+echo "==> Installing binaries to $BIN_DIR..."
 mkdir -p "$BIN_DIR"
 install -Dm755 "target/release/liquid-shell" "$BIN_DIR/liquid-shell"
+install -Dm755 "bin/island-ctl" "$BIN_DIR/island-ctl"
 
 echo "==> Ensuring configuration directory at $CONFIG_DIR..."
 mkdir -p "$CONFIG_DIR"
@@ -134,10 +136,12 @@ fi
 echo ""
 echo "Liquid Glass installation complete!"
 echo "Binary:  $BIN_DIR/liquid-shell"
+echo "CLI:     $BIN_DIR/island-ctl (e.g. 'island-ctl toggle')"
 echo "Config:  $CONFIG_DIR/config.json"
 echo "Control: /tmp/liquid_island.fifo"
 echo ""
 echo "To launch now:       liquid-shell &"
+echo "To control:          island-ctl toggle"
 echo "To install systemd:  ./install.sh --systemd"
 echo "To autostart Hyprland: add to ~/.config/hypr/hyprland.conf:"
 echo "  exec-once = liquid-shell"

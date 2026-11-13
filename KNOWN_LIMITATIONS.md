@@ -1,7 +1,5 @@
 # Known Limitations
 
-- **Backdrop Acquisition Hack**: Background pixels are currently acquired using an out-of-process CLI tool (`grim`) because standard `wlr-layer-shell` does not pass down background samples. This must be replaced with `wlr-screencopy-unstable-v1` natively within the Wayland client loop.
-- **Overlapping Glass Feedback**: Refraction of intersecting glass panels currently does not correctly aggregate because all panels sample from a single static backdrop texture per frame rather than intermediate composition buffers.
-- **Interactivity & Deformation**: Interactive liquid ripples based on pointer velocity are not yet connected to the uniform buffers.
-- **Platform Coupling**: True cross-platform operation (macOS/Windows) requires decoupling of Wayland setup routines in example drivers.
-- **Frame Timing Profiling**: CPU frame time is distinct from GPU execution time; wgpu timestamp queries need to be integrated for accurate uncapped benchmarking.
+- **Layer-Shell Compositor Blur**: While `liquid-shell` uses real-time inotify wallpaper synchronization and analytical Snell refraction, full arbitrary-window blurring behind Wayland layer-shell requires compositor extensions (`org_kde_kwin_blur` or wlroots screencopy). On compositors without screencopy, wallpaper-level sampling is used.
+- **Platform Scope**: Wayland layer-shell features (`liquid-shell`, `glass-panel`) are Linux-specific. For cross-platform environments (macOS/Windows), use the standard `winit` window runner (`simple-window`).
+- **Multi-Monitor Layer Placement**: Current defaults bind to the primary Wayland output; explicit multi-monitor output routing is configured via Hyprland workspace rules or output flags.

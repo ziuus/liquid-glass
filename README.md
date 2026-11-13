@@ -196,22 +196,26 @@ exec-once = liquid-shell
 }
 ```
 
-**IPC Control** (`/tmp/liquid_island.fifo`):
+**CLI Control** (`island-ctl` or `/tmp/liquid_island.fifo`):
 ```bash
-# Carousel slides & interaction
-echo "next_slide"    > /tmp/liquid_island.fifo
-echo "prev_slide"    > /tmp/liquid_island.fifo
-echo "slide_music"   > /tmp/liquid_island.fifo
-echo "slide_apps"    > /tmp/liquid_island.fifo
-echo "slide_system"  > /tmp/liquid_island.fifo
-echo "slide_power"   > /tmp/liquid_island.fifo
-echo "toggle"        > /tmp/liquid_island.fifo
+# Fast control with the included CLI:
+island-ctl toggle              # Toggle island visibility
+island-ctl music               # Expand media player
+island-ctl apps                # Expand quick access app launcher
+island-ctl system              # Expand system resource monitor
+island-ctl power               # Expand power menu
+island-ctl tasks               # Toggle tasks / calendar panel
+island-ctl clock               # Toggle clock / hardware capsule
+island-ctl dock                # Toggle bottom app dock
 
 # Live optical & geometry adjustment
-echo "set_edge curved"       > /tmp/liquid_island.fifo   # floating | straight | curved
-echo "set_theme auto"        > /tmp/liquid_island.fifo   # auto (0) | dark (1) | light (2)
-echo "set_style liquid"      > /tmp/liquid_island.fifo   # clean (0.0) | frosted (1.0) | liquid (2.0)
-echo "set_fillet_compact 12.0" > /tmp/liquid_island.fifo
+island-ctl style liquid        # True liquid glass (2.0) | frosted (1.0) | obsidian (0.0)
+island-ctl theme auto          # Auto wallpaper luminance | dark | light
+island-ctl set_edge curved     # curved | straight | floating
+
+# Or send commands directly via FIFO:
+echo "toggle" > /tmp/liquid_island.fifo
+echo "music"  > /tmp/liquid_island.fifo
 ```
 
 ### 2. Floating Desktop Media Island

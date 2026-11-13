@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# island-ctl: CLI controller for Liquid Glass Island and Liquid Shell
+set -e
+
+FIFO="/tmp/liquid_island.fifo"
+
+show_help() {
+    cat << 'EOF'
+island-ctl — CLI controller for Liquid Glass Island & Shell
+
+Usage:
+  island-ctl <command> [args...]
+
+Navigation & Slides:
+  toggle              Toggle island visibility
+  hide                Hide island
+  show / compact      Show compact capsule
+  next / prev         Cycle between expanded carousel slides
+  music               Expand music player
+  apps / quick        Expand quick access launcher
+  system / sys        Expand system monitor & stats
+  power               Expand power menu
+
+Widget Toggles:
+  clock               Toggle digital/analog clock widget
+  tasks / todo        Toggle task agenda widget
+  dock                Toggle bottom application dock
+
+Appearance & Optics:
+  style liquid        Set style to True Liquid Glass (mode 2.0)
+  style frost         Set style to Frosted Glassmorphism (mode 1.0)
+  style obsidian      Set style to Clean Obsidian (mode 0.0)
+  style cycle         Cycle between glass styles
+  theme auto          Auto-detect wallpaper luminance
+  theme dark          Force dark theme
+  theme light         Force light theme
+  theme cycle         Cycle light/dark theme
+
+Geometry:
+  set_edge curved     Attached curved notch edge
+  set_edge straight   Attached straight flush edge
+  set_edge floating   Detached floating island
+  set_edge toggle     Cycle attachment modes
+  fillet_compact <r>  Set compact corner fillet radius (e.g. 10.0)
+  fillet_expanded <r> Set expanded corner fillet radius (e.g. 24.0)
+
+System:
+  reload              Reload ~/.config/liquid-glass/config.json
+EOF
+}
+
+if [ $# -eq 0 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ] || [ "$1" = "help" ]; then
+    show_help
+    exit 0
+fi
+
+if [ ! -p "$FIFO" ]; then
+    echo "ERROR: FIFO '$FIFO' not found. Is liquid-shell running?" >&2
+    exit 1
+fi
+
+CMD="$*"
+echo "$CMD" > "$FIFO"

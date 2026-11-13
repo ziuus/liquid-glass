@@ -20,9 +20,11 @@ All examples captured from the `glass-panel` example running on Wayland composit
 ### Build & Run
 
 ```bash
-cd examples/glass-panel
-cargo build --release
-../../target/release/glass-panel
+# Run the floating media island
+cargo run --release -p glass-panel
+
+# Or run the flagship desktop shell
+cargo run --release -p liquid-shell
 ```
 
 ## Technical Implementation
