@@ -1,547 +1,344 @@
-# Liquid Glass Design System - Usage Guide
+# Liquid Glass – Usage Guide
 
 ## Overview
 
-This guide shows how to use the liquid glass engine to create authentic UI with vibrancy materials, blur effects, spring animations, and proper layering.
+This guide shows how to use `glass-core` and `glass-ui` to build authentic liquid glass UI surfaces with physical refraction, spring physics, and proper layer compositing.
 
-## Quick Start
+> **Note**: All coordinates and sizes passed to `GlassSurface` / `GlassCard` are **normalized** (0.0–1.0) relative to the output surface dimensions.
 
-```rust
-use glass_core::{
-    GlassMaterial, MaterialType, VibrancyMaterial,
-    Spring, SpringParams, GlassTransition,
-    GlassRenderer, BlurPipeline
-};
+---
 
-// Create a sidebar material
-let sidebar = GlassMaterial::sidebar();
+## Cargo.toml
 
-// Create a menu with custom corner radius
-let menu = GlassMaterial::menu()
-    .with_corner_radius(8.0)
-    .with_shadow(35.0, [0.0, 8.0], 0.3);
-
-// Create a HUD overlay for dark mode
-let hud = GlassMaterial::new(MaterialType::HUD)
-    .with_dark_mode();
+```toml
+[dependencies]
+glass-core = { git = "https://github.com/ziuus/liquid-glass" }
+glass-ui   = { git = "https://github.com/ziuus/liquid-glass" }
 ```
 
-## Material System
+---
 
-### Pre-built Materials
+## Core Concepts
 
-The engine includes pre-calibrated vibrancy materials:
+### GlassSurface (glass-core)
 
-```rust
-// Window backgrounds - ultra-thin glass
-let window = GlassMaterial::new(MaterialType::WindowBackground);
-// Blur: 80px, Saturation: 1.5x, Opacity: 0.85
-
-// Sidebars - thick glass with high blur
-let sidebar = GlassMaterial::new(MaterialType::Sidebar);
-// Blur: 60px, Saturation: 1.6x, Opacity: 0.95
-
-// Menus - frosted glass
-let menu = GlassMaterial::new(MaterialType::Menu);
-// Blur: 35px, Saturation: 1.55x, Opacity: 0.92
-
-// Popovers - sheet glass
-let popover = GlassMaterial::new(MaterialType::Popover);
-// Blur: 50px, Saturation: 1.5x, Opacity: 0.90
-
-// Tooltips - minimal glass
-let tooltip = GlassMaterial::new(MaterialType::Tooltip);
-// Blur: 25px, Saturation: 1.3x, Opacity: 0.95
-
-// HUD overlays - dark thick glass
-let hud = GlassMaterial::new(MaterialType::HUD);
-// Blur: 70px, Saturation: 1.7x, Dark tint
-
-// Modal sheets
-let sheet = GlassMaterial::new(MaterialType::Sheet);
-// Blur: 90px, Saturation: 1.6x, Opacity: 0.88
-```
-
-### Custom Materials
-
-Create custom vibrancy materials:
+The fundamental unit — a single bounded glass lens. Build one with the fluent API:
 
 ```rust
-use glass_core::{VibrancyMaterial, BlendMode};
+use glass_core::{GlassSurface, Material};
+use glass_core::geometry::Shape;
 
-let custom = VibrancyMaterial {
-    blur_radius: 45.0,
-    saturation_boost: 1.4,
-    tint_color: [0.98, 0.98, 0.98, 1.0],
-    tint_strength: 0.2,
-    opacity: 0.9,
-    light_mode: BlendMode::BehindWindow,
-    dark_mode: BlendMode::BehindWindow,
-    reduced_transparency: false,
-};
-
-let glass = GlassMaterial {
-    material_type: MaterialType::Custom,
-    vibrancy: custom,
-    corner_radius: 12.0,
-    shadow_blur: 40.0,
-    shadow_offset: [0.0, 4.0],
-    shadow_opacity: 0.25,
-};
+let surface = GlassSurface::new()
+    .material(Material::LiquidGlass)
+    .shape(Shape::Capsule)
+    .bounds(0.1, 0.1, 0.8, 0.12)   // x, y, w, h (normalized 0–1)
+    .curvature(14.0)                 // lens dome depth
+    .bevel(16.0)                     // rim width for specular glint
+    .refraction(16.0)                // pixel displacement strength
+    .dispersion(0.12)                // chromatic RGB split at bevel
+    .specular(1.15)                  // specular highlight multiplier
+    .fresnel(0.60)                   // Schlick Fresnel grazing angle
+    .blur(0.0)                       // optional frosted-glass blur radius
+    .style_mode(2.0)                 // 0=clean, 1=frosted, 2=liquid glass
+    .tint(0.0, 0.0, 1.0, 0.0)       // (unused, time, alpha, is_light)
+    .deformation(0.0)                // 0=float, 1=edge-straight, 2=edge-curved
+    .element_type(0.0)               // GPU-side element shader id (0 = none)
+    .pointer_pos(cursor_x, cursor_y);
 ```
 
-### Accessibility
-
-Support reduced transparency mode:
+### Rendering (glass-core)
 
 ```rust
-let material = GlassMaterial::menu()
-    .with_reduced_transparency();
-// Automatically reduces blur to 30%, increases opacity
+use glass_core::{GlassRenderer, SharedGpu};
+
+// Initialize renderer (async)
+let gpu = SharedGpu::new(&window, width, height).await?;
+let mut renderer = GlassRenderer::new_with_gpu(gpu.clone(), width, height)?;
+
+// Each frame:
+let surfaces: Vec<GlassSurface> = collect_my_surfaces();
+renderer.render(&surfaces)?;
 ```
 
-## Animation System
+---
 
-### Spring Physics
+## High-Level Widgets (glass-ui)
 
-All animations use spring physics for natural motion:
+`glass-ui` wraps `GlassSurface` into convenient retained-mode components.
+
+### GlassCard
+
+A floating glass container:
+
+```rust
+use glass_ui::GlassCard;
+use glass_core::geometry::Shape;
+use glass_core::Material;
+
+let card = GlassCard::new(0.1, 0.1, 0.8, 0.6)   // x, y, w, h
+    .shape(Shape::Capsule)
+    .material(Material::LiquidGlass)
+    .blur(0.0)
+    .refraction(16.0)
+    .dispersion(0.12)
+    .bevel(14.0)
+    .specular(1.2);
+
+// Convert to a GlassSurface for the renderer
+let surface = card.to_surface();
+```
+
+### GlassButton
+
+```rust
+use glass_ui::GlassButton;
+
+let mut btn = GlassButton::new(0.20, 0.30, 0.25, 0.12, "Play");
+
+// Pointer events
+btn.on_pointer_move(px, py);
+if btn.on_pointer_down(px, py) {
+    println!("pressed");
+}
+if btn.on_pointer_up(px, py) {
+    println!("released / clicked");
+}
+
+// Animate spring physics
+btn.update(delta_time);
+
+// Get surface
+let surface = btn.to_surface();
+```
+
+### GlassToggle
+
+```rust
+use glass_ui::GlassToggle;
+
+let mut toggle = GlassToggle::new(0.55, 0.30, 0.15, 0.08, true);
+
+toggle.on_pointer_down(px, py); // clicks toggle
+toggle.update(delta_time);
+
+let surfaces = toggle.to_surfaces(); // returns thumb + track
+```
+
+### GlassSlider
+
+```rust
+use glass_ui::GlassSlider;
+
+let mut slider = GlassSlider::new(0.20, 0.50, 0.60, 0.05, 0.45); // initial value = 0.45
+
+slider.on_pointer_down(px, py);
+slider.on_pointer_move(px, py); // dragging
+slider.on_pointer_up();
+slider.update(delta_time);
+
+let value = slider.value;      // current 0.0–1.0 value
+let surfaces = slider.to_surfaces();
+```
+
+### GlassWidget (collection)
+
+Manage multiple components together:
+
+```rust
+use glass_ui::{GlassWidget, GlassCard, GlassButton, GlassToggle, GlassSlider};
+use glass_core::geometry::Shape;
+
+let mut widget = GlassWidget::new();
+
+widget.add_card(
+    GlassCard::new(0.1, 0.1, 0.8, 0.6)
+        .shape(Shape::RoundedRectangle { radius: 18.0 })
+        .refraction(16.0)
+        .dispersion(0.12)
+        .bevel(14.0),
+);
+widget.add_button(GlassButton::new(0.20, 0.30, 0.25, 0.12, "Play"));
+widget.add_toggle(GlassToggle::new(0.55, 0.30, 0.15, 0.08, true));
+widget.add_slider(GlassSlider::new(0.20, 0.50, 0.60, 0.05, 0.45));
+
+// Event loop
+widget.on_pointer_move(cursor_x, cursor_y);
+widget.update(delta_time);
+
+// Collect all surfaces for a single render call
+let surfaces = widget.collect_surfaces();
+renderer.render(&surfaces)?;
+```
+
+---
+
+## Spring Physics (glass-core)
+
+All animations use sub-stepped RK4 spring physics.
+
+### Single-axis Spring
 
 ```rust
 use glass_core::{Spring, SpringParams};
 
-// Default UI spring (smooth, quick settling)
 let mut opacity = Spring::new(1.0);
-opacity.params = SpringParams::default_ui();
+opacity.params = SpringParams::smooth();
 
-// Set target and update each frame
-opacity.set_target(0.5);
+opacity.set_target(0.0); // fade out
 
-// In your render loop
-let delta_time = 1.0 / 60.0; // 60 FPS
+// In render loop:
 opacity.update(delta_time);
+let alpha = opacity.value; // current animated value
 
-// Use current value
-let current_opacity = opacity.value;
+// Check if settled
+if opacity.is_at_rest() {
+    // skip update
+}
 ```
 
 ### Spring Presets
 
-```rust
-// Bouncy - playful interactions
-SpringParams::bouncy()
-// Stiffness: 200, Damping: 0.6
+| Preset | Stiffness | Damping | Use case |
+|--------|-----------|---------|----------|
+| `default_ui()` | 300 | 0.8 | General UI |
+| `bouncy()` | 200 | 0.6 | Playful interactions |
+| `smooth()` | 300 | 0.85 | Gentle transitions |
+| `snappy()` | 400 | 0.8 | Immediate response |
+| `gentle()` | 180 | 0.9 | Large slow motions |
 
-// Smooth - gentle transitions
-SpringParams::smooth()
-// Stiffness: 300, Damping: 0.85
-
-// Snappy - immediate response
-SpringParams::snappy()
-// Stiffness: 400, Damping: 0.8
-
-// Gentle - large motions
-SpringParams::gentle()
-// Stiffness: 180, Damping: 0.9
-```
-
-### Multi-dimensional Springs
+### Multi-axis Springs
 
 ```rust
-use glass_core::{SpringVec2, SpringVec4};
+use glass_core::{SpringVec2, SpringVec4, SpringParams};
 
-// Position animation
-let mut position = SpringVec2::new([0.0, 0.0]);
-position.set_target([100.0, 50.0]);
+// Position
+let mut pos = SpringVec2::new([0.0, 0.0]);
+pos.set_target([0.5, 0.3]);
+pos.update(delta_time);
+let [x, y] = pos.value();
 
-// Color animation
+// Color (RGBA)
 let mut color = SpringVec4::with_params(
     [1.0, 1.0, 1.0, 1.0],
-    SpringParams::smooth()
+    SpringParams::smooth(),
 );
 color.set_target([0.5, 0.7, 1.0, 0.9]);
-
-// Update both
-position.update(delta_time);
 color.update(delta_time);
 ```
 
-### Coordinated Glass Transitions
-
-Animate blur, opacity, and scale together:
+### GlassTransition (hover/press states)
 
 ```rust
 use glass_core::GlassTransition;
 
 let mut transition = GlassTransition::new();
+let base_blur = 0.0f32;
 
-// Hover in
-transition.hover_in(60.0); // base blur radius
-// Sharpens blur to 54px, opacity to 0.95, scale to 1.02
+// On hover enter
+transition.hover_in(base_blur);  // sharpens blur, lifts scale to 1.02
 
-// Hover out
-transition.hover_out(60.0);
-// Returns to original values
+// On hover exit
+transition.hover_out(base_blur);
 
-// Press
-transition.press(60.0);
-// More blur (66px), less opacity (0.85), scale down (0.97)
+// On press
+transition.press(base_blur);     // scale down to 0.97, slightly more blur
 
-// Release
-transition.release(60.0);
-// Returns to original
+// On release
+transition.release(base_blur);
 
-// Update
+// Each frame
 transition.update(delta_time);
 
-// Use values
-let blur = transition.blur_radius.value;
-let opacity = transition.opacity.value;
+// Use animated values
+let blur  = transition.blur_radius.value;
 let scale = transition.scale.value;
+let alpha = transition.opacity.value;
 ```
 
-## Blur Pipeline
+---
 
-### Multi-pass Gaussian Blur
+## Material Presets (glass-core)
 
-The engine uses a multi-pass pipeline for physical-quality blur:
+`GlassMaterial` stores vibrancy, blur, and shadow parameters. These are used by the material preset system and serialization but do **not** directly drive `GlassRenderer` (which uses `GlassSurface`). They are useful for configuring visual parameters and passing them into surfaces.
 
 ```rust
-use glass_core::BlurPipeline;
+use glass_core::{GlassMaterial, MaterialType};
 
-// Create blur pipeline
-let blur_pipeline = BlurPipeline::new(&device, width, height);
+// Sidebar — heavy blur, high saturation
+let sidebar = GlassMaterial::sidebar();
 
-// Apply blur in render pass
-let blurred_view = blur_pipeline.apply_blur(
-    &mut encoder,
-    &source_texture_view,
-    60.0,  // blur radius
-    1.5,   // saturation boost
-);
+// Menu — medium frosted glass
+let menu = GlassMaterial::menu();
+
+// Popover — sheet glass with deep shadow
+let popover = GlassMaterial::popover();
+
+// Custom
+let custom = GlassMaterial::new(MaterialType::HUD)
+    .with_dark_mode()
+    .with_corner_radius(10.0)
+    .with_shadow(40.0, [0.0, 8.0], 0.3);
+
+// Apply reduced transparency (accessibility)
+let accessible = GlassMaterial::menu().with_reduced_transparency();
 ```
 
-The pipeline automatically:
-1. Downsamples to half resolution
-2. Applies separable Gaussian blur (horizontal + vertical)
-3. Boosts saturation for vibrancy
-4. Upsamples for final output
+---
 
-### Blur Quality Settings
+## JSON Serialization
+
+`GlassSurface` is fully `serde`-serializable for config-driven hot-reloading:
 
 ```rust
-// Light blur - tooltips, minimal UI
-blur_radius: 25.0,
-saturation_boost: 1.3,
+use glass_core::geometry::{load_from_json, save_to_json};
 
-// Medium blur - menus, popovers
-blur_radius: 35.0-50.0,
-saturation_boost: 1.5,
+// Save
+let json = save_to_json(&surfaces)?;
+std::fs::write("surfaces.json", &json)?;
 
-// Heavy blur - windows, sheets
-blur_radius: 80.0-100.0,
-saturation_boost: 1.6-1.8,
+// Load
+let json = std::fs::read_to_string("surfaces.json")?;
+let surfaces = load_from_json(&json)?;
 ```
 
-## Complete Examples
-
-### Button with Glass Material
-
-```rust
-struct GlassButton {
-    material: GlassMaterial,
-    transition: GlassTransition,
-    position: [f32; 2],
-    size: [f32; 2],
-    is_hovered: bool,
-    is_pressed: bool,
-}
-
-impl GlassButton {
-    fn new() -> Self {
-        Self {
-            material: GlassMaterial::menu()
-                .with_corner_radius(6.0)
-                .with_shadow(20.0, [0.0, 2.0], 0.2),
-            transition: GlassTransition::new(),
-            position: [0.0, 0.0],
-            size: [120.0, 40.0],
-            is_hovered: false,
-            is_pressed: false,
-        }
-    }
-    
-    fn on_hover_enter(&mut self) {
-        self.is_hovered = true;
-        self.transition.hover_in(self.material.vibrancy.blur_radius);
-    }
-    
-    fn on_hover_exit(&mut self) {
-        self.is_hovered = false;
-        self.transition.hover_out(self.material.vibrancy.blur_radius);
-    }
-    
-    fn on_press(&mut self) {
-        self.is_pressed = true;
-        self.transition.press(self.material.vibrancy.blur_radius);
-    }
-    
-    fn on_release(&mut self) {
-        self.is_pressed = false;
-        if self.is_hovered {
-            self.transition.hover_in(self.material.vibrancy.blur_radius);
-        } else {
-            self.transition.release(self.material.vibrancy.blur_radius);
-        }
-    }
-    
-    fn update(&mut self, delta_time: f32) {
-        self.transition.update(delta_time);
-    }
-    
-    fn render(&self, renderer: &mut GlassRenderer) {
-        // Apply animated values
-        let mut material = self.material;
-        material.vibrancy.blur_radius = self.transition.blur_radius.value;
-        material.vibrancy.opacity = self.transition.opacity.value;
-        
-        renderer.draw_glass_rect(
-            self.position,
-            self.size,
-            &material,
-            self.transition.scale.value,
-        );
-    }
-}
-```
-
-### Sidebar with Layered Glass
-
-```rust
-struct GlassSidebar {
-    background: GlassMaterial,
-    items: Vec<SidebarItem>,
-    position_spring: SpringVec2,
-    width: f32,
-}
-
-impl GlassSidebar {
-    fn new() -> Self {
-        Self {
-            background: GlassMaterial::sidebar()
-                .with_corner_radius(10.0)
-                .with_shadow(30.0, [0.0, 2.0], 0.2),
-            items: Vec::new(),
-            position_spring: SpringVec2::with_params(
-                [0.0, 0.0],
-                SpringParams::smooth()
-            ),
-            width: 250.0,
-        }
-    }
-    
-    fn slide_in(&mut self) {
-        self.position_spring.set_target([0.0, 0.0]);
-    }
-    
-    fn slide_out(&mut self) {
-        self.position_spring.set_target([-self.width, 0.0]);
-    }
-    
-    fn update(&mut self, delta_time: f32) {
-        self.position_spring.update(delta_time);
-    }
-    
-    fn render(&self, renderer: &mut GlassRenderer) {
-        let pos = self.position_spring.value();
-        
-        // Render shadow first
-        renderer.draw_glass_shadow(
-            pos,
-            [self.width, 800.0],
-            &self.background,
-        );
-        
-        // Render glass background
-        renderer.draw_glass_rect(
-            pos,
-            [self.width, 800.0],
-            &self.background,
-            1.0,
-        );
-        
-        // Render items on top
-        for item in &self.items {
-            item.render(renderer);
-        }
-    }
-}
-```
-
-### Modal with Sheet Material
-
-```rust
-struct GlassModal {
-    sheet: GlassMaterial,
-    backdrop_opacity: Spring,
-    scale: Spring,
-    is_visible: bool,
-}
-
-impl GlassModal {
-    fn new() -> Self {
-        Self {
-            sheet: GlassMaterial::new(MaterialType::Sheet)
-                .with_corner_radius(12.0)
-                .with_shadow(60.0, [0.0, 20.0], 0.4),
-            backdrop_opacity: Spring::with_params(0.0, SpringParams::smooth()),
-            scale: Spring::with_params(0.9, SpringParams::snappy()),
-            is_visible: false,
-        }
-    }
-    
-    fn show(&mut self) {
-        self.is_visible = true;
-        self.backdrop_opacity.set_target(0.5);
-        self.scale.set_target(1.0);
-    }
-    
-    fn hide(&mut self) {
-        self.is_visible = false;
-        self.backdrop_opacity.set_target(0.0);
-        self.scale.set_target(0.9);
-    }
-    
-    fn update(&mut self, delta_time: f32) {
-        self.backdrop_opacity.update(delta_time);
-        self.scale.update(delta_time);
-    }
-    
-    fn render(&self, renderer: &mut GlassRenderer) {
-        if !self.is_visible && self.backdrop_opacity.is_at_rest() {
-            return;
-        }
-        
-        // Dark backdrop
-        renderer.draw_rect(
-            [0.0, 0.0],
-            renderer.screen_size(),
-            [0.0, 0.0, 0.0, self.backdrop_opacity.value],
-        );
-        
-        // Centered modal
-        let screen_size = renderer.screen_size();
-        let modal_size = [600.0, 400.0];
-        let center = [
-            (screen_size[0] - modal_size[0]) * 0.5,
-            (screen_size[1] - modal_size[1]) * 0.5,
-        ];
-        
-        renderer.draw_glass_rect(
-            center,
-            modal_size,
-            &self.sheet,
-            self.scale.value,
-        );
-    }
-}
-```
-
-## Dark Mode Support
-
-```rust
-// Detect system appearance
-let is_dark_mode = detect_system_appearance();
-
-// Apply to materials
-let material = if is_dark_mode {
-    GlassMaterial::sidebar().with_dark_mode()
-} else {
-    GlassMaterial::sidebar()
-};
-```
+---
 
 ## Performance Tips
 
-1. **Cache blur results**: Blur is expensive - cache when background doesn't change
-2. **Use lower resolution**: Blur at half or quarter resolution
-3. **Limit layers**: Each glass layer requires a blur pass
-4. **Batch similar materials**: Group by blur radius to reduce passes
-5. **Skip animations at rest**: Check `spring.is_at_rest()` before updating
+1. **Zero overdraw**: Each surface renders only within its bounding quad — do not use full-screen passes.
+2. **Idle CPU = 0%**: The renderer uses `epoll_wait`; call `render()` only when state changes.
+3. **Skip at rest**: Check `spring.is_at_rest()` before calling `update()`.
+4. **Batch surfaces**: Pass all surfaces in a single `renderer.render(&surfaces)` call.
+5. **Blur sparingly**: `blur_radius` > 0 triggers a multi-tap frost sample. Use `0.0` for maximum performance.
 
-## Migration from Old API
-
-```rust
-// OLD (deprecated)
-let material = Material::LiquidGlass;
-let params = MaterialParams {
-    ior: 1.33,
-    dispersion: 0.08,
-    // ... complex physics params
-};
-
-// NEW (Physical)
-let material = GlassMaterial::new(MaterialType::WindowBackground);
-// Pre-calibrated for authentic look
-```
-
-## Best Practices
-
-1. **Use presets first**: The built-in materials match physical's design language
-2. **Animate with springs**: Never use linear interpolation for glass transitions
-3. **Layer properly**: Background blur → Glass → Foreground content
-4. **Mind the shadows**: Shadows should be large and soft (40-60px blur)
-5. **Test in both modes**: Always check light and dark appearance
-6. **Support accessibility**: Use `with_reduced_transparency()` when needed
-7. **Keep blur radii reasonable**: 25-100px range for most UI
-
-## Common Patterns
-
-### Hover Effect
-```rust
-transition.hover_in(base_blur);  // Sharpen + scale up
-```
-
-### Press Effect
-```rust
-transition.press(base_blur);  // More blur + scale down
-```
-
-### Slide-in Panel
-```rust
-position_spring.set_target([0.0, 0.0]);  // Smooth entrance
-```
-
-### Fade Modal
-```rust
-opacity.set_target(1.0);  // Spring-based fade
-```
+---
 
 ## Troubleshooting
 
-**Blur looks pixelated**
-- Increase blur texture resolution
-- Check saturation boost is applied
-- Ensure using Gaussian blur, not box blur
+**Glass is invisible / black**
+- Ensure `style_mode(2.0)` is set (Liquid Glass mode)
+- Verify bounds are in 0.0–1.0 range
+- Check `bevel` > 0 and `curvature` > 0
 
-**Performance issues**
-- Reduce blur radius
-- Use lower resolution blur textures
-- Cache blur results when possible
-- Limit number of glass layers
-
-**Colors look washed out**
-- Increase saturation_boost (try 1.5-1.8)
-- Check tint_strength isn't too high
-- Verify blur pipeline includes saturation pass
+**Refraction looks wrong**
+- Increase `refraction()` strength (try 12–20)
+- Check `dispersion()` is 0.08–0.14 for visible chromatic split
 
 **Animations feel stiff**
-- Adjust damping (lower = more bounce)
+- Lower damping: `SpringParams { damping: 0.6, .. }` for more bounce
 - Increase stiffness for faster response
-- Check delta_time calculation
+
+**Wayland surface not appearing**
+- Requires a compositor with `wlr-layer-shell-unstable-v1` support (Hyprland, Sway, niri, etc.)
+- Run `cargo run -p glass-panel` to test layer shell
+
+---
 
 ## Next Steps
 
-- Flagship desktop suite: see `examples/liquid-shell/` and run `./install.sh`
-- Standalone widgets: see `examples/glass-panel/`, `examples/glass-clock/`, and `examples/glass-todo/`
-- Architecture & optics: see `ARCHITECTURE.md` and `LIQUID_GLASS_ANALYSIS.md`
-- Configuration & IPC: see `README.md` for `config.json` schema and `/tmp/liquid_island.fifo` commands
+- Flagship desktop shell: `examples/liquid-shell/` — run `./install.sh`
+- Floating media island: `cargo run --release -p glass-panel`
+- Cross-platform window: `cargo run --release -p simple-window`
+- Render snapshot tests: `cargo test -p glass-core --test test_render_shader`
+- Architecture: [`ARCHITECTURE.md`](../ARCHITECTURE.md)
+- Configuration & IPC: [`README.md`](../README.md)

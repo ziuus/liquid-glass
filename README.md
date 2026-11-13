@@ -98,17 +98,18 @@ glass-ui   = { git = "https://github.com/ziuus/liquid-glass" }
 ```rust
 use glass_ui::{GlassWidget, GlassCard, GlassButton, GlassToggle, GlassSlider};
 use glass_core::geometry::Shape;
+use glass_core::Material;
 
 let mut widget = GlassWidget::new();
 
 // 1. Floating Glass Container Island
 widget.add_card(
-    GlassCard::new(0.1, 0.1, 0.8, 0.6)
+    GlassCard::new(0.1, 0.1, 0.8, 0.6)   // normalized coords (0–1)
         .shape(Shape::Capsule)
-        .blur(24.0)
-        .refraction(0.55)
-        .dispersion(0.02)
-        .bevel(8.0)
+        .blur(0.0)
+        .refraction(16.0)
+        .dispersion(0.12)
+        .bevel(14.0),
 );
 
 // 2. Interactive Tactile Controls
@@ -129,13 +130,16 @@ renderer.render(&surfaces)?;
 ## 🚀 Running & Installing
 
 ### 1. Liquid Shell (Flagship Wayland Desktop Shell)
-Features the Dynamic Island, System Overview, Quick Access app launcher, Power Menu, and desktop widgets with real-time optical glass refraction:
+Features the Dynamic Island, System Clock, Task panel, Bottom Dock, and desktop widgets with real-time physical optical glass refraction:
 
 ```bash
 # Build & install to ~/.local/bin/liquid-shell and set up ~/.config/liquid-glass/config.json
 ./install.sh
 
-# Or run directly
+# Install with systemd autostart (recommended)
+./install.sh --systemd
+
+# Or run directly (without installing)
 cargo run --release -p liquid-shell
 ```
 
@@ -154,25 +158,39 @@ exec-once = liquid-shell
   "blur_radius": 0.0,
   "animation_speed": 1.0,
   "island": {
-    "edge_style": "floating",
+    "edge_style": "curved",
     "fillet_radius_compact": 10.0,
     "fillet_radius_expanded": 24.0,
     "hover_to_expand": true,
     "style_mode": 2.0,
     "quick_access": [
-      { "name": "Terminal", "command": "foot", "icon": "terminal" },
-      { "name": "Browser", "command": "brave", "icon": "browser" },
-      { "name": "Editor", "command": "code", "icon": "editor" },
-      { "name": "Files", "command": "thunar", "icon": "files" },
-      { "name": "Music", "command": "spotify", "icon": "music" }
+      { "name": "Terminal", "command": "foot",    "icon": "terminal" },
+      { "name": "Browser",  "command": "brave",   "icon": "browser"  },
+      { "name": "Editor",   "command": "code",    "icon": "editor"   },
+      { "name": "Files",    "command": "thunar",  "icon": "files"    },
+      { "name": "Music",    "command": "spotify", "icon": "music"    }
     ]
   },
   "clock": {
     "enabled": true,
+    "edge_style": "curved",
     "style_mode": 2.0
+  },
+  "dock": {
+    "enabled": true,
+    "hover_to_expand": true,
+    "style_mode": 2.0,
+    "apps": [
+      { "name": "Terminal", "command": "foot",    "icon": "terminal", "class": "foot"   },
+      { "name": "Browser",  "command": "brave",   "icon": "browser",  "class": "brave"  },
+      { "name": "Editor",   "command": "code",    "icon": "editor",   "class": "code"   },
+      { "name": "Files",    "command": "thunar",  "icon": "folder",   "class": "thunar" },
+      { "name": "Music",    "command": "spotify", "icon": "music",    "class": "spotify"}
+    ]
   },
   "todo": {
     "enabled": true,
+    "edge_style": "straight",
     "style_mode": 2.0
   }
 }
@@ -181,30 +199,30 @@ exec-once = liquid-shell
 **IPC Control** (`/tmp/liquid_island.fifo`):
 ```bash
 # Carousel slides & interaction
-echo "next_slide" > /tmp/liquid_island.fifo
-echo "prev_slide" > /tmp/liquid_island.fifo
-echo "slide_music" > /tmp/liquid_island.fifo
-echo "slide_apps" > /tmp/liquid_island.fifo
-echo "slide_system" > /tmp/liquid_island.fifo
-echo "slide_power" > /tmp/liquid_island.fifo
-echo "toggle" > /tmp/liquid_island.fifo
+echo "next_slide"    > /tmp/liquid_island.fifo
+echo "prev_slide"    > /tmp/liquid_island.fifo
+echo "slide_music"   > /tmp/liquid_island.fifo
+echo "slide_apps"    > /tmp/liquid_island.fifo
+echo "slide_system"  > /tmp/liquid_island.fifo
+echo "slide_power"   > /tmp/liquid_island.fifo
+echo "toggle"        > /tmp/liquid_island.fifo
 
 # Live optical & geometry adjustment
-echo "set_edge curved" > /tmp/liquid_island.fifo      # floating | attached | curved
-echo "set_theme auto" > /tmp/liquid_island.fifo       # auto (0) | dark (1) | light (2)
-echo "set_style liquid" > /tmp/liquid_island.fifo     # clean (0.0) | frosted (1.0) | liquid (2.0)
+echo "set_edge curved"       > /tmp/liquid_island.fifo   # floating | straight | curved
+echo "set_theme auto"        > /tmp/liquid_island.fifo   # auto (0) | dark (1) | light (2)
+echo "set_style liquid"      > /tmp/liquid_island.fifo   # clean (0.0) | frosted (1.0) | liquid (2.0)
 echo "set_fillet_compact 12.0" > /tmp/liquid_island.fifo
 ```
 
 ### 2. Floating Desktop Media Island
-Spawns a standalone floating island:
+Spawns a standalone floating Wayland layer-shell island:
 
 ```bash
 cargo run --release -p glass-panel
 ```
 
 ### 3. Standalone Window Playground
-Cross-platform desktop window running on standard WGPU:
+Cross-platform desktop window running on standard WGPU (no Wayland required):
 
 ```bash
 cargo run --release -p simple-window

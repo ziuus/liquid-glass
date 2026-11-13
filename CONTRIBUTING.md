@@ -5,7 +5,7 @@ Thank you for your interest in contributing! This document provides guidelines a
 ## Quick Start
 
 1. **Fork** the repository
-2. **Clone** your fork: `git clone https://github.com/yourusername/liquid-glass.git`
+2. **Clone** your fork: `git clone https://github.com/ziuus/liquid-glass.git`
 3. **Create a branch**: `git checkout -b feature/your-feature-name`
 4. **Make changes** and test
 5. **Commit**: `git commit -m "feat: add your feature"`
@@ -23,10 +23,9 @@ Thank you for your interest in contributing! This document provides guidelines a
 - [ ] Translate README to other languages
 
 #### Examples
-- [ ] System dock/taskbar example
 - [ ] Notification daemon example
 - [ ] Context menu widget
-- [ ] Desktop widgets (clock, weather, etc.)
+- [ ] Weather desktop widget
 
 #### Materials
 - [ ] Add more presets (acrylic, mica, etc.)
@@ -36,22 +35,18 @@ Thank you for your interest in contributing! This document provides guidelines a
 ### 🟡 Intermediate Issues
 
 #### UI Components
-- [ ] GlassTextField - Text input with glass backing
 - [ ] GlassDropdown - Dropdown menu
 - [ ] GlassModal - Centered dialog overlay
-- [ ] GlassTooltip - Hover tooltip
 - [ ] GlassContextMenu - Right-click menu
 
 #### Platform Support
 - [ ] X11 backend implementation
 - [ ] SDL2 window integration improvement
-- [ ] Compositor capability detection
 - [ ] Multi-monitor support
 
 #### Performance
 - [ ] Surface batching optimization
 - [ ] Shader compilation caching
-- [ ] Benchmark suite expansion
 - [ ] Memory profiling
 
 ### 🔴 Advanced Issues
@@ -60,14 +55,12 @@ Thank you for your interest in contributing! This document provides guidelines a
 - [ ] Layout engine (flexbox/grid)
 - [ ] Event system refactoring
 - [ ] Accessibility support (a11y)
-- [ ] Text rendering integration
 - [ ] Animation curves library
 
 #### Advanced Graphics
 - [ ] Caustics simulation
 - [ ] Internal reflections
 - [ ] Volumetric scattering
-- [ ] Real-time ray tracing mode
 
 ## Development Setup
 
@@ -88,40 +81,48 @@ sudo dnf install rust cargo wayland-devel mesa-vulkan-drivers
 
 ```bash
 # Clone
-git clone https://github.com/yourusername/liquid-glass.git
+git clone https://github.com/ziuus/liquid-glass.git
 cd liquid-glass
 
 # Build all crates
-cargo build --release
+cargo build --workspace --all-targets
 
 # Run tests
-cargo test --all
+cargo test --workspace
 
-# Run benchmarks
-cargo bench
+# Build the flagship shell
+cargo build --release -p liquid-shell
 
-# Build examples
-cargo build --release --examples
+# Build a standalone example
+cargo build --release -p glass-panel
 ```
 
 ### Testing Your Changes
 
 ```bash
-# Run a specific example
-cargo run --release --example glass-panel
+# Run the flagship shell directly
+cargo run --release -p liquid-shell
+
+# Run the floating media island
+cargo run --release -p glass-panel
+
+# Run the cross-platform window demo
+cargo run --release -p simple-window
 
 # Run with debug logging
-RUST_LOG=debug cargo run --example glass-panel
+RUST_LOG=debug cargo run -p liquid-shell
 
 # Run tests with output
-cargo test -- --nocapture
+cargo test --workspace -- --nocapture
 
 # Check formatting
-cargo fmt --check
+cargo fmt --all -- --check
 
-# Run clippy
-cargo clippy --all-targets
+# Run clippy (zero warnings required)
+cargo clippy --workspace --all-targets -- -D warnings
 ```
+
+> **Note**: There are no `--example` flags — each demo is a separate `[[bin]]` package under `examples/`. Always use `-p <package-name>` to run them.
 
 ## Code Style
 
@@ -207,10 +208,10 @@ perf(shader): optimize blur sampling pattern
 
 ### Before Submitting
 
-- [ ] Code compiles without warnings
-- [ ] All tests pass (`cargo test --all`)
-- [ ] Clippy has no warnings (`cargo clippy`)
-- [ ] Code is formatted (`cargo fmt`)
+- [ ] Code compiles without warnings (`cargo build --workspace --all-targets`)
+- [ ] All tests pass (`cargo test --workspace`)
+- [ ] Clippy has zero warnings (`cargo clippy --workspace --all-targets -- -D warnings`)
+- [ ] Code is formatted (`cargo fmt --all`)
 - [ ] Documentation is updated
 - [ ] Examples work if applicable
 
@@ -267,7 +268,7 @@ Brief description of changes
 
 ### Enforcement
 
-Violations can be reported to [conduct@example.com]. All complaints will be reviewed and investigated.
+Violations can be reported via [GitHub Issues](https://github.com/ziuus/liquid-glass/issues). All complaints will be reviewed and investigated.
 
 ## Architecture Guidelines
 
@@ -280,13 +281,13 @@ glass-platform/ # Platform integration (Wayland, X11)
 ```
 
 **Dependency rules:**
-- `glass-core` depends on: wgpu, bytemuck, glam (no platform libs)
+- `glass-core` depends on: wgpu, bytemuck, serde (no platform libs)
 - `glass-ui` depends on: glass-core (no platform libs)
 - `glass-platform` depends on: glass-core, wayland/X11 libs
 
-### Adding New Components
+### Adding New UI Components
 
-1. **Define in glass-ui/src/lib.rs**:
+1. **Define in `glass-ui/src/lib.rs`**:
 
 ```rust
 pub struct GlassYourComponent {
@@ -300,42 +301,35 @@ impl GlassYourComponent {
 }
 ```
 
-2. **Add tests**:
+2. **Add tests** in the same file:
 
 ```rust
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_your_component() {
         let comp = GlassYourComponent::new(...);
-        assert!(comp.is_valid());
+        assert!(comp.bounds[2] > 0.0); // width > 0
     }
 }
 ```
 
-3. **Add example**:
+3. **Add to a package** under `examples/` with a working demo.
 
-Create `examples/your-component/` with a working demo.
-
-4. **Document**:
-
-Add API docs and usage examples.
+4. **Document**: Add API docs and usage examples.
 
 ### Adding Material Presets
 
 ```rust
-// In glass-core/src/material.rs
+// In glass-core/src/material/mod.rs
 
-impl Material {
+impl GlassMaterial {
     pub fn your_preset() -> Self {
-        Self {
-            blur_radius: 20.0,
-            refraction: 0.55,
-            dispersion: 0.018,
-            // ... other properties
-        }
+        Self::new(MaterialType::Menu)
+            .with_corner_radius(10.0)
+            .with_shadow(30.0, [0.0, 4.0], 0.25)
     }
 }
 ```
@@ -347,45 +341,26 @@ Document the visual characteristics and use cases.
 ### Unit Tests
 
 ```bash
-cargo test --all
+cargo test --workspace
 ```
 
-### Integration Tests
+### Render Tests (GPU snapshot tests)
 
 ```bash
-cargo test --test integration
+# Full render pipeline integration test
+cargo test -p glass-core --test test_render_shader
+
+# UI overlay tests
+cargo test -p glass-core --test test_overlay
 ```
 
-### Visual Testing
+### Visual Benchmarking
 
-Run examples and visually verify:
+The `bench-surfaces` tool is a visual benchmark that renders N glass surfaces and reports FPS. It is **not** a `cargo bench` harness — run it as a binary:
 
 ```bash
-cargo run --release --example glass-panel
-# Check for visual artifacts, performance issues
-```
-
-### Benchmarks
-
-```bash
-cargo bench
-# Results in target/criterion/
-```
-
-Add benchmarks for performance-critical code:
-
-```rust
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-
-fn benchmark_render(c: &mut Criterion) {
-    c.bench_function("render_surface", |b| {
-        let surface = create_test_surface();
-        b.iter(|| render(black_box(&surface)));
-    });
-}
-
-criterion_group!(benches, benchmark_render);
-criterion_main!(benches);
+cargo run --release -p bench-surfaces
+# Press space to cycle between 1, 5, 10, 25, 50, 100 surfaces
 ```
 
 ## Resources
@@ -408,15 +383,12 @@ criterion_main!(benches);
 
 ## Getting Help
 
-- 💬 [GitHub Discussions](https://github.com/yourusername/liquid-glass/discussions)
-- 🐛 [Issue Tracker](https://github.com/yourusername/liquid-glass/issues)
-- 📧 Email: dev@example.com
-- 💬 Discord: [Join Server](https://discord.gg/yourserver)
+- 💬 [GitHub Discussions](https://github.com/ziuus/liquid-glass/discussions)
+- 🐛 [Issue Tracker](https://github.com/ziuus/liquid-glass/issues)
 
 ## Recognition
 
 Contributors are recognized in:
-- [CONTRIBUTORS.md](CONTRIBUTORS.md) file
 - GitHub contributors page
 - Release notes for significant contributions
 
