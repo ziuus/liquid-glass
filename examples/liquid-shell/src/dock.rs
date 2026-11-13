@@ -364,19 +364,15 @@ impl DockWidget {
                 let dock_left = (mon_w - dock_w) / 2;
                 let dock_right = dock_left + dock_w;
 
-                // Precision hot edge trigger: within 4px of screen bottom AND centered in dock zone
+                // Precision hot edge trigger: within 3px of screen bottom AND centered in dock zone
                 let is_at_bottom_edge =
-                    (dock_left - 30..=dock_right + 30).contains(&cx) && cy >= (mon_h - 4);
+                    (dock_left - 10..=dock_right + 10).contains(&cx) && cy >= (mon_h - 3);
                 let is_inside_dock_area =
-                    (dock_left..=dock_right).contains(&cx) && cy >= (mon_h - 110);
+                    (dock_left..=dock_right).contains(&cx) && cy >= (mon_h - 60);
 
                 if self.is_hovered || (is_inside_dock_area && !self.is_compact) {
                     self.last_hover_time = Instant::now();
                     self.hot_edge_dwell_start = None;
-                    if self.is_compact && self.hover_to_expand {
-                        self.expand();
-                        self.needs_redraw = true;
-                    }
                     return;
                 }
 
@@ -385,9 +381,9 @@ impl DockWidget {
                         .hot_edge_dwell_start
                         .get_or_insert_with(Instant::now)
                         .elapsed();
-                    if elapsed >= Duration::from_millis(200) {
+                    if elapsed >= Duration::from_millis(380) {
                         self.last_hover_time = Instant::now();
-                        if self.is_compact {
+                        if self.is_compact && self.hover_to_expand {
                             self.expand();
                             self.needs_redraw = true;
                         }
@@ -906,14 +902,13 @@ impl DockWidget {
             let mut scale = 1.0f32;
             let mut lift = 0.0f32;
 
-            if self.is_hovered && (cur_ly >= dock_top - 10.0 && cur_ly <= dock_top + dock_h + 10.0)
-            {
+            if self.is_hovered && (cur_ly >= dock_top && cur_ly <= dock_top + dock_h) {
                 let dist = (cur_lx - base_cx).abs();
-                let sigma = 38.0f32;
+                let sigma = 34.0f32;
                 let bell = (-(dist * dist) / (2.0 * sigma * sigma)).exp();
-                scale = 1.0 + 0.32 * bell;
-                lift = -8.0 * (scale - 1.0) / 0.32;
-                if dist < slot_w * 0.45 && scale > 1.15 {
+                scale = 1.0 + 0.20 * bell;
+                lift = -5.5 * (scale - 1.0) / 0.20;
+                if dist < slot_w * 0.45 && scale > 1.10 {
                     hovered_item_idx = Some(idx);
                     hovered_item_scale = scale;
                     hovered_item_pos = [base_cx, base_cy + lift];

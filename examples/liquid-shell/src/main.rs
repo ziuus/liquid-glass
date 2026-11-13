@@ -434,6 +434,13 @@ impl ShellApp {
                     {
                         self.clock.is_docked = dock;
                     }
+                    if let Some(edge) = clk
+                        .get("edge_style")
+                        .or_else(|| clk.get("mode"))
+                        .and_then(|v| v.as_str())
+                    {
+                        self.clock.dock_mode = crate::island::IslandDockMode::from_str(edge);
+                    }
                     if let Some(hov) = clk.get("hover_to_expand").and_then(|v| v.as_bool()) {
                         self.clock.hover_to_expand = hov;
                     }
@@ -485,6 +492,13 @@ impl ShellApp {
                         .and_then(|v| v.as_bool())
                     {
                         self.todo.is_docked = dock;
+                    }
+                    if let Some(edge) = td
+                        .get("edge_style")
+                        .or_else(|| td.get("mode"))
+                        .and_then(|v| v.as_str())
+                    {
+                        self.todo.dock_mode = crate::island::IslandDockMode::from_str(edge);
                     }
                     if let Some(hov) = td.get("hover_to_expand").and_then(|v| v.as_bool()) {
                         self.todo.hover_to_expand = hov;

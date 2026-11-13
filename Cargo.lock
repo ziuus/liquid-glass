@@ -706,7 +706,6 @@ dependencies = [
  "env_logger",
  "glass-core",
  "glass-platform",
- "glass-ui",
  "image",
  "libc",
  "log",
@@ -743,7 +742,6 @@ dependencies = [
  "env_logger",
  "glass-core",
  "glass-platform",
- "glass-ui",
  "image",
  "libc",
  "log",
@@ -765,7 +763,6 @@ dependencies = [
  "env_logger",
  "glass-core",
  "glass-platform",
- "glass-ui",
  "image",
  "libc",
  "log",
@@ -782,26 +779,20 @@ dependencies = [
 name = "glass-platform"
 version = "0.1.0"
 dependencies = [
- "glass-core",
  "image",
  "libc",
  "log",
- "smithay-client-toolkit",
  "wayland-client",
  "wayland-protocols",
  "wayland-protocols-plasma",
- "wayland-protocols-wlr",
 ]
 
 [[package]]
 name = "glass-todo"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "env_logger",
  "glass-core",
- "glass-platform",
- "glass-ui",
  "image",
  "libc",
  "log",

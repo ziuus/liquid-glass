@@ -441,8 +441,15 @@ impl ClockWidget {
         }
     }
 
+    pub fn current_cx(&self) -> f32 {
+        let t = self.size_spring.value.clamp(0.0, 1.0);
+        let compact_cx = 24.0 + COMPACT_W * 0.5; // 108.0 (anchored near top-left bezel)
+        let expanded_cx = (self.width as f32) * 0.5; // 194.0
+        compact_cx * (1.0 - t) + expanded_cx * t
+    }
+
     pub fn is_inside(&self, px: f32, py: f32) -> bool {
-        let cx = (self.width as f32) * 0.5;
+        let cx = self.current_cx();
         let card_top = self.dock_mode.dock_y();
         let flare = if self.dock_mode.is_curved() && py <= (card_top + self.fillet_radius) {
             self.fillet_radius
@@ -514,7 +521,7 @@ impl ClockWidget {
             self.surface.commit();
             return;
         }
-        let cx = self.width as i32 / 2;
+        let cx = self.current_cx() as i32;
         let card_top = self.dock_mode.dock_y() as i32;
         if self.is_hidden_by_window && self.is_compact {
             // Invisible 2px hair strip at top edge for instant touch wake-up
@@ -740,7 +747,7 @@ impl ClockWidget {
 
     pub fn render_ui_overlay(&mut self, buf: &mut [u8]) {
         let col_shadow = [0, 0, 0, 0];
-        let cx = (self.width as f32) * 0.5;
+        let cx = self.current_cx();
         let t = self.size_spring.value.clamp(0.0, 1.0);
         let is_light = self.effective_is_light();
 
@@ -768,9 +775,9 @@ impl ClockWidget {
                 [200, 215, 235, (200.0 * comp_alpha) as u8]
             };
             let div_ink = if is_light {
-                [25, 40, 60, (50.0 * comp_alpha) as u8]
+                [25, 40, 60, (26.0 * comp_alpha) as u8]
             } else {
-                [255, 255, 255, (40.0 * comp_alpha) as u8]
+                [255, 255, 255, (24.0 * comp_alpha) as u8]
             };
 
             let card_top = self.dock_mode.dock_y();
@@ -786,29 +793,29 @@ impl ClockWidget {
             // Divider 2: cx + 26.0
             // Col 2 center: cx + 52.0
 
-            // Divider 1
+            // Divider 1: subtle micro separator dot
             UIFont::draw_rounded_rect_fill(
                 buf,
                 self.width,
                 self.height,
                 cx - 26.0,
                 pill_cy,
-                0.5,
-                6.0,
-                0.5,
+                1.0,
+                1.0,
+                1.0,
                 div_ink,
             );
 
-            // Divider 2
+            // Divider 2: subtle micro separator dot
             UIFont::draw_rounded_rect_fill(
                 buf,
                 self.width,
                 self.height,
                 cx + 26.0,
                 pill_cy,
-                0.5,
-                6.0,
-                0.5,
+                1.0,
+                1.0,
+                1.0,
                 div_ink,
             );
 
@@ -1580,13 +1587,13 @@ impl ClockWidget {
         self.render_ui_overlay(&mut overlay_vec);
 
         let is_light_f32 = if self.effective_is_light() { 1.0 } else { 0.0 };
+        let cx = self.current_cx();
 
         let res = if let Some(renderer) = &mut self.renderer {
             renderer.update_overlay(self.width, self.height, &overlay_vec);
 
             let (px, py) = (self.cursor_pos[0], self.cursor_pos[1]);
 
-            let cx = (self.width as f32) * 0.5;
             let sw = self.width as f32;
             let sh = self.height as f32;
             let card_top = self.dock_mode.dock_y();

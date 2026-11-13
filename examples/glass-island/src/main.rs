@@ -2540,17 +2540,37 @@ fn start_fifo_listener(tx: Sender<IslandIpcEvent>) {
                         let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::Hidden));
                     } else if trimmed == "show" || trimmed == "compact" {
                         let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::CompactPill));
-                    } else if trimmed == "music" || trimmed == "slide_music" || trimmed == "slide:music" {
+                    } else if trimmed == "music"
+                        || trimmed == "slide_music"
+                        || trimmed == "slide:music"
+                    {
                         let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::MusicExpanded));
-                    } else if trimmed == "sys" || trimmed == "system" || trimmed == "slide_system" || trimmed == "slide:system" {
+                    } else if trimmed == "sys"
+                        || trimmed == "system"
+                        || trimmed == "slide_system"
+                        || trimmed == "slide:system"
+                    {
                         let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::SystemOverview));
-                    } else if trimmed == "power" || trimmed == "slide_power" || trimmed == "slide:power" {
+                    } else if trimmed == "power"
+                        || trimmed == "slide_power"
+                        || trimmed == "slide:power"
+                    {
                         let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::PowerMenu));
-                    } else if trimmed == "apps" || trimmed == "quick" || trimmed == "slide_apps" || trimmed == "slide:apps" {
+                    } else if trimmed == "apps"
+                        || trimmed == "quick"
+                        || trimmed == "slide_apps"
+                        || trimmed == "slide:apps"
+                    {
                         let _ = tx.send(IslandIpcEvent::ShowMode(IslandMode::QuickAccess));
-                    } else if trimmed == "next" || trimmed == "next_slide" || trimmed == "slide_next" {
+                    } else if trimmed == "next"
+                        || trimmed == "next_slide"
+                        || trimmed == "slide_next"
+                    {
                         let _ = tx.send(IslandIpcEvent::NextMenu);
-                    } else if trimmed == "prev" || trimmed == "prev_slide" || trimmed == "slide_prev" {
+                    } else if trimmed == "prev"
+                        || trimmed == "prev_slide"
+                        || trimmed == "slide_prev"
+                    {
                         let _ = tx.send(IslandIpcEvent::PrevMenu);
                     } else if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
                         if val.get("type").and_then(|t| t.as_str()) == Some("notification") {

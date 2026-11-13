@@ -1713,10 +1713,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if style_mode >= 1.5 {
         // ── 2.0: TRUE COLOR LIQUID GLASS ──
         // Optical Snell refraction with crystalline optical clarity, 100% natural contrast, zero milky overlay
-        let cur_radius = clamp(params.blur_radius, 0.0, 48.0);
+        let text_blur_r = select(28.0, 38.0, effective_light > 0.5);
+        let cur_radius = select(clamp(params.blur_radius, 0.0, 48.0), text_blur_r, is_liquid_text);
         if cur_radius > 0.5 {
             let frosted_col = sample_frost_blur(uv + off_uv, cur_radius);
-            let blur_mix = clamp(cur_radius / 32.0, 0.0, 0.35);
+            let blur_mix = select(clamp(cur_radius / 32.0, 0.0, 0.35), 0.88, is_liquid_text);
             col = mix(sharp_col, frosted_col, blur_mix);
         } else {
             col = sharp_col;
@@ -1724,7 +1725,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     } else if style_mode >= 0.5 {
         // ── 1.0: LUXURIOUS TRUE-COLOR FROSTED GLASSMORPHISM ──
         // Pure backdrop diffusion, 100% true backdrop color, zero fake white tint or contrast wash
-        let cur_radius = clamp(select(24.0, params.blur_radius, params.blur_radius >= 1.0), 1.0, 48.0);
+        let text_blur_r = select(28.0, 38.0, effective_light > 0.5);
+        let cur_radius = select(clamp(select(24.0, params.blur_radius, params.blur_radius >= 1.0), 1.0, 48.0), text_blur_r, is_liquid_text);
         col = sample_frost_blur(uv, cur_radius);
     } else {
         // ── 0.0: OBSIDIAN / CLEAN BACKGROUND ──
@@ -1761,20 +1763,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     } else if effective_light > 0.5 {
         // ── LIGHT / WHITE BACKDROP: CRYSTALLINE SPECULAR GLINT + SHADOW-SIDE OPTICAL GROUNDING ──
-        // Zero white outline on bottom or sides. Lit side gets clean glint; shadow side gets subtle 3.5% grounding
+        // Zero white outline on bottom or sides. Lit side gets clean glint; shadow side gets subtle grounding
         let lit_highlight = spec_line * 0.30;
-        let shadow_meniscus = smoothstep(1.8, 0.0, depth) * pow(shadow_facing, 2.0) * 0.035 * top_flush;
+        let shadow_factor = select(0.035, 0.065, is_liquid_text);
+        let shadow_meniscus = smoothstep(1.8, 0.0, depth) * pow(shadow_facing, 2.0) * shadow_factor * top_flush;
         base_surface = col + vec3<f32>(lit_highlight) - vec3<f32>(shadow_meniscus);
     } else {
-        // ── DARK / VIBRANT BACKDROP (e.g. Ferns, Retro, Pitch Black): LIT SPECULAR + ADAPTIVE LEGIBILITY ──
+        // ── DARK / VIBRANT BACKDROP (e.g. Ferns, Retro, Pitch Black): LIT SPECULAR + OPTICAL FROST ──
+        // Pure frosted blurred glass: zero artificial flat color overlay, zero grey plastic lift
         let digit_spec_boost = select(1.0, 1.85, is_liquid_text);
         let dark_spec = spec_line * 0.60 * digit_spec_boost;
         let dark_rim = smoothstep(1.2, 0.0, depth) * (0.35 * light_facing) * top_flush;
-        let bg_lum = dot(col, vec3<f32>(0.299, 0.587, 0.114));
-        let adaptive_lift = select(0.0, (1.0 - smoothstep(0.0, 0.35, bg_lum)) * 0.14, is_liquid_text);
-        let digit_inner_fill = select(0.0, 0.012 + adaptive_lift, is_liquid_text);
-        let liquid_lift = select(0.0, smoothstep(1.2, 0.0, depth) * (0.10 + adaptive_lift * 0.5) + digit_inner_fill, is_liquid_text);
-        base_surface = col + vec3<f32>(dark_spec + dark_rim + liquid_lift);
+        base_surface = col + vec3<f32>(dark_spec + dark_rim);
     }
 
     let app = render_element_appearance(local_px, half_size, params.padding, params.tint.y, params.time, params.tint, effective_light);

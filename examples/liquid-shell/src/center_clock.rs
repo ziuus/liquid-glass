@@ -509,7 +509,7 @@ impl CenterHeroClock {
                     .bevel(14.0)
                     .refraction(22.0)
                     .dispersion(0.14)
-                    .blur(0.0)
+                    .blur(if is_light_f32 > 0.5 { 38.0 } else { 28.0 })
                     .specular(1.30)
                     .fresnel(0.65)
                     .style_mode(2.0)

@@ -475,8 +475,15 @@ impl TodoWidget {
         }
     }
 
+    pub fn current_cx(&self) -> f32 {
+        let t = self.size_spring.value.clamp(0.0, 1.0);
+        let compact_cx = (self.width as f32) - 24.0 - COMPACT_W * 0.5; // Anchored near top-right bezel
+        let expanded_cx = (self.width as f32) * 0.5;
+        compact_cx * (1.0 - t) + expanded_cx * t
+    }
+
     pub fn is_inside(&self, px: f32, py: f32) -> bool {
-        let cx = (self.width as f32) * 0.5;
+        let cx = self.current_cx();
         let card_top = self.dock_mode.dock_y();
         let flare = if self.dock_mode.is_curved() && py <= (card_top + self.fillet_radius) {
             self.fillet_radius
@@ -503,7 +510,7 @@ impl TodoWidget {
         self.needs_input_region_update = false;
         let region = compositor.wl_compositor().create_region(qh, ());
         if self.is_hidden_by_window && self.is_compact {
-            let cx = self.width as i32 / 2;
+            let cx = self.current_cx() as i32;
             let pill_w = COMPACT_W as i32;
             let pill_x = cx - pill_w / 2;
             // 2px top strip for immediate hover wake-up
@@ -513,7 +520,7 @@ impl TodoWidget {
             self.surface.commit();
             return;
         }
-        let cx = self.width as i32 / 2;
+        let cx = self.current_cx() as i32;
         let card_top = self.dock_mode.dock_y() as i32;
         if self.is_compact {
             let flare = if self.dock_mode.is_curved() {
@@ -2162,7 +2169,7 @@ impl TodoWidget {
         let mut overlay_buf = std::mem::take(&mut self.overlay_buffer);
 
         let t = self.size_spring.value.clamp(0.0, 1.0);
-        let cx = (self.width as f32) * 0.5;
+        let cx = self.current_cx();
 
         let card_top = self.dock_mode.dock_y();
 
