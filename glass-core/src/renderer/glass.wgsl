@@ -732,11 +732,11 @@ fn draw_apple_digit(p: vec2<f32>, dig: u32, scale: f32) -> f32 {
             d = min(top_ring, bot_ring);
         }
         case 9u: {
-            // Upper circular bowl with vertical right stem curving smoothly into bottom hook
-            let top_loop = abs(length(q - vec2<f32>(0.0, -2.3)) - 2.5);
-            let stem = dist_segment(q, vec2<f32>(2.5, -2.3), vec2<f32>(2.5, 1.6));
-            let base_arc = dist_arc(q, vec2<f32>(0.5, 1.6), 2.0, 0.0, 2.45);
-            d = min(min(top_loop, stem), base_arc);
+            // Upper circular bowl with vertical right stem and sweeping curved baseline tail
+            let top_loop = abs(length(q - vec2<f32>(0.0, -2.3)) - 2.4);
+            let stem = dist_segment(q, vec2<f32>(2.4, -2.3), vec2<f32>(2.4, 1.4));
+            let tail = dist_arc(q, vec2<f32>(-1.2, 1.4), 3.6, 0.0, 1.5708);
+            d = min(min(top_loop, stem), tail);
         }
         default: {}
     }
@@ -1724,11 +1724,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if style_mode >= 1.5 {
         // ── 2.0: TRUE COLOR LIQUID GLASS ──
         // Optical Snell refraction with crystalline optical clarity, 100% natural contrast, zero milky overlay
-        let text_blur_r = select(28.0, 38.0, effective_light > 0.5);
+        let text_blur_r = select(30.0, 44.0, effective_light > 0.5);
         let cur_radius = select(clamp(params.blur_radius, 0.0, 48.0), text_blur_r, is_liquid_text);
         if cur_radius > 0.5 {
             let frosted_col = sample_frost_blur(uv + off_uv, cur_radius);
-            let blur_mix = select(clamp(cur_radius / 32.0, 0.0, 0.35), 0.88, is_liquid_text);
+            let blur_mix = select(clamp(cur_radius / 32.0, 0.0, 0.35), 0.92, is_liquid_text);
             col = mix(sharp_col, frosted_col, blur_mix);
         } else {
             col = sharp_col;
@@ -1736,7 +1736,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     } else if style_mode >= 0.5 {
         // ── 1.0: LUXURIOUS TRUE-COLOR FROSTED GLASSMORPHISM ──
         // Pure backdrop diffusion, 100% true backdrop color, zero fake white tint or contrast wash
-        let text_blur_r = select(28.0, 38.0, effective_light > 0.5);
+        let text_blur_r = select(30.0, 44.0, effective_light > 0.5);
         let cur_radius = select(clamp(select(24.0, params.blur_radius, params.blur_radius >= 1.0), 1.0, 48.0), text_blur_r, is_liquid_text);
         col = sample_frost_blur(uv, cur_radius);
     } else {
@@ -1778,7 +1778,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let lit_highlight = spec_line * 0.30;
         let shadow_factor = select(0.035, 0.065, is_liquid_text);
         let shadow_meniscus = smoothstep(1.8, 0.0, depth) * pow(shadow_facing, 2.0) * shadow_factor * top_flush;
-        base_surface = col + vec3<f32>(lit_highlight) - vec3<f32>(shadow_meniscus);
+        let glass_grounding = select(0.0, smoothstep(0.0, 4.0, depth) * (0.05 + 0.04 * (depth / 11.0)), is_liquid_text);
+        base_surface = col + vec3<f32>(lit_highlight) - vec3<f32>(shadow_meniscus + glass_grounding);
     } else {
         // ── DARK / VIBRANT BACKDROP (e.g. Ferns, Retro, Pitch Black): LIT SPECULAR + OPTICAL FROST ──
         // Pure frosted blurred glass: zero artificial flat color overlay, zero grey plastic lift
