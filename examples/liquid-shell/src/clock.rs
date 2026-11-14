@@ -449,23 +449,24 @@ impl ClockWidget {
     }
 
     pub fn is_inside(&self, px: f32, py: f32) -> bool {
-        let cx = self.current_cx();
         let card_top = self.dock_mode.dock_y();
-        let flare = if self.dock_mode.is_curved() && py <= (card_top + self.fillet_radius) {
-            self.fillet_radius
-        } else {
-            0.0
-        };
         if self.is_compact {
+            let cx = self.current_cx();
+            let flare = if self.dock_mode.is_curved() && py <= (card_top + self.fillet_radius) {
+                self.fillet_radius
+            } else {
+                0.0
+            };
             let half_w = COMPACT_W * 0.5 + flare;
             px >= (cx - half_w)
                 && px <= (cx + half_w)
-                && (0.0..=(card_top + COMPACT_H)).contains(&py)
+                && (0.0..=(card_top + COMPACT_H + 4.0)).contains(&py)
         } else {
-            let half_w = CARD_W * 0.5;
+            let cx = (self.width as f32) * 0.5;
+            let half_w = CARD_W * 0.5 + 16.0;
             px >= (cx - half_w)
                 && px <= (cx + half_w)
-                && (card_top..=(card_top + CARD_H)).contains(&py)
+                && (0.0..=(card_top + CARD_H + 24.0)).contains(&py)
         }
     }
 
@@ -521,10 +522,10 @@ impl ClockWidget {
             self.surface.commit();
             return;
         }
-        let cx = self.current_cx() as i32;
         let card_top = self.dock_mode.dock_y() as i32;
         if self.is_hidden_by_window && self.is_compact {
             // Invisible 2px hair strip at top edge for instant touch wake-up
+            let cx = self.current_cx() as i32;
             let pill_w = COMPACT_W as i32;
             let pill_x = cx - pill_w / 2;
             region.add(pill_x, 0, pill_w, 2);
@@ -534,20 +535,21 @@ impl ClockWidget {
             return;
         }
         if self.is_compact {
+            let cx = self.current_cx() as i32;
             let flare = if self.dock_mode.is_curved() {
                 self.fillet_radius as i32
             } else {
                 0
             };
             let pill_w = COMPACT_W as i32 + flare * 2;
-            let pill_h = card_top + COMPACT_H as i32;
+            let pill_h = card_top + COMPACT_H as i32 + 4;
             let pill_x = cx - COMPACT_W as i32 / 2 - flare;
             region.add(pill_x, 0, pill_w, pill_h);
         } else {
-            let card_w = CARD_W as i32;
-            let card_h = CARD_H as i32;
-            let card_x = cx - card_w / 2;
-            region.add(card_x, card_top, card_w, card_h);
+            let card_w = CARD_W as i32 + 32;
+            let card_h = (card_top + CARD_H as i32 + 28).min(self.height as i32);
+            let card_x = ((self.width as i32 - (CARD_W as i32)) / 2) - 16;
+            region.add(card_x, 0, card_w, card_h);
         }
         self.surface.set_input_region(Some(&region));
         region.destroy();
