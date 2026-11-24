@@ -361,8 +361,12 @@ impl TodoWidget {
         }
     }
 
+    pub fn force_next_window_check(&mut self) {
+        self.last_window_check = Instant::now() - Duration::from_secs(60);
+    }
+
     pub fn check_window_overlap(&mut self) {
-        if self.last_window_check.elapsed() < Duration::from_millis(300) {
+        if self.last_window_check.elapsed() < Duration::from_millis(1500) {
             return;
         }
         self.last_window_check = Instant::now();
@@ -1096,7 +1100,7 @@ impl TodoWidget {
     }
 
     pub fn check_todos(&mut self) {
-        let interval_ms = if self.is_editing { 200 } else { 3000 };
+        let interval_ms = if self.is_editing { 200 } else { 10_000 };
         if self.last_todo_check.elapsed().as_millis() < interval_ms {
             return;
         }
@@ -1119,7 +1123,7 @@ impl TodoWidget {
     }
 
     pub fn check_calendar(&mut self) {
-        let interval_ms = if self.is_cal_editing { 200 } else { 3000 };
+        let interval_ms = if self.is_cal_editing { 200 } else { 10_000 };
         if self.last_calendar_check.elapsed().as_millis() < interval_ms {
             return;
         }
@@ -1157,8 +1161,23 @@ impl TodoWidget {
     pub fn update_physics(&mut self, dt: f32) -> bool {
         let eff_dt = dt * self.anim_speed;
         self.tab_spring.update(eff_dt);
+        if (self.tab_spring.value - self.tab_spring.target).abs() < 0.002
+            && self.tab_spring.velocity.abs() < 0.01
+        {
+            self.tab_spring.snap_to_target();
+        }
         self.filter_spring.update(eff_dt);
+        if (self.filter_spring.value - self.filter_spring.target).abs() < 0.002
+            && self.filter_spring.velocity.abs() < 0.01
+        {
+            self.filter_spring.snap_to_target();
+        }
         self.size_spring.update(eff_dt);
+        if (self.size_spring.value - self.size_spring.target).abs() < 0.002
+            && self.size_spring.velocity.abs() < 0.01
+        {
+            self.size_spring.snap_to_target();
+        }
 
         let t = self.size_spring.value.clamp(0.0, 1.0);
         let card_h = self.get_card_height();

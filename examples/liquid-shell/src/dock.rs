@@ -311,7 +311,7 @@ impl DockWidget {
             needs_input_region_update: true,
 
             items: DockItem::defaults(),
-            last_client_poll: Instant::now() - Duration::from_secs(60),
+            last_client_poll: Instant::now(),
             pressed_item: None,
 
             is_window_overlapping: false,
@@ -322,11 +322,23 @@ impl DockWidget {
 
         widget.load_config();
         widget.check_window_overlap();
+        if widget.is_compact {
+            widget.size_spring.snap_to_target();
+            let t = widget.size_spring.value.clamp(0.0, 1.0);
+            let target_y = widget.dock_mode.expanded_y();
+            widget.current_w = widget.compact_w + (DOCK_EXPANDED_W - widget.compact_w) * t;
+            widget.current_h = widget.compact_h + (DOCK_EXPANDED_H - widget.compact_h) * t;
+            widget.current_y = DOCK_COMPACT_Y + (target_y - DOCK_COMPACT_Y) * t;
+        }
         widget
     }
 
+    pub fn force_next_window_check(&mut self) {
+        self.last_window_check = Instant::now() - Duration::from_secs(60);
+    }
+
     pub fn check_window_overlap(&mut self) {
-        if self.last_window_check.elapsed() < Duration::from_millis(150) {
+        if self.last_window_check.elapsed() < Duration::from_millis(1500) {
             return;
         }
         self.last_window_check = Instant::now();
@@ -648,7 +660,12 @@ impl DockWidget {
     }
 
     pub fn poll_hyprland_clients(&mut self) {
-        if self.last_client_poll.elapsed() < Duration::from_millis(1500) {
+        let interval = if self.is_hovered {
+            Duration::from_millis(2000)
+        } else {
+            Duration::from_secs(30)
+        };
+        if self.last_client_poll.elapsed() < interval {
             return;
         }
         self.last_client_poll = Instant::now();
@@ -822,6 +839,11 @@ impl DockWidget {
     pub fn update_physics(&mut self, dt: f32) -> bool {
         let eff_dt = (dt * self.anim_speed).clamp(0.001, 0.05);
         self.size_spring.update(eff_dt);
+        if (self.size_spring.value - self.size_spring.target).abs() < 0.002
+            && self.size_spring.velocity.abs() < 0.01
+        {
+            self.size_spring.snap_to_target();
+        }
 
         let t = self.size_spring.value.clamp(0.0, 1.0);
         let target_y = self.dock_mode.expanded_y();

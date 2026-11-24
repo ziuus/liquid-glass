@@ -22,6 +22,10 @@ pub struct GlassSurface {
     pub element_type: f32,
     pub deformation: f32,
     pub style_mode: f32,
+    pub contrast_mode: f32,
+    pub rim_boost: f32,
+    pub inner_glow: f32,
+    pub luminance_threshold: f32,
 }
 
 impl GlassSurface {
@@ -37,6 +41,10 @@ impl GlassSurface {
             element_type: 0.0,
             deformation: 0.0,
             style_mode: 0.0,
+            contrast_mode: 0.0,
+            rim_boost: 1.0,
+            inner_glow: 0.0,
+            luminance_threshold: 0.35,
         }
     }
 
@@ -129,6 +137,26 @@ impl GlassSurface {
 
     pub fn style_mode(mut self, mode: f32) -> Self {
         self.style_mode = mode;
+        self
+    }
+
+    pub fn contrast_mode(mut self, mode: f32) -> Self {
+        self.contrast_mode = mode;
+        self
+    }
+
+    pub fn rim_boost(mut self, boost: f32) -> Self {
+        self.rim_boost = boost;
+        self
+    }
+
+    pub fn inner_glow(mut self, glow: f32) -> Self {
+        self.inner_glow = glow;
+        self
+    }
+
+    pub fn luminance_threshold(mut self, threshold: f32) -> Self {
+        self.luminance_threshold = threshold;
         self
     }
 }

@@ -17,7 +17,7 @@ use smithay_client_toolkit::{
     delegate_registry, delegate_seat, delegate_shm, registry_handlers,
 };
 use std::os::fd::{AsFd, AsRawFd};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use wayland_client::protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface};
 use wayland_client::{Connection, Proxy, QueueHandle};
 
@@ -29,7 +29,7 @@ mod todo;
 use center_clock::CenterHeroClock;
 use clock::ClockWidget;
 use dock::DockWidget;
-use island::{IslandMode, IslandWidget};
+use island::IslandWidget;
 use todo::TodoWidget;
 
 struct ShellApp {
@@ -257,6 +257,7 @@ impl KeyboardHandler for ShellApp {
     ) {
         if self.todo.on_keyboard_event(&event) {
             self.todo.draw();
+            self.todo.needs_redraw = false;
         }
     }
 
@@ -296,25 +297,30 @@ impl PointerHandler for ShellApp {
                     self.clock.apply_input_region(&self.compositor_state, _qh);
                 }
                 self.clock.draw();
+                self.clock.needs_redraw = false;
             } else if sid == self.island.surface_id() && self.island.on_pointer_event(event) {
                 if self.island.needs_input_region_update {
                     self.island.apply_input_region(&self.compositor_state, _qh);
                 }
                 self.island.draw();
+                self.island.needs_redraw = false;
             } else if sid == self.todo.surface_id() && self.todo.on_pointer_event(event) {
                 if self.todo.needs_input_region_update {
                     self.todo.apply_input_region(&self.compositor_state, _qh);
                 }
                 self.todo.draw();
+                self.todo.needs_redraw = false;
             } else if sid == self.dock.surface_id() && self.dock.on_pointer_event(event) {
                 if self.dock.needs_input_region_update {
                     self.dock.apply_input_region(&self.compositor_state, _qh);
                 }
                 self.dock.draw();
+                self.dock.needs_redraw = false;
             } else if sid == self.center_hero.surface_id()
                 && self.center_hero.on_pointer_event(event)
             {
                 self.center_hero.draw();
+                self.center_hero.needs_redraw = false;
             }
         }
     }
@@ -525,11 +531,112 @@ impl ShellApp {
                 }
 
                 self.clock.draw();
+                self.clock.needs_redraw = false;
                 self.island.draw();
+                self.island.needs_redraw = false;
                 self.todo.draw();
+                self.todo.needs_redraw = false;
+                self.dock.draw();
+                self.dock.needs_redraw = false;
+                self.center_hero.draw();
+                self.center_hero.needs_redraw = false;
             }
         }
     }
+}
+
+fn is_hyprland_layout_event(line: &str) -> bool {
+    let event = line
+        .split_once(">>")
+        .map(|(ev, _)| ev)
+        .unwrap_or(line)
+        .trim();
+    matches!(
+        event,
+        "openwindow"
+            | "closewindow"
+            | "workspace"
+            | "workspacev2"
+            | "focusedmon"
+            | "focusedmonv2"
+            | "activewindow"
+            | "activewindowv2"
+            | "movewindow"
+            | "movewindowv2"
+            | "fullscreen"
+            | "changefloatingmode"
+            | "pin"
+    )
+}
+
+fn connect_hyprland_socket2() -> Option<std::os::unix::net::UnixStream> {
+    let his = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok()?;
+    if his.is_empty() {
+        return None;
+    }
+    let xdg = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
+        let uid = unsafe { libc::getuid() };
+        format!("/run/user/{}", uid)
+    });
+    let candidates = [
+        format!("{}/hypr/{}/.socket2.sock", xdg, his),
+        format!("/tmp/hypr/{}/.socket2.sock", his),
+    ];
+    for sock_path in candidates {
+        if let Ok(stream) = std::os::unix::net::UnixStream::connect(&sock_path) {
+            if stream.set_nonblocking(true).is_ok() {
+                log::info!("Connected to Hyprland socket2: {}", sock_path);
+                return Some(stream);
+            }
+        }
+    }
+    None
+}
+
+fn drain_wakeup_pipe(fd: i32) {
+    let mut buf = [0u8; 256];
+    loop {
+        let res = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
+        if res <= 0 {
+            if res < 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::EINTR) {
+                continue;
+            }
+            break;
+        }
+    }
+}
+
+fn drain_config_inotify(fd: i32) -> bool {
+    let mut reload_relevant = false;
+    let mut buf = [0u8; 4096];
+    let header_size = std::mem::size_of::<libc::inotify_event>();
+    loop {
+        let res = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
+        if res > 0 {
+            let n = res as usize;
+            let mut offset = 0usize;
+            while offset + header_size <= n {
+                let name_len =
+                    u32::from_ne_bytes(buf[offset + 12..offset + 16].try_into().unwrap()) as usize;
+                let event_end = (offset + header_size + name_len).min(n);
+                let name_bytes = buf[offset + header_size..event_end]
+                    .split(|&b| b == 0)
+                    .next()
+                    .unwrap_or(&[]);
+                let name = std::str::from_utf8(name_bytes).unwrap_or("");
+                if name.is_empty() || name == "config.json" {
+                    reload_relevant = true;
+                }
+                offset += header_size + name_len;
+            }
+        } else {
+            if res < 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::EINTR) {
+                continue;
+            }
+            break;
+        }
+    }
+    reload_relevant
 }
 
 fn main() {
@@ -551,16 +658,23 @@ fn main() {
     let shm = Shm::bind(&globals, &qh).expect("wl_shm missing");
     let seat_state = SeatState::new(&globals, &qh);
 
-    let gpu =
-        pollster::block_on(SharedGpu::new()).expect("Failed to initialize shared GPU context");
-    let mut wallpaper_mgr = WallpaperManager::new();
-
     let mut pipe_fds = [0i32; 2];
     unsafe {
         libc::pipe(pipe_fds.as_mut_ptr());
         libc::fcntl(pipe_fds[0], libc::F_SETFL, libc::O_NONBLOCK);
+        libc::fcntl(pipe_fds[1], libc::F_SETFL, libc::O_NONBLOCK);
+        libc::fcntl(pipe_fds[0], libc::F_SETFD, libc::FD_CLOEXEC);
+        libc::fcntl(pipe_fds[1], libc::F_SETFD, libc::FD_CLOEXEC);
     }
     let (wakeup_read_fd, wakeup_write_fd) = (pipe_fds[0], pipe_fds[1]);
+
+    // Start async cold-cache wallpaper decode BEFORE GPU init so they overlap
+    let mut wallpaper_mgr = WallpaperManager::new_async(Some(wakeup_write_fd));
+    let mut hypr_socket2 = connect_hyprland_socket2();
+    let mut hypr_event_buf = String::new();
+
+    let gpu =
+        pollster::block_on(SharedGpu::new()).expect("Failed to initialize shared GPU context");
 
     let mut clock = ClockWidget::new(&qh, &compositor_state, &layer_shell, display_ptr);
     let mut island = IslandWidget::new(
@@ -661,9 +775,11 @@ fn main() {
 
     app.reload_config(&conf_path);
 
-    while app.first_configure_count < 4 {
+    while app.first_configure_count < 5 {
         event_queue.blocking_dispatch(&mut app).unwrap();
     }
+    let _ = event_queue.dispatch_pending(&mut app);
+    let _ = conn.flush();
 
     if app.pointer.is_none() {
         for seat in app.seat_state.seats() {
@@ -681,15 +797,48 @@ fn main() {
         .and_then(|m| m.modified())
         .ok();
 
+    let config_inotify_fd = unsafe {
+        let fd = libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC);
+        if fd >= 0 {
+            let conf_dir = std::path::Path::new(&conf_path)
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."));
+            let mut watch_ok = false;
+            if let Ok(c_path) = std::ffi::CString::new(conf_dir.to_string_lossy().as_bytes()) {
+                let wd = libc::inotify_add_watch(
+                    fd,
+                    c_path.as_ptr(),
+                    libc::IN_MODIFY | libc::IN_CREATE | libc::IN_CLOSE_WRITE | libc::IN_MOVED_TO,
+                );
+                if wd >= 0 {
+                    watch_ok = true;
+                }
+            }
+            if watch_ok {
+                Some(fd)
+            } else {
+                libc::close(fd);
+                None
+            }
+        } else {
+            None
+        }
+    };
+
     while !app.exit {
         let _ = event_queue.dispatch_pending(&mut app);
         let _ = conn.flush();
 
         let now = Instant::now();
-        let dt = (now - last_frame).as_secs_f32().clamp(0.001, 0.05);
+        let raw_dt = (now - last_frame).as_secs_f32();
+        let dt = if raw_dt > 0.1 {
+            0.016
+        } else {
+            raw_dt.clamp(0.001, 0.05)
+        };
         last_frame = now;
 
-        if now.duration_since(last_config_check).as_millis() >= 300 {
+        if config_inotify_fd.is_none() && now.duration_since(last_config_check).as_secs() >= 10 {
             last_config_check = now;
             if let Ok(meta) = std::fs::metadata(&conf_path) {
                 if let Ok(mod_time) = meta.modified() {
@@ -807,6 +956,7 @@ fn main() {
                 );
                 app.clock.update_wallpaper(c);
                 app.clock.draw();
+                app.clock.needs_redraw = false;
 
                 let i = WallpaperManager::get_wallpaper_crop(
                     cache,
@@ -817,6 +967,7 @@ fn main() {
                 );
                 app.island.update_wallpaper(i);
                 app.island.draw();
+                app.island.needs_redraw = false;
 
                 let t = WallpaperManager::get_wallpaper_crop(
                     cache,
@@ -827,6 +978,7 @@ fn main() {
                 );
                 app.todo.update_wallpaper(t);
                 app.todo.draw();
+                app.todo.needs_redraw = false;
 
                 let d = WallpaperManager::get_wallpaper_crop(
                     cache,
@@ -837,6 +989,7 @@ fn main() {
                 );
                 app.dock.update_wallpaper(d);
                 app.dock.draw();
+                app.dock.needs_redraw = false;
 
                 let hero_crop = WallpaperManager::get_wallpaper_crop(
                     cache,
@@ -847,19 +1000,32 @@ fn main() {
                 );
                 app.center_hero.update_wallpaper(hero_crop);
                 app.center_hero.draw();
+                app.center_hero.needs_redraw = false;
             }
             app.wallpaper_mgr.release_full_buffer();
         }
 
         let now_local = chrono::Local::now();
         let cur_min = now_local.minute();
-        if clock_active || app.clock.is_hovered || app.clock.needs_redraw || cur_min != last_minute
-        {
+        let minute_changed = cur_min != last_minute;
+        if minute_changed {
             last_minute = cur_min;
             app.clock.draw();
             app.clock.needs_redraw = false;
             app.center_hero.draw();
+            app.center_hero.needs_redraw = false;
             let _ = conn.flush();
+        } else {
+            if clock_active || app.clock.needs_redraw {
+                app.clock.draw();
+                app.clock.needs_redraw = false;
+                let _ = conn.flush();
+            }
+            if app.center_hero.needs_redraw {
+                app.center_hero.draw();
+                app.center_hero.needs_redraw = false;
+                let _ = conn.flush();
+            }
         }
 
         if island_active || app.island.needs_redraw {
@@ -868,42 +1034,34 @@ fn main() {
             let _ = conn.flush();
         }
 
-        if todo_active || app.todo.is_hovered || app.todo.needs_redraw {
+        if todo_active || app.todo.needs_redraw {
             app.todo.draw();
             app.todo.needs_redraw = false;
             let _ = conn.flush();
         }
 
-        if dock_active || app.dock.is_hovered || app.dock.needs_redraw {
+        if dock_active || app.dock.needs_redraw {
             app.dock.draw();
             app.dock.needs_redraw = false;
             let _ = conn.flush();
         }
 
-        let animating = island_active
-            || todo_active
-            || clock_active
-            || dock_active
-            || app.clock.is_hovered
-            || app.island.is_hovered
-            || app.todo.is_hovered
-            || app.dock.is_hovered;
+        let animating = island_active || todo_active || clock_active || dock_active;
+
+        if animating {
+            let elapsed = last_frame.elapsed();
+            if elapsed < Duration::from_millis(16) {
+                std::thread::sleep(Duration::from_millis(16) - elapsed);
+            }
+        }
 
         let timeout_ms = if animating {
-            16
-        } else if !app.clock.is_compact
-            || !app.todo.is_compact
-            || !app.dock.is_compact
-            || (app.island.mode != IslandMode::CompactPill && app.island.mode != IslandMode::Hidden)
-        {
-            50
-        } else if app.island.mode == IslandMode::Hidden {
-            250
+            0
         } else {
             let sec = now_local.second();
             let sub_ms = now_local.timestamp_subsec_millis();
             let ms_to_min = ((60 - sec) * 1000 - sub_ms).clamp(50, 60_000);
-            (ms_to_min as i32).min(1000)
+            ms_to_min as i32
         };
 
         let guard = match conn.prepare_read() {
@@ -926,8 +1084,24 @@ fn main() {
                 events: libc::POLLIN,
                 revents: 0,
             },
+            libc::pollfd {
+                fd: app.wallpaper_mgr.inotify_fd().unwrap_or(-1),
+                events: libc::POLLIN,
+                revents: 0,
+            },
+            libc::pollfd {
+                fd: config_inotify_fd.unwrap_or(-1),
+                events: libc::POLLIN,
+                revents: 0,
+            },
+            libc::pollfd {
+                fd: hypr_socket2.as_ref().map(|s| s.as_raw_fd()).unwrap_or(-1),
+                events: libc::POLLIN,
+                revents: 0,
+            },
         ];
-        let poll_res = unsafe { libc::poll(pfds.as_mut_ptr(), 2, timeout_ms) };
+        let poll_res =
+            unsafe { libc::poll(pfds.as_mut_ptr(), pfds.len() as libc::nfds_t, timeout_ms) };
         if poll_res > 0 {
             if (pfds[0].revents & libc::POLLIN) != 0 {
                 let _ = guard.read();
@@ -935,13 +1109,155 @@ fn main() {
                 drop(guard);
             }
             if (pfds[1].revents & libc::POLLIN) != 0 {
-                let mut buf = [0u8; 64];
-                unsafe { libc::read(wakeup_read_fd, buf.as_mut_ptr() as *mut _, 64) };
+                drain_wakeup_pipe(wakeup_read_fd);
+            }
+            if (pfds[3].revents & libc::POLLIN) != 0 {
+                if let Some(cfd) = config_inotify_fd {
+                    if drain_config_inotify(cfd) {
+                        app.reload_config(&conf_path);
+                    }
+                }
+            }
+            if (pfds[4].revents & (libc::POLLIN | libc::POLLHUP | libc::POLLERR)) != 0 {
+                let mut layout_changed = false;
+                let mut close_socket = (pfds[4].revents & (libc::POLLHUP | libc::POLLERR)) != 0;
+                if let Some(ref mut sock) = hypr_socket2 {
+                    use std::io::Read;
+                    let mut tmp = [0u8; 4096];
+                    loop {
+                        match sock.read(&mut tmp) {
+                            Ok(0) => {
+                                close_socket = true;
+                                break;
+                            }
+                            Ok(n) => {
+                                if hypr_event_buf.len() < 65536 {
+                                    hypr_event_buf.push_str(&String::from_utf8_lossy(&tmp[..n]));
+                                }
+                            }
+                            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                            Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                            Err(_) => {
+                                close_socket = true;
+                                break;
+                            }
+                        }
+                    }
+                    while let Some(pos) = hypr_event_buf.find('\n') {
+                        let line = hypr_event_buf[..pos].trim_end_matches('\r').to_string();
+                        hypr_event_buf.drain(..=pos);
+                        if is_hyprland_layout_event(&line) {
+                            layout_changed = true;
+                        }
+                    }
+                }
+                if close_socket {
+                    hypr_socket2 = None;
+                    hypr_event_buf.clear();
+                }
+                if layout_changed {
+                    IslandWidget::invalidate_window_cache();
+                    app.island.force_next_window_check();
+                    app.dock.force_next_window_check();
+                    app.clock.force_next_window_check();
+                    app.todo.force_next_window_check();
+                    if !app.dock.is_compact {
+                        app.dock.last_client_poll = Instant::now() - Duration::from_secs(60);
+                        app.dock.poll_hyprland_clients();
+                        app.dock.needs_redraw = true;
+                    }
+                }
             }
         } else {
             drop(guard);
         }
 
         let _ = event_queue.dispatch_pending(&mut app);
+    }
+
+    unsafe {
+        libc::close(wakeup_read_fd);
+        libc::close(wakeup_write_fd);
+        if let Some(cfd) = config_inotify_fd {
+            libc::close(cfd);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hyprland_layout_event_matching() {
+        assert!(is_hyprland_layout_event("openwindow>>abc,1,kitty,Terminal"));
+        assert!(is_hyprland_layout_event("closewindow>>abc"));
+        assert!(is_hyprland_layout_event("workspace>>2"));
+        assert!(is_hyprland_layout_event("workspacev2>>2,2"));
+        assert!(is_hyprland_layout_event("activewindow>>kitty,Terminal"));
+        assert!(is_hyprland_layout_event("movewindow>>abc,2"));
+        assert!(is_hyprland_layout_event("fullscreen>>1"));
+        assert!(!is_hyprland_layout_event("submap>>resize"));
+        assert!(!is_hyprland_layout_event("configreloaded>>"));
+    }
+
+    #[test]
+    fn test_hyprland_socket2_connects_nonblocking_with_mock_socket() {
+        use std::io::Write;
+        use std::os::unix::net::UnixListener;
+
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .canonicalize()
+            .unwrap();
+        let dir = root
+            .join("target")
+            .join(format!("s2_{}", std::process::id()));
+        let hypr_dir = dir.join("hypr").join("ms");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&hypr_dir).unwrap();
+
+        let sock_path = hypr_dir.join(".socket2.sock");
+        let listener = UnixListener::bind(&sock_path).unwrap();
+
+        let orig_xdg = std::env::var("XDG_RUNTIME_DIR").ok();
+        let orig_his = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok();
+        std::env::set_var("XDG_RUNTIME_DIR", &dir);
+        std::env::set_var("HYPRLAND_INSTANCE_SIGNATURE", "ms");
+
+        let stream = connect_hyprland_socket2();
+
+        match orig_xdg {
+            Some(v) => std::env::set_var("XDG_RUNTIME_DIR", v),
+            None => std::env::remove_var("XDG_RUNTIME_DIR"),
+        }
+        match orig_his {
+            Some(v) => std::env::set_var("HYPRLAND_INSTANCE_SIGNATURE", v),
+            None => std::env::remove_var("HYPRLAND_INSTANCE_SIGNATURE"),
+        }
+
+        let mut stream = stream.expect("Must connect to mock Hyprland socket2");
+        let (mut server, _) = listener.accept().unwrap();
+        server.write_all(b"workspace>>3\n").unwrap();
+
+        let mut pfd = libc::pollfd {
+            fd: stream.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        let res = unsafe { libc::poll(&mut pfd, 1, 1000) };
+        assert!(res > 0 && (pfd.revents & libc::POLLIN) != 0);
+
+        use std::io::Read;
+        let mut buf = [0u8; 64];
+        let n = stream.read(&mut buf).unwrap();
+        let msg = std::str::from_utf8(&buf[..n]).unwrap().trim();
+        assert!(is_hyprland_layout_event(msg));
+
+        drop(stream);
+        drop(server);
+        drop(listener);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

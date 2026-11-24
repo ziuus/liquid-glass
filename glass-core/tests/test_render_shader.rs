@@ -22,6 +22,10 @@ struct GlassUniforms {
     is_light: f32,
     padding: f32,
     _pad: [f32; 2],
+    contrast_mode: f32,
+    rim_boost: f32,
+    inner_glow: f32,
+    luminance_threshold: f32,
 }
 
 pub struct RenderTestConfig<'a> {
@@ -193,6 +197,10 @@ async fn run_render(
         is_light: cfg.is_light,
         padding: 0.0,
         _pad: [cfg.style_mode, cfg.debug_mode], // _pad.x = style_mode, _pad.y = debug_mode
+        contrast_mode: 0.0,
+        rim_boost: 1.0,
+        inner_glow: 0.0,
+        luminance_threshold: 0.35,
     };
 
     let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -466,6 +474,10 @@ async fn run_render_custom(
         is_light: cfg.is_light,
         padding,
         _pad: [cfg.style_mode, cfg.debug_mode],
+        contrast_mode: 0.0,
+        rim_boost: 1.0,
+        inner_glow: 0.0,
+        luminance_threshold: 0.35,
     };
 
     let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {

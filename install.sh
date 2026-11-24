@@ -9,7 +9,62 @@ SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_DIR"
 
-if [ "$1" = "--uninstall" ] || [ "$1" = "uninstall" ]; then
+DRY_RUN=false
+CHECK_ONLY=false
+INSTALL_SYSTEMD=false
+INSTALL_AUTOSTART=false
+DO_UNINSTALL=false
+
+show_help() {
+    cat << EOF
+Liquid Glass & Liquid Shell Turnkey Installer
+
+Usage: $(basename "$0") [OPTIONS]
+
+Options:
+  --check        Check all required prerequisites and exit 0 without compiling or installing
+  --dry-run      Simulate installation, display planned actions/paths without modifying system
+  --systemd      Install and enable systemd user service (liquid-shell.service)
+  --autostart    Install XDG autostart desktop entry (liquid-shell.desktop)
+  --uninstall    Remove installed binaries, systemd service, and autostart entry
+  -h, --help     Show this help message and exit
+
+Environment Variables:
+  PREFIX         Installation prefix (default: \$HOME/.local)
+EOF
+}
+
+# Parse command line options
+for arg in "$@"; do
+    case "$arg" in
+        --check)
+            CHECK_ONLY=true
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            ;;
+        --systemd)
+            INSTALL_SYSTEMD=true
+            ;;
+        --autostart)
+            INSTALL_AUTOSTART=true
+            ;;
+        --uninstall|uninstall)
+            DO_UNINSTALL=true
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        *)
+            echo "ERROR: Unknown option '$arg'" >&2
+            echo "Run '$(basename "$0") --help' for usage." >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [ "$DO_UNINSTALL" = true ]; then
     echo "==> Uninstalling liquid-shell..."
     killall -9 liquid-shell 2>/dev/null || true
     systemctl --user stop liquid-shell.service 2>/dev/null || true
@@ -24,11 +79,50 @@ if [ "$1" = "--uninstall" ] || [ "$1" = "uninstall" ]; then
 fi
 
 # Verify dependencies
-if ! command -v cargo &>/dev/null; then
-    echo "ERROR: Rust compiler ('cargo') is required but not found in PATH."
-    echo "Install Rust via: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
-    exit 1
+check_prerequisites() {
+    local missing=0
+    echo "==> Checking prerequisites..."
+    if command -v cargo &>/dev/null; then
+        echo "  [OK] cargo: $(cargo --version 2>/dev/null || echo 'installed')"
+    else
+        echo "  [FAIL] cargo: Rust compiler ('cargo') is required but not found in PATH." >&2
+        echo "         Install Rust via: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh" >&2
+        missing=$((missing + 1))
+    fi
+
+    if [ $missing -gt 0 ]; then
+        return 1
+    fi
+    return 0
+}
+
+if [ "$CHECK_ONLY" = true ]; then
+    check_prerequisites
+    echo "==> All prerequisites satisfied."
+    exit 0
 fi
+
+if [ "$DRY_RUN" = true ]; then
+    echo "==> [DRY-RUN] Simulating Liquid Glass installation..."
+    check_prerequisites
+    echo "==> [DRY-RUN] Planned installation targets and actions:"
+    echo "  Prefix:              $PREFIX"
+    echo "  Binary directory:    $BIN_DIR"
+    echo "  Binaries:            $BIN_DIR/liquid-shell"
+    echo "                       $BIN_DIR/island-ctl"
+    echo "  Config directory:    $CONFIG_DIR"
+    echo "  Configuration file:  $CONFIG_DIR/config.json"
+    if [ "$INSTALL_SYSTEMD" = true ]; then
+        echo "  Systemd unit:        $SYSTEMD_USER_DIR/liquid-shell.service (planned: enable and start)"
+    fi
+    if [ "$INSTALL_AUTOSTART" = true ]; then
+        echo "  Desktop entry:       $AUTOSTART_DIR/liquid-shell.desktop (planned: autostart)"
+    fi
+    echo "==> [DRY-RUN] Dry run complete. Zero files were created or modified."
+    exit 0
+fi
+
+check_prerequisites
 
 echo "==> Building liquid-shell (release profile)..."
 cargo build --release -p liquid-shell
@@ -97,7 +191,7 @@ else
 fi
 
 # Optional systemd service installation
-if [ "$1" = "--systemd" ] || [ "$2" = "--systemd" ]; then
+if [ "$INSTALL_SYSTEMD" = true ]; then
     mkdir -p "$SYSTEMD_USER_DIR"
     cat << EOF > "$SYSTEMD_USER_DIR/liquid-shell.service"
 [Unit]
@@ -119,7 +213,7 @@ EOF
 fi
 
 # Optional XDG autostart entry
-if [ "$1" = "--autostart" ] || [ "$2" = "--autostart" ]; then
+if [ "$INSTALL_AUTOSTART" = true ]; then
     mkdir -p "$AUTOSTART_DIR"
     cat << EOF > "$AUTOSTART_DIR/liquid-shell.desktop"
 [Desktop Entry]

@@ -25,6 +25,10 @@ struct GlassUniforms {
     is_light: f32,
     padding: f32,
     _pad: [f32; 2],
+    contrast_mode: f32,
+    rim_boost: f32,
+    inner_glow: f32,
+    luminance_threshold: f32,
 }
 
 pub struct GlassRenderer {
@@ -65,7 +69,7 @@ impl GlassRenderer {
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
+                power_preference: wgpu::PowerPreference::LowPower,
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
             })
@@ -499,6 +503,18 @@ impl GlassRenderer {
                 is_light: params.tint[3].max(0.0),
                 padding: glass.element_type,
                 _pad: [glass.style_mode, 0.0],
+                contrast_mode: glass.contrast_mode,
+                rim_boost: if glass.rim_boost != 0.0 {
+                    glass.rim_boost
+                } else {
+                    1.0
+                },
+                inner_glow: glass.inner_glow,
+                luminance_threshold: if glass.luminance_threshold != 0.0 {
+                    glass.luminance_threshold
+                } else {
+                    0.35
+                },
             };
 
             let offset = i as u32 * padded_size as u32;
@@ -956,7 +972,7 @@ impl SharedGpu {
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
+                power_preference: wgpu::PowerPreference::LowPower,
                 compatible_surface: None,
                 force_fallback_adapter: false,
             })

@@ -240,7 +240,7 @@ impl ClockWidget {
             target_h: COMPACT_H,
             size_spring: Spring::with_params(0.0, spring_params),
             fillet_radius: 18.0,
-            last_hover_time: Instant::now(),
+            last_hover_time: Instant::now() - Duration::from_secs(60),
             needs_input_region_update: true,
 
             current_page: 0,
@@ -265,8 +265,12 @@ impl ClockWidget {
         widget
     }
 
+    pub fn force_next_window_check(&mut self) {
+        self.last_window_check = Instant::now() - Duration::from_secs(60);
+    }
+
     pub fn check_window_overlap(&mut self) {
-        if self.last_window_check.elapsed() < Duration::from_millis(300) {
+        if self.last_window_check.elapsed() < Duration::from_millis(1500) {
             return;
         }
         self.last_window_check = Instant::now();
@@ -710,7 +714,17 @@ impl ClockWidget {
     pub fn update_physics(&mut self, dt: f32) -> bool {
         let eff_dt = dt * self.anim_speed;
         self.size_spring.update(eff_dt);
+        if (self.size_spring.value - self.size_spring.target).abs() < 0.002
+            && self.size_spring.velocity.abs() < 0.01
+        {
+            self.size_spring.snap_to_target();
+        }
         self.page_spring.update(eff_dt);
+        if (self.page_spring.value - self.page_spring.target).abs() < 0.002
+            && self.page_spring.velocity.abs() < 0.01
+        {
+            self.page_spring.snap_to_target();
+        }
 
         let t = self.size_spring.value.clamp(0.0, 1.0);
         self.target_w = CARD_W;

@@ -14,8 +14,9 @@ use smithay_client_toolkit::shell::wlr_layer::{
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::fs::OpenOptions;
 use std::process::Command;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use wayland_backend::client::ObjectId;
 use wayland_client::protocol::{wl_region, wl_surface};
@@ -23,6 +24,14 @@ use wayland_client::{Dispatch, Proxy, QueueHandle};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::ZwlrLayerSurfaceV1;
 
 const FIFO_PATH: &str = "/tmp/liquid_island.fifo";
+
+struct WindowCache {
+    last_check: Instant,
+    rects: Vec<(i32, i32, i32, i32)>, // wx, wy, wr, wb
+}
+
+static WINDOW_CACHE: Mutex<Option<WindowCache>> = Mutex::new(None);
+static DBUS_CHILD_PID: AtomicI32 = AtomicI32::new(0);
 
 pub fn safe_truncate(s: &str, max_chars: usize) -> String {
     if s.chars().count() <= max_chars {
@@ -560,7 +569,7 @@ impl IslandWidget {
         ) = Self::load_config_values();
         let init_y = dock_mode.dock_y();
 
-        Self {
+        let mut widget = Self {
             layer_surface: Some(layer_surface),
             surface,
             renderer: None,
@@ -625,7 +634,7 @@ impl IslandWidget {
             last_click_time: Instant::now() - Duration::from_secs(10),
             last_click_pos: [-100.0, -100.0],
             is_swiping: false,
-            last_interaction: Instant::now(),
+            last_interaction: Instant::now() - Duration::from_secs(60),
             last_mode_cycle: Instant::now() - Duration::from_secs(10),
 
             power_held: None,
@@ -652,7 +661,20 @@ impl IslandWidget {
             hover_dwell_start: None,
             hot_edge_dwell_start: None,
             needs_input_region_update: true,
+        };
+        widget.check_window_overlap();
+        if widget.mode == IslandMode::Hidden {
+            widget.current_w = widget.target_w;
+            widget.current_h = widget.target_h;
+            widget.current_y = widget.target_y;
+            widget.current_alpha = widget.target_alpha;
+            widget.vel_w = 0.0;
+            widget.vel_h = 0.0;
+            widget.vel_y = 0.0;
+            widget.vel_alpha = 0.0;
+            widget.animating = false;
         }
+        widget
     }
 
     pub fn surface_id(&self) -> ObjectId {
@@ -1559,18 +1581,21 @@ impl IslandWidget {
             }
         }
 
-        !settling
+        let is_active = !settling
             || (self.music.is_playing && self.mode != IslandMode::Hidden)
             || self.mode == IslandMode::Notification
-            || self.is_hovered
-            || hold_active
+            || hold_active;
+        self.animating = is_active;
+        is_active
     }
 
     pub fn check_music(&mut self) {
         let poll_interval = if self.music.is_playing {
             Duration::from_millis(2000)
+        } else if self.mode == IslandMode::MusicExpanded {
+            Duration::from_millis(3000)
         } else {
-            Duration::from_millis(6000)
+            Duration::from_secs(30)
         };
         if self.last_music_poll.elapsed() < poll_interval {
             return;
@@ -1670,11 +1695,21 @@ impl IslandWidget {
         }
     }
 
+    pub fn invalidate_window_cache() {
+        if let Ok(mut lock) = WINDOW_CACHE.lock() {
+            *lock = None;
+        }
+    }
+
+    pub fn force_next_window_check(&mut self) {
+        self.last_window_check = Instant::now() - Duration::from_secs(10);
+    }
+
     pub fn check_window_overlap(&mut self) {
         let check_interval = if self.mode == IslandMode::Hidden {
-            Duration::from_millis(250)
+            Duration::from_millis(1500)
         } else {
-            Duration::from_millis(1000)
+            Duration::from_millis(2500)
         };
         if self.last_window_check.elapsed() < check_interval {
             return;
@@ -1742,21 +1777,52 @@ impl IslandWidget {
         use std::io::{Read, Write};
         use std::os::unix::net::UnixStream;
 
-        let his = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok()?;
-        let xdg = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
-            let uid = unsafe { libc::getuid() };
-            format!("/run/user/{}", uid)
-        });
-        let sock_path = format!("{}/hypr/{}/.socket.sock", xdg, his);
-        let mut stream = UnixStream::connect(&sock_path).ok()?;
-        stream.write_all(b"cursorpos").ok()?;
-        let mut resp = String::new();
-        stream.read_to_string(&mut resp).ok()?;
-        let parts: Vec<&str> = resp.trim().split(',').map(|s| s.trim()).collect();
-        if parts.len() == 2 {
-            let x = parts[0].parse::<i32>().ok()?;
-            let y = parts[1].parse::<i32>().ok()?;
-            Some((x, y))
+        struct CursorCache {
+            last_check: Instant,
+            pos: Option<(i32, i32)>,
+        }
+        static CURSOR_CACHE: std::sync::Mutex<Option<CursorCache>> = std::sync::Mutex::new(None);
+
+        if let Ok(mut lock) = CURSOR_CACHE.lock() {
+            if let Some(ref c) = *lock {
+                if c.last_check.elapsed() < Duration::from_millis(500) {
+                    return c.pos;
+                }
+            }
+
+            let his = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok();
+            let mut pos = None;
+            if let Some(his) = his {
+                let xdg = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
+                    let uid = unsafe { libc::getuid() };
+                    format!("/run/user/{}", uid)
+                });
+                let sock_path = format!("{}/hypr/{}/.socket.sock", xdg, his);
+                if let Ok(mut stream) = UnixStream::connect(&sock_path) {
+                    let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
+                    let _ = stream.set_write_timeout(Some(Duration::from_millis(100)));
+                    if stream.write_all(b"cursorpos").is_ok() {
+                        let mut resp = String::new();
+                        if stream.read_to_string(&mut resp).is_ok() {
+                            let parts: Vec<&str> =
+                                resp.trim().split(',').map(|s| s.trim()).collect();
+                            if parts.len() == 2 {
+                                if let (Ok(x), Ok(y)) =
+                                    (parts[0].parse::<i32>(), parts[1].parse::<i32>())
+                                {
+                                    pos = Some((x, y));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            *lock = Some(CursorCache {
+                last_check: Instant::now(),
+                pos,
+            });
+            pos
         } else {
             None
         }
@@ -1771,78 +1837,81 @@ impl IslandWidget {
         use std::io::{Read, Write};
         use std::os::unix::net::UnixStream;
 
-        let his = match std::env::var("HYPRLAND_INSTANCE_SIGNATURE") {
-            Ok(h) => h,
+        let island_r = island_x + island_w;
+        let island_b = island_y + island_h;
+
+        let mut lock = match WINDOW_CACHE.lock() {
+            Ok(l) => l,
             Err(_) => return false,
         };
-        let xdg = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
-            let uid = unsafe { libc::getuid() };
-            format!("/run/user/{}", uid)
-        });
-        let sock_path = format!("{}/hypr/{}/.socket.sock", xdg, his);
 
-        // 1. Get active workspace ID
-        let mut active_ws_id = None;
-        if let Ok(mut stream) = UnixStream::connect(&sock_path) {
-            if stream.write_all(b"j/activeworkspace").is_ok() {
-                let mut resp = Vec::new();
-                if stream.read_to_end(&mut resp).is_ok() {
-                    if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&resp) {
-                        active_ws_id = val.get("id").and_then(|id| id.as_i64());
-                    }
-                }
-            }
-        }
-
-        let ws_id = match active_ws_id {
-            Some(id) => id,
-            None => return false,
+        let cache_valid = if let Some(ref c) = *lock {
+            c.last_check.elapsed() < Duration::from_millis(2000)
+        } else {
+            false
         };
 
-        // 2. Query clients on active workspace
-        if let Ok(mut stream) = UnixStream::connect(&sock_path) {
-            if stream.write_all(b"j/clients").is_ok() {
-                let mut resp = Vec::new();
-                if stream.read_to_end(&mut resp).is_ok() {
-                    if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&resp) {
-                        if let Some(arr) = val.as_array() {
-                            let island_r = island_x + island_w;
-                            let island_b = island_y + island_h;
+        if !cache_valid {
+            let mut rects = Vec::new();
+            if let Ok(his) = std::env::var("HYPRLAND_INSTANCE_SIGNATURE") {
+                let xdg = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
+                    let uid = unsafe { libc::getuid() };
+                    format!("/run/user/{}", uid)
+                });
+                let sock_path = format!("{}/hypr/{}/.socket.sock", xdg, his);
 
-                            for client in arr {
-                                let mapped = client
-                                    .get("mapped")
-                                    .and_then(|m| m.as_bool())
-                                    .unwrap_or(false);
-                                let hidden = client
-                                    .get("hidden")
-                                    .and_then(|h| h.as_bool())
-                                    .unwrap_or(false);
-                                let client_ws = client
-                                    .get("workspace")
-                                    .and_then(|w| w.get("id"))
-                                    .and_then(|id| id.as_i64());
+                let mut active_ws_id = None;
+                if let Ok(mut stream) = UnixStream::connect(&sock_path) {
+                    let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
+                    let _ = stream.set_write_timeout(Some(Duration::from_millis(100)));
+                    if stream.write_all(b"j/activeworkspace").is_ok() {
+                        let mut resp = Vec::new();
+                        if stream.read_to_end(&mut resp).is_ok() {
+                            if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&resp) {
+                                active_ws_id = val.get("id").and_then(|id| id.as_i64());
+                            }
+                        }
+                    }
+                }
 
-                                if mapped && !hidden && client_ws == Some(ws_id) {
-                                    let at = client.get("at").and_then(|a| a.as_array());
-                                    let sz = client.get("size").and_then(|s| s.as_array());
-                                    if let (Some(at), Some(sz)) = (at, sz) {
-                                        if at.len() >= 2 && sz.len() >= 2 {
-                                            let wx = at[0].as_i64().unwrap_or(0) as i32;
-                                            let wy = at[1].as_i64().unwrap_or(0) as i32;
-                                            let ww = sz[0].as_i64().unwrap_or(0) as i32;
-                                            let wh = sz[1].as_i64().unwrap_or(0) as i32;
+                if let Some(ws_id) = active_ws_id {
+                    if let Ok(mut stream) = UnixStream::connect(&sock_path) {
+                        let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
+                        let _ = stream.set_write_timeout(Some(Duration::from_millis(100)));
+                        if stream.write_all(b"j/clients").is_ok() {
+                            let mut resp = Vec::new();
+                            if stream.read_to_end(&mut resp).is_ok() {
+                                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&resp)
+                                {
+                                    if let Some(arr) = val.as_array() {
+                                        for client in arr {
+                                            let mapped = client
+                                                .get("mapped")
+                                                .and_then(|m| m.as_bool())
+                                                .unwrap_or(false);
+                                            let hidden = client
+                                                .get("hidden")
+                                                .and_then(|h| h.as_bool())
+                                                .unwrap_or(false);
+                                            let client_ws = client
+                                                .get("workspace")
+                                                .and_then(|w| w.get("id"))
+                                                .and_then(|id| id.as_i64());
 
-                                            let wr = wx + ww;
-                                            let wb = wy + wh;
-
-                                            // Check AABB intersection with the island top zone
-                                            if wx < island_r
-                                                && wr > island_x
-                                                && wy < island_b
-                                                && wb > island_y
-                                            {
-                                                return true;
+                                            if mapped && !hidden && client_ws == Some(ws_id) {
+                                                let at =
+                                                    client.get("at").and_then(|a| a.as_array());
+                                                let sz =
+                                                    client.get("size").and_then(|s| s.as_array());
+                                                if let (Some(at), Some(sz)) = (at, sz) {
+                                                    if at.len() >= 2 && sz.len() >= 2 {
+                                                        let wx = at[0].as_i64().unwrap_or(0) as i32;
+                                                        let wy = at[1].as_i64().unwrap_or(0) as i32;
+                                                        let ww = sz[0].as_i64().unwrap_or(0) as i32;
+                                                        let wh = sz[1].as_i64().unwrap_or(0) as i32;
+                                                        rects.push((wx, wy, wx + ww, wy + wh));
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -1850,6 +1919,19 @@ impl IslandWidget {
                             }
                         }
                     }
+                }
+            }
+
+            *lock = Some(WindowCache {
+                last_check: Instant::now(),
+                rects,
+            });
+        }
+
+        if let Some(ref c) = *lock {
+            for &(wx, wy, wr, wb) in &c.rects {
+                if wx < island_r && wr > island_x && wy < island_b && wb > island_y {
+                    return true;
                 }
             }
         }
@@ -3233,303 +3315,301 @@ fn is_buffer_light(buf: &[u8]) -> bool {
     }
 }
 fn start_fifo_listener(tx: Sender<IslandIpcEvent>, wakeup_fd: Option<i32>) {
-    std::thread::spawn(move || {
-        let _ = std::fs::remove_file(FIFO_PATH);
-        unsafe {
-            let c_path = std::ffi::CString::new(FIFO_PATH).unwrap();
-            libc::mkfifo(c_path.as_ptr(), 0o666);
-        }
-
-        let send_evt = |evt: IslandIpcEvent| {
-            let _ = tx.send(evt);
-            if let Some(fd) = wakeup_fd {
-                unsafe {
-                    let b = [1u8];
-                    libc::write(fd, b.as_ptr() as *const _, 1);
-                }
+    let _ = std::thread::Builder::new()
+        .name("island-fifo".into())
+        .spawn(move || {
+            let _ = std::fs::remove_file(FIFO_PATH);
+            unsafe {
+                let c_path = std::ffi::CString::new(FIFO_PATH).unwrap();
+                libc::mkfifo(c_path.as_ptr(), 0o666);
             }
-        };
 
-        loop {
-            // Open with read-write so the descriptor remains open across client invocations
-            // and read never returns premature EOF on FIFO close!
-            let file = OpenOptions::new().read(true).write(true).open(FIFO_PATH);
-            if let Ok(f) = file {
-                use std::io::{BufRead, BufReader};
-                let reader = BufReader::new(f);
-                for line in reader.lines().map_while(Result::ok) {
-                    let trimmed = line.trim();
-                    if trimmed == "toggle" {
-                        send_evt(IslandIpcEvent::Toggle);
-                    } else if trimmed == "hide" {
-                        send_evt(IslandIpcEvent::ShowMode(IslandMode::Hidden));
-                    } else if trimmed == "show" || trimmed == "compact" {
-                        send_evt(IslandIpcEvent::ShowMode(IslandMode::CompactPill));
-                    } else if trimmed == "music"
-                        || trimmed == "slide_music"
-                        || trimmed == "slide:music"
-                    {
-                        send_evt(IslandIpcEvent::ShowMode(IslandMode::MusicExpanded));
-                    } else if trimmed == "sys"
-                        || trimmed == "system"
-                        || trimmed == "slide_system"
-                        || trimmed == "slide:system"
-                        || trimmed == "slide_sys"
-                    {
-                        send_evt(IslandIpcEvent::ShowMode(IslandMode::SystemOverview));
-                    } else if trimmed == "power"
-                        || trimmed == "slide_power"
-                        || trimmed == "slide:power"
-                    {
-                        send_evt(IslandIpcEvent::ShowMode(IslandMode::PowerMenu));
-                    } else if trimmed == "apps"
-                        || trimmed == "quick"
-                        || trimmed == "slide_apps"
-                        || trimmed == "slide:apps"
-                    {
-                        send_evt(IslandIpcEvent::ShowMode(IslandMode::QuickAccess));
-                    } else if trimmed == "todo"
-                        || trimmed == "tasks"
-                        || trimmed == "toggle_todo"
-                        || trimmed == "toggle_tasks"
-                    {
-                        send_evt(IslandIpcEvent::ToggleTodo);
-                    } else if trimmed == "clock" || trimmed == "toggle_clock" {
-                        send_evt(IslandIpcEvent::ToggleClock);
-                    } else if trimmed == "dock" || trimmed == "bar" || trimmed == "toggle_dock" {
-                        send_evt(IslandIpcEvent::ToggleAppDock);
-                    } else if trimmed == "next"
-                        || trimmed == "next_slide"
-                        || trimmed == "slide_next"
-                    {
-                        send_evt(IslandIpcEvent::NextMenu);
-                    } else if trimmed == "prev"
-                        || trimmed == "prev_slide"
-                        || trimmed == "slide_prev"
-                    {
-                        send_evt(IslandIpcEvent::PrevMenu);
-                    } else if trimmed == "style obsidian"
-                        || trimmed == "obsidian"
-                        || trimmed == "style 0"
-                    {
-                        send_evt(IslandIpcEvent::SetStyle(0.0));
-                    } else if trimmed == "style frost"
-                        || trimmed == "style glassmorphism"
-                        || trimmed == "frost"
-                        || trimmed == "style 1"
-                    {
-                        send_evt(IslandIpcEvent::SetStyle(1.0));
-                    } else if trimmed == "style liquid"
-                        || trimmed == "liquid"
-                        || trimmed == "style 2"
-                    {
-                        send_evt(IslandIpcEvent::SetStyle(2.0));
-                    } else if trimmed == "style" || trimmed == "style cycle" {
-                        send_evt(IslandIpcEvent::CycleStyle);
-                    } else if trimmed == "theme auto" || trimmed == "auto" || trimmed == "theme 0" {
-                        send_evt(IslandIpcEvent::SetTheme(0));
-                    } else if trimmed == "theme dark"
-                        || trimmed == "dark"
-                        || trimmed == "pure black"
-                        || trimmed == "theme 1"
-                    {
-                        send_evt(IslandIpcEvent::SetTheme(1));
-                    } else if trimmed == "theme light"
-                        || trimmed == "light"
-                        || trimmed == "pure white"
-                        || trimmed == "theme 2"
-                    {
-                        send_evt(IslandIpcEvent::SetTheme(2));
-                    } else if trimmed == "theme"
-                        || trimmed == "theme toggle"
-                        || trimmed == "theme cycle"
-                    {
-                        send_evt(IslandIpcEvent::CycleTheme);
-                    } else if trimmed.starts_with("set_dock ")
-                        || trimmed.starts_with("set_dock:")
-                        || trimmed.starts_with("set_edge ")
-                        || trimmed.starts_with("set_edge:")
-                    {
-                        let mode_part = trimmed
-                            .trim_start_matches("set_dock ")
-                            .trim_start_matches("set_dock:")
-                            .trim_start_matches("set_edge ")
-                            .trim_start_matches("set_edge:")
-                            .trim();
-                        send_evt(IslandIpcEvent::SetDock(IslandDockMode::from_str(mode_part)));
-                    } else if trimmed == "edge curved"
-                        || trimmed == "edge:curved"
-                        || trimmed == "curved"
-                        || trimmed == "notch"
-                        || trimmed == "fillet"
-                        || trimmed == "dock attached"
-                        || trimmed == "dock:attached"
-                        || trimmed == "attached"
-                    {
-                        send_evt(IslandIpcEvent::SetDock(IslandDockMode::AttachedCurved));
-                    } else if trimmed == "edge straight"
-                        || trimmed == "edge:straight"
-                        || trimmed == "straight"
-                        || trimmed == "flush"
-                        || trimmed == "attached_straight"
-                    {
-                        send_evt(IslandIpcEvent::SetDock(IslandDockMode::AttachedStraight));
-                    } else if trimmed == "edge floating"
-                        || trimmed == "edge:floating"
-                        || trimmed == "floating"
-                        || trimmed == "float"
-                        || trimmed == "dock floating"
-                        || trimmed == "dock:floating"
-                        || trimmed == "not attached"
-                        || trimmed == "not_attached"
-                        || trimmed == "unattached"
-                        || trimmed == "detached"
-                    {
-                        send_evt(IslandIpcEvent::SetDock(IslandDockMode::Floating));
-                    } else if trimmed == "edge toggle"
-                        || trimmed == "edge:toggle"
-                        || trimmed == "dock toggle"
-                        || trimmed == "dock:toggle"
-                        || trimmed == "toggle edge"
-                        || trimmed == "toggle dock"
-                        || trimmed == "dock"
-                        || trimmed == "edge"
-                    {
-                        send_evt(IslandIpcEvent::ToggleDock);
-                    } else if trimmed.starts_with("fillet_compact:")
-                        || trimmed.starts_with("fillet_compact ")
-                        || trimmed.starts_with("fillet compact ")
-                    {
-                        let num_part = trimmed
-                            .trim_start_matches("fillet_compact:")
-                            .trim_start_matches("fillet_compact ")
-                            .trim_start_matches("fillet compact ")
-                            .trim();
-                        if let Ok(r) = num_part.parse::<f32>() {
-                            send_evt(IslandIpcEvent::SetFilletCompact(r));
-                        }
-                    } else if trimmed.starts_with("fillet_expanded:")
-                        || trimmed.starts_with("fillet_expanded ")
-                        || trimmed.starts_with("fillet expanded ")
-                    {
-                        let num_part = trimmed
-                            .trim_start_matches("fillet_expanded:")
-                            .trim_start_matches("fillet_expanded ")
-                            .trim_start_matches("fillet expanded ")
-                            .trim();
-                        if let Ok(r) = num_part.parse::<f32>() {
-                            send_evt(IslandIpcEvent::SetFilletExpanded(r));
-                        }
-                    } else if trimmed.starts_with("fillet ")
-                        || trimmed.starts_with("fillet:")
-                        || trimmed.starts_with("radius ")
-                        || trimmed.starts_with("radius:")
-                    {
-                        let num_part = trimmed
-                            .trim_start_matches("fillet ")
-                            .trim_start_matches("fillet:")
-                            .trim_start_matches("radius ")
-                            .trim_start_matches("radius:")
-                            .trim();
-                        if let Ok(r) = num_part.parse::<f32>() {
-                            send_evt(IslandIpcEvent::SetFillet(r));
-                        }
-                    } else if trimmed.starts_with("set_blur ")
-                        || trimmed.starts_with("set_blur:")
-                        || trimmed.starts_with("blur ")
-                        || trimmed.starts_with("blur:")
-                    {
-                        let num_part = trimmed
-                            .trim_start_matches("set_blur ")
-                            .trim_start_matches("set_blur:")
-                            .trim_start_matches("blur ")
-                            .trim_start_matches("blur:")
-                            .trim();
-                        if let Ok(b) = num_part.parse::<f32>() {
-                            send_evt(IslandIpcEvent::SetBlur(b));
-                        }
-                    } else if trimmed.starts_with("set_speed ")
-                        || trimmed.starts_with("set_speed:")
-                        || trimmed.starts_with("speed ")
-                        || trimmed.starts_with("speed:")
-                        || trimmed.starts_with("anim_speed ")
-                        || trimmed.starts_with("anim_speed:")
-                    {
-                        let num_part = trimmed
-                            .trim_start_matches("set_speed ")
-                            .trim_start_matches("set_speed:")
-                            .trim_start_matches("speed ")
-                            .trim_start_matches("speed:")
-                            .trim_start_matches("anim_speed ")
-                            .trim_start_matches("anim_speed:")
-                            .trim();
-                        if let Ok(s) = num_part.parse::<f32>() {
-                            send_evt(IslandIpcEvent::SetSpeed(s));
-                        }
-                    } else if trimmed == "reload"
-                        || trimmed == "reload config"
-                        || trimmed == "reload_config"
-                    {
-                        send_evt(IslandIpcEvent::ReloadConfig);
-                    } else if trimmed == "toggle_hover_expand"
-                        || trimmed == "toggle hover expand"
-                        || trimmed == "toggle_hover"
-                    {
-                        send_evt(IslandIpcEvent::ToggleHoverExpand);
-                    } else if trimmed == "hover_expand:true"
-                        || trimmed == "hover_expand 1"
-                        || trimmed == "hover_to_expand:true"
-                        || trimmed == "hover_to_expand 1"
-                    {
-                        send_evt(IslandIpcEvent::SetHoverExpand(true));
-                    } else if trimmed == "hover_expand:false"
-                        || trimmed == "hover_expand 0"
-                        || trimmed == "hover_to_expand:false"
-                        || trimmed == "hover_to_expand 0"
-                    {
-                        send_evt(IslandIpcEvent::SetHoverExpand(false));
-                    } else if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
-                        if val.get("type").and_then(|t| t.as_str()) == Some("notification") {
-                            let app = val
-                                .get("app")
-                                .and_then(|a| a.as_str())
-                                .unwrap_or("System")
-                                .to_string();
-                            let summary = val
-                                .get("summary")
-                                .and_then(|s| s.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            let body = val
-                                .get("body")
-                                .and_then(|b| b.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            send_evt(IslandIpcEvent::Notification(NotificationData {
-                                app,
-                                summary,
-                                body,
-                                timestamp: Instant::now(),
-                            }));
+            let send_evt = |evt: IslandIpcEvent| {
+                let _ = tx.send(evt);
+                if let Some(fd) = wakeup_fd {
+                    unsafe {
+                        let b = [1u8];
+                        libc::write(fd, b.as_ptr() as *const _, 1);
+                    }
+                }
+            };
+
+            loop {
+                // Open with read-write so the descriptor remains open across client invocations
+                // and read never returns premature EOF on FIFO close!
+                let file = OpenOptions::new().read(true).write(true).open(FIFO_PATH);
+                if let Ok(f) = file {
+                    use std::io::{BufRead, BufReader};
+                    let reader = BufReader::new(f);
+                    for line in reader.lines().map_while(Result::ok) {
+                        let trimmed = line.trim();
+                        if trimmed == "toggle" {
+                            send_evt(IslandIpcEvent::Toggle);
+                        } else if trimmed == "hide" {
+                            send_evt(IslandIpcEvent::ShowMode(IslandMode::Hidden));
+                        } else if trimmed == "show" || trimmed == "compact" {
+                            send_evt(IslandIpcEvent::ShowMode(IslandMode::CompactPill));
+                        } else if trimmed == "music"
+                            || trimmed == "slide_music"
+                            || trimmed == "slide:music"
+                        {
+                            send_evt(IslandIpcEvent::ShowMode(IslandMode::MusicExpanded));
+                        } else if trimmed == "sys"
+                            || trimmed == "system"
+                            || trimmed == "slide_system"
+                            || trimmed == "slide:system"
+                            || trimmed == "slide_sys"
+                        {
+                            send_evt(IslandIpcEvent::ShowMode(IslandMode::SystemOverview));
+                        } else if trimmed == "power"
+                            || trimmed == "slide_power"
+                            || trimmed == "slide:power"
+                        {
+                            send_evt(IslandIpcEvent::ShowMode(IslandMode::PowerMenu));
+                        } else if trimmed == "apps"
+                            || trimmed == "quick"
+                            || trimmed == "slide_apps"
+                            || trimmed == "slide:apps"
+                        {
+                            send_evt(IslandIpcEvent::ShowMode(IslandMode::QuickAccess));
+                        } else if trimmed == "todo"
+                            || trimmed == "tasks"
+                            || trimmed == "toggle_todo"
+                            || trimmed == "toggle_tasks"
+                        {
+                            send_evt(IslandIpcEvent::ToggleTodo);
+                        } else if trimmed == "clock" || trimmed == "toggle_clock" {
+                            send_evt(IslandIpcEvent::ToggleClock);
+                        } else if trimmed == "dock" || trimmed == "bar" || trimmed == "toggle_dock"
+                        {
+                            send_evt(IslandIpcEvent::ToggleAppDock);
+                        } else if trimmed == "next"
+                            || trimmed == "next_slide"
+                            || trimmed == "slide_next"
+                        {
+                            send_evt(IslandIpcEvent::NextMenu);
+                        } else if trimmed == "prev"
+                            || trimmed == "prev_slide"
+                            || trimmed == "slide_prev"
+                        {
+                            send_evt(IslandIpcEvent::PrevMenu);
+                        } else if trimmed == "style obsidian"
+                            || trimmed == "obsidian"
+                            || trimmed == "style 0"
+                        {
+                            send_evt(IslandIpcEvent::SetStyle(0.0));
+                        } else if trimmed == "style frost"
+                            || trimmed == "style glassmorphism"
+                            || trimmed == "frost"
+                            || trimmed == "style 1"
+                        {
+                            send_evt(IslandIpcEvent::SetStyle(1.0));
+                        } else if trimmed == "style liquid"
+                            || trimmed == "liquid"
+                            || trimmed == "style 2"
+                        {
+                            send_evt(IslandIpcEvent::SetStyle(2.0));
+                        } else if trimmed == "style" || trimmed == "style cycle" {
+                            send_evt(IslandIpcEvent::CycleStyle);
+                        } else if trimmed == "theme auto"
+                            || trimmed == "auto"
+                            || trimmed == "theme 0"
+                        {
+                            send_evt(IslandIpcEvent::SetTheme(0));
+                        } else if trimmed == "theme dark"
+                            || trimmed == "dark"
+                            || trimmed == "pure black"
+                            || trimmed == "theme 1"
+                        {
+                            send_evt(IslandIpcEvent::SetTheme(1));
+                        } else if trimmed == "theme light"
+                            || trimmed == "light"
+                            || trimmed == "pure white"
+                            || trimmed == "theme 2"
+                        {
+                            send_evt(IslandIpcEvent::SetTheme(2));
+                        } else if trimmed == "theme"
+                            || trimmed == "theme toggle"
+                            || trimmed == "theme cycle"
+                        {
+                            send_evt(IslandIpcEvent::CycleTheme);
+                        } else if trimmed.starts_with("set_dock ")
+                            || trimmed.starts_with("set_dock:")
+                            || trimmed.starts_with("set_edge ")
+                            || trimmed.starts_with("set_edge:")
+                        {
+                            let mode_part = trimmed
+                                .trim_start_matches("set_dock ")
+                                .trim_start_matches("set_dock:")
+                                .trim_start_matches("set_edge ")
+                                .trim_start_matches("set_edge:")
+                                .trim();
+                            send_evt(IslandIpcEvent::SetDock(IslandDockMode::from_str(mode_part)));
+                        } else if trimmed == "edge curved"
+                            || trimmed == "edge:curved"
+                            || trimmed == "curved"
+                            || trimmed == "notch"
+                            || trimmed == "fillet"
+                            || trimmed == "dock attached"
+                            || trimmed == "dock:attached"
+                            || trimmed == "attached"
+                        {
+                            send_evt(IslandIpcEvent::SetDock(IslandDockMode::AttachedCurved));
+                        } else if trimmed == "edge straight"
+                            || trimmed == "edge:straight"
+                            || trimmed == "straight"
+                            || trimmed == "flush"
+                            || trimmed == "attached_straight"
+                        {
+                            send_evt(IslandIpcEvent::SetDock(IslandDockMode::AttachedStraight));
+                        } else if trimmed == "edge floating"
+                            || trimmed == "edge:floating"
+                            || trimmed == "floating"
+                            || trimmed == "float"
+                            || trimmed == "dock floating"
+                            || trimmed == "dock:floating"
+                            || trimmed == "not attached"
+                            || trimmed == "not_attached"
+                            || trimmed == "unattached"
+                            || trimmed == "detached"
+                        {
+                            send_evt(IslandIpcEvent::SetDock(IslandDockMode::Floating));
+                        } else if trimmed == "edge toggle"
+                            || trimmed == "edge:toggle"
+                            || trimmed == "dock toggle"
+                            || trimmed == "dock:toggle"
+                            || trimmed == "toggle edge"
+                            || trimmed == "toggle dock"
+                            || trimmed == "dock"
+                            || trimmed == "edge"
+                        {
+                            send_evt(IslandIpcEvent::ToggleDock);
+                        } else if trimmed.starts_with("fillet_compact:")
+                            || trimmed.starts_with("fillet_compact ")
+                            || trimmed.starts_with("fillet compact ")
+                        {
+                            let num_part = trimmed
+                                .trim_start_matches("fillet_compact:")
+                                .trim_start_matches("fillet_compact ")
+                                .trim_start_matches("fillet compact ")
+                                .trim();
+                            if let Ok(r) = num_part.parse::<f32>() {
+                                send_evt(IslandIpcEvent::SetFilletCompact(r));
+                            }
+                        } else if trimmed.starts_with("fillet_expanded:")
+                            || trimmed.starts_with("fillet_expanded ")
+                            || trimmed.starts_with("fillet expanded ")
+                        {
+                            let num_part = trimmed
+                                .trim_start_matches("fillet_expanded:")
+                                .trim_start_matches("fillet_expanded ")
+                                .trim_start_matches("fillet expanded ")
+                                .trim();
+                            if let Ok(r) = num_part.parse::<f32>() {
+                                send_evt(IslandIpcEvent::SetFilletExpanded(r));
+                            }
+                        } else if trimmed.starts_with("fillet ")
+                            || trimmed.starts_with("fillet:")
+                            || trimmed.starts_with("radius ")
+                            || trimmed.starts_with("radius:")
+                        {
+                            let num_part = trimmed
+                                .trim_start_matches("fillet ")
+                                .trim_start_matches("fillet:")
+                                .trim_start_matches("radius ")
+                                .trim_start_matches("radius:")
+                                .trim();
+                            if let Ok(r) = num_part.parse::<f32>() {
+                                send_evt(IslandIpcEvent::SetFillet(r));
+                            }
+                        } else if trimmed.starts_with("set_blur ")
+                            || trimmed.starts_with("set_blur:")
+                            || trimmed.starts_with("blur ")
+                            || trimmed.starts_with("blur:")
+                        {
+                            let num_part = trimmed
+                                .trim_start_matches("set_blur ")
+                                .trim_start_matches("set_blur:")
+                                .trim_start_matches("blur ")
+                                .trim_start_matches("blur:")
+                                .trim();
+                            if let Ok(b) = num_part.parse::<f32>() {
+                                send_evt(IslandIpcEvent::SetBlur(b));
+                            }
+                        } else if trimmed.starts_with("set_speed ")
+                            || trimmed.starts_with("set_speed:")
+                            || trimmed.starts_with("speed ")
+                            || trimmed.starts_with("speed:")
+                            || trimmed.starts_with("anim_speed ")
+                            || trimmed.starts_with("anim_speed:")
+                        {
+                            let num_part = trimmed
+                                .trim_start_matches("set_speed ")
+                                .trim_start_matches("set_speed:")
+                                .trim_start_matches("speed ")
+                                .trim_start_matches("speed:")
+                                .trim_start_matches("anim_speed ")
+                                .trim_start_matches("anim_speed:")
+                                .trim();
+                            if let Ok(s) = num_part.parse::<f32>() {
+                                send_evt(IslandIpcEvent::SetSpeed(s));
+                            }
+                        } else if trimmed == "reload"
+                            || trimmed == "reload config"
+                            || trimmed == "reload_config"
+                        {
+                            send_evt(IslandIpcEvent::ReloadConfig);
+                        } else if trimmed == "toggle_hover_expand"
+                            || trimmed == "toggle hover expand"
+                            || trimmed == "toggle_hover"
+                        {
+                            send_evt(IslandIpcEvent::ToggleHoverExpand);
+                        } else if trimmed == "hover_expand:true"
+                            || trimmed == "hover_expand 1"
+                            || trimmed == "hover_to_expand:true"
+                            || trimmed == "hover_to_expand 1"
+                        {
+                            send_evt(IslandIpcEvent::SetHoverExpand(true));
+                        } else if trimmed == "hover_expand:false"
+                            || trimmed == "hover_expand 0"
+                            || trimmed == "hover_to_expand:false"
+                            || trimmed == "hover_to_expand 0"
+                        {
+                            send_evt(IslandIpcEvent::SetHoverExpand(false));
+                        } else if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                            if val.get("type").and_then(|t| t.as_str()) == Some("notification") {
+                                let app = val
+                                    .get("app")
+                                    .and_then(|a| a.as_str())
+                                    .unwrap_or("System")
+                                    .to_string();
+                                let summary = val
+                                    .get("summary")
+                                    .and_then(|s| s.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
+                                let body = val
+                                    .get("body")
+                                    .and_then(|b| b.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
+                                send_evt(IslandIpcEvent::Notification(NotificationData {
+                                    app,
+                                    summary,
+                                    body,
+                                    timestamp: Instant::now(),
+                                }));
+                            }
                         }
                     }
                 }
+                std::thread::sleep(Duration::from_millis(1000));
             }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-    });
+        });
 }
 
 fn start_dbus_monitor() {
-    std::thread::spawn(|| {
-        let _ = Command::new("pkill")
-            .args(["-f", "python3.*liquid_island"])
-            .status();
-        let _ = Command::new("systemctl")
-            .args(["--user", "stop", "mako"])
-            .status();
-        let _ = Command::new("pkill").args(["-9", "mako"]).status();
-
+    let _ = std::thread::Builder::new().name("island-dbus".into()).spawn(|| {
         let script = r#"
 import dbus
 import dbus.service
@@ -3617,9 +3697,35 @@ except Exception:
 
 GLib.MainLoop().run()
 "#;
-        let child = Command::new("python3").arg("-c").arg(script).spawn();
+        use std::os::unix::process::CommandExt;
+        let parent_pid = unsafe { libc::getpid() };
+        let mut cmd = Command::new("python3");
+        cmd.arg("-c").arg(script);
+        unsafe {
+            cmd.pre_exec(move || {
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+                if libc::getppid() != parent_pid {
+                    libc::_exit(0);
+                }
+                Ok(())
+            });
+        }
+        let child = cmd.spawn();
         if let Ok(mut c) = child {
+            DBUS_CHILD_PID.store(c.id() as i32, Ordering::SeqCst);
             let _ = c.wait();
+            DBUS_CHILD_PID.store(0, Ordering::SeqCst);
         }
     });
+}
+
+impl Drop for IslandWidget {
+    fn drop(&mut self) {
+        let pid = DBUS_CHILD_PID.swap(0, Ordering::SeqCst);
+        if pid > 0 {
+            unsafe {
+                libc::kill(pid, libc::SIGKILL);
+            }
+        }
+    }
 }

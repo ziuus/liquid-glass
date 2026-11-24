@@ -39,6 +39,11 @@ struct GlassUniforms {
     is_light: f32,
     padding: f32, // element_type (0=base, 1=header, 2=wave, 3=gauge, 4=disc, 5=prev, 6=play, 7=next, 8=slider)
     _pad: vec2<f32>,
+
+    contrast_mode: f32, // 0.0=Auto, 1.0=HighContrast, 2.0=Subtle, 3.0=Crystalline
+    rim_boost: f32,     // specular multiplier (0.5 - 2.5)
+    inner_glow: f32,    // luminous core intensity for dark wallpapers (0.0 - 2.0)
+    luminance_threshold: f32, // contrast threshold (default 0.35)
 }
 
 @group(0) @binding(0) var<uniform> params: GlassUniforms;
@@ -1717,7 +1722,38 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Dynamic local background luminance adaptation:
     // Respects the surface is_light uniform, while seamlessly responding to local background luminance
     let local_luma = dot(sharp_col, vec3<f32>(0.2126, 0.7152, 0.0722));
-    let effective_light = select(select(0.0, 1.0, local_luma > 0.55), 1.0, is_light > 0.5);
+    let threshold = select(0.35, params.luminance_threshold, params.luminance_threshold > 0.01);
+    let base_effective_light = select(select(0.0, 1.0, local_luma > threshold), 1.0, is_light > 0.5);
+
+    // Contrast presets:
+    // 0.0 = Auto: dynamic local luminance response
+    // 1.0 = HighContrast: sharp contrast cut
+    // 2.0 = Subtle: gentler rim
+    // 3.0 = Crystalline: heightened optical reflections
+    var effective_light = base_effective_light;
+    if params.contrast_mode > 0.5 && params.contrast_mode < 1.5 {
+        effective_light = select(0.0, 1.0, local_luma > threshold);
+    }
+
+    // Tunable rim boost (multiplier: default 1.0, range 0.5..2.5)
+    var effective_rim_boost = select(1.0, params.rim_boost, params.rim_boost > 0.01);
+    if params.contrast_mode > 2.5 {
+        effective_rim_boost *= 1.4;
+    } else if params.contrast_mode > 1.5 && params.contrast_mode < 2.5 {
+        effective_rim_boost *= 0.8;
+    }
+
+    // Luminescent core intensity for dark backgrounds:
+    // When local_luma < 0.25 (or effective_light <= 0.5), ensure numerals never fade into dark backgrounds
+    var effective_inner_glow = params.inner_glow;
+    if effective_light <= 0.5 {
+        let dark_depth = clamp((0.25 - local_luma) / 0.25, 0.0, 1.0);
+        let auto_glow = dark_depth * 0.45;
+        effective_inner_glow = max(effective_inner_glow, auto_glow);
+        if params.contrast_mode > 0.5 && params.contrast_mode < 1.5 {
+            effective_inner_glow = max(effective_inner_glow, 0.65);
+        }
+    }
 
     var col: vec3<f32>;
 
@@ -1775,7 +1811,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     } else if effective_light > 0.5 {
         // ── LIGHT / WHITE BACKDROP: CRYSTALLINE SPECULAR GLINT + SHADOW-SIDE OPTICAL GROUNDING ──
         // Zero white outline on bottom or sides. Lit side gets clean glint; shadow side gets subtle grounding
-        let lit_highlight = spec_line * 0.30;
+        let lit_highlight = spec_line * 0.30 * effective_rim_boost;
         let shadow_factor = select(0.035, 0.065, is_liquid_text);
         let shadow_meniscus = smoothstep(1.8, 0.0, depth) * pow(shadow_facing, 2.0) * shadow_factor * top_flush;
         let glass_grounding = select(0.0, smoothstep(0.0, 4.0, depth) * (0.05 + 0.04 * (depth / 11.0)), is_liquid_text);
@@ -1784,9 +1820,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         // ── DARK / VIBRANT BACKDROP (e.g. Ferns, Retro, Pitch Black): LIT SPECULAR + OPTICAL FROST ──
         // Pure frosted blurred glass: zero artificial flat color overlay, zero grey plastic lift
         let digit_spec_boost = select(1.0, 1.85, is_liquid_text);
-        let dark_spec = spec_line * 0.60 * digit_spec_boost;
-        let dark_rim = smoothstep(1.2, 0.0, depth) * (0.35 * light_facing) * top_flush;
-        base_surface = col + vec3<f32>(dark_spec + dark_rim);
+        let dark_spec = spec_line * 0.60 * digit_spec_boost * effective_rim_boost;
+        let dark_rim = smoothstep(1.2, 0.0, depth) * (0.35 * light_facing) * top_flush * effective_rim_boost;
+
+        // Inner luminescent core/stroke for dark backgrounds so numerals never disappear into dark wallpapers
+        var inner_luma_core = vec3<f32>(0.0);
+        if is_liquid_text && effective_inner_glow > 0.001 {
+            let cyl_r = 11.0;
+            let core_depth = clamp(-sdf / cyl_r, 0.0, 1.0);
+            let core_glow = pow(core_depth, 1.3) * effective_inner_glow;
+            let edge_crisp = smoothstep(1.5, 0.0, depth) * (0.32 * light_facing) * effective_rim_boost;
+            inner_luma_core = vec3<f32>(core_glow + edge_crisp);
+        }
+        base_surface = col + vec3<f32>(dark_spec + dark_rim) + inner_luma_core;
     }
 
     let app = render_element_appearance(local_px, half_size, params.padding, params.tint.y, params.time, params.tint, effective_light);
