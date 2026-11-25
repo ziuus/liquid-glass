@@ -1832,7 +1832,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         // Pure frosted blurred glass with 360-degree ambient Fresnel rim so bottom/right edges stay crisp on dark wallpapers
         let digit_spec_boost = select(1.0, 2.4, is_liquid_text);
         let dark_spec = spec_line * 0.90 * digit_spec_boost * effective_rim_boost;
-        let ambient_fresnel = select(0.18, 0.0, is_liquid_text);
+        let ambient_fresnel = select(0.28, 0.0, is_liquid_text);
         let dark_rim = smoothstep(1.5, 0.0, depth) * (ambient_fresnel + 0.45 * light_facing) * top_flush * effective_rim_boost;
         // Subtle 3.5% crystalline glass body lift on dark surfaces so dock/island/clock read as one unified glass set
         let glass_sheen = select(vec3<f32>(0.032, 0.038, 0.048), vec3<f32>(0.0), is_liquid_text);
