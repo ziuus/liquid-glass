@@ -1801,7 +1801,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let shadow_vec_2d = -light_vec_2d;
     let light_facing = max(dot(grad_2d, light_vec_2d), 0.0);
     let shadow_facing = max(dot(grad_2d, shadow_vec_2d), 0.0);
-    let glint_power = pow(light_facing, 3.5); // Tight directional specular lobe: zero on shadow side
+    let glint_power = pow(light_facing, 2.2); // Smooth directional specular lobe across curved corners
 
     // Razor-thin crystalline specular glint of 1.0px along lit perimeter only (zero artificial corner multiplier)
     let spec_line = smoothstep(1.0, 0.0, depth) * glint_power * params.specular_strength * top_flush;
@@ -1832,7 +1832,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         // Pure crystal-clear glass with directional angled top-left specular rim (zero full border)
         let digit_spec_boost = select(1.0, 2.4, is_liquid_text);
         let dark_spec = spec_line * 0.90 * digit_spec_boost * effective_rim_boost;
-        let dark_rim = smoothstep(1.5, 0.0, depth) * (0.55 * light_facing) * top_flush * effective_rim_boost;
+        let dark_rim = smoothstep(1.8, 0.0, depth) * (0.72 * light_facing + 0.14 * pow(shadow_facing, 2.5)) * top_flush * effective_rim_boost;
         let glass_sheen = vec3<f32>(0.0);
 
         // Crystalline 3D liquid glass transmission:
