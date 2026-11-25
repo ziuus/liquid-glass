@@ -1,4 +1,7 @@
+#[cfg(target_os = "linux")]
 use std::os::unix::io::RawFd;
+#[cfg(not(target_os = "linux"))]
+type RawFd = i32;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -368,12 +371,15 @@ impl WallpaperManager {
                     if let Ok(mut guard) = slot.lock() {
                         *guard = Some((actual_path, actual_fp, buf));
                     }
+                    #[cfg(target_os = "linux")]
                     if let Some(wfd) = wakeup_write_fd {
                         let byte = *b"w";
                         unsafe {
                             libc::write(wfd, byte.as_ptr() as *const libc::c_void, 1);
                         }
                     }
+                    #[cfg(not(target_os = "linux"))]
+                    let _ = wakeup_write_fd;
                 }
             });
 
@@ -391,6 +397,12 @@ impl WallpaperManager {
         }
     }
 
+    #[cfg(not(target_os = "linux"))]
+    fn init_inotify() -> (Option<i32>, Vec<i32>, Option<i32>, Option<i32>) {
+        (None, Vec::new(), None, None)
+    }
+
+    #[cfg(target_os = "linux")]
     fn init_inotify() -> (Option<i32>, Vec<i32>, Option<i32>, Option<i32>) {
         unsafe {
             let fd = libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC);
@@ -480,6 +492,12 @@ impl WallpaperManager {
         }
     }
 
+    #[cfg(not(target_os = "linux"))]
+    fn poll_inotify_triggered(&mut self) -> bool {
+        false
+    }
+
+    #[cfg(target_os = "linux")]
     fn poll_inotify_triggered(&mut self) -> bool {
         let Some(fd) = self.inotify_fd else {
             return false;
@@ -607,41 +625,75 @@ impl WallpaperManager {
 
     /// Queries the active wallpaper path from awww cache, current_wallpaper, or fallback awww CLI.
     pub fn get_active_wallpaper_path() -> Option<String> {
-        // 1. Direct read from awww cache directory (instant zero-process read, <5µs)
-        if let Some(path) = dirs_cache_awww() {
-            if std::path::Path::new(&path).exists() {
-                return Some(path);
+        #[cfg(target_os = "windows")]
+        {
+            if let Ok(appdata) = std::env::var("APPDATA") {
+                let p = format!(
+                    "{}\\Microsoft\\Windows\\Themes\\TranscodedWallpaper",
+                    appdata
+                );
+                if std::path::Path::new(&p).exists() {
+                    return Some(p);
+                }
             }
+            return None;
         }
-
-        // 2. Current wallpaper cache (zero-process read)
-        let cache_path = format!(
-            "{}/.cache/current_wallpaper",
-            std::env::var("HOME").unwrap_or_default()
-        );
-        if let Ok(content) = std::fs::read_to_string(&cache_path) {
-            let p = content.trim().to_string();
-            if std::path::Path::new(&p).exists() {
-                return Some(p);
+        #[cfg(target_os = "macos")]
+        {
+            if let Ok(out) = std::process::Command::new("osascript")
+                .args([
+                    "-e",
+                    "tell application \"Finder\" to get POSIX path of (desktop picture as alias)",
+                ])
+                .output()
+            {
+                if out.status.success() {
+                    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if !s.is_empty() && std::path::Path::new(&s).exists() {
+                        return Some(s);
+                    }
+                }
             }
+            return None;
         }
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        {
+            // 1. Direct read from awww cache directory (instant zero-process read, <5µs)
+            if let Some(path) = dirs_cache_awww() {
+                if std::path::Path::new(&path).exists() {
+                    return Some(path);
+                }
+            }
 
-        // 3. Live query to awww daemon (fallback)
-        if let Ok(out) = std::process::Command::new("awww").arg("query").output() {
-            let s = String::from_utf8_lossy(&out.stdout);
-            for line in s.lines() {
-                if line.contains("image:") {
-                    if let Some(p) = line.split("image:").nth(1) {
-                        let path = p.trim().to_string();
-                        if std::path::Path::new(&path).exists() {
-                            return Some(path);
+            // 2. Current wallpaper cache (zero-process read)
+            let cache_path = format!(
+                "{}/.cache/current_wallpaper",
+                std::env::var("HOME").unwrap_or_default()
+            );
+            if let Ok(content) = std::fs::read_to_string(&cache_path) {
+                let p = content.trim().to_string();
+                if std::path::Path::new(&p).exists() {
+                    return Some(p);
+                }
+            }
+
+            // 3. Live query to awww daemon (fallback)
+            if let Ok(out) = std::process::Command::new("awww").arg("query").output() {
+                let s = String::from_utf8_lossy(&out.stdout);
+                for line in s.lines() {
+                    if line.contains("image:") {
+                        if let Some(p) = line.split("image:").nth(1) {
+                            let path = p.trim().to_string();
+                            if std::path::Path::new(&path).exists() {
+                                return Some(path);
+                            }
                         }
                     }
                 }
             }
-        }
 
-        None
+            None
+        }
     }
 
     /// Loads, centers, and crops an image to exact 1920x1080 RGBA matching awww's Lanczos/crop algorithm.
@@ -970,6 +1022,7 @@ impl WallpaperManager {
 
 impl Drop for WallpaperManager {
     fn drop(&mut self) {
+        #[cfg(target_os = "linux")]
         if let Some(fd) = self.inotify_fd {
             unsafe {
                 for &wd in &self.watch_descs {
@@ -1128,6 +1181,7 @@ mod tests {
         assert_eq!(&buf2[0..3], &[240, 100, 50]);
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn test_new_async_delivers_wakeup_on_cold_cache() {
         let _lock = HOME_LOCK.lock().unwrap();

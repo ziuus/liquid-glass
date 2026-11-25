@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+log = { workspace = true }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
 wayland-client = { workspace = true }
 wayland-protocols = { workspace = true }
 wayland-protocols-plasma = { workspace = true, features = ["client"] }
-log = { workspace = true }
-image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
 libc = "0.2"

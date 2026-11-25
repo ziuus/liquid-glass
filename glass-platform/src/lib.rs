@@ -26,6 +26,7 @@ pub mod capabilities {
 pub mod wallpaper;
 pub use wallpaper::WallpaperManager;
 
+#[cfg(target_os = "linux")]
 pub mod wayland {
     use super::capabilities::GlassCapabilities;
     use wayland_protocols_plasma::blur::client::org_kde_kwin_blur_manager::OrgKdeKwinBlurManager;
@@ -111,6 +112,7 @@ pub mod wayland {
 #[cfg(test)]
 mod tests {
     use super::capabilities::GlassCapabilities;
+    #[cfg(target_os = "linux")]
     use super::wayland::{BlurCompositorProtocol, WaylandContext};
 
     #[test]
@@ -123,6 +125,7 @@ mod tests {
         assert!(caps.refraction);
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn test_wayland_context_capabilities_and_kde_blur() {
         let mut ctx = WaylandContext::default();
