@@ -421,12 +421,9 @@ fn draw_digit(p: vec2<f32>, dig: u32, scale: f32) -> f32 {
             d = min(top_ring, bot_ring);
         }
         case 9u: {
-            let loop_top = dist_segment(q, vec2<f32>(-2.6, -4.0), vec2<f32>(2.6, -4.0));
-            let loop_side = dist_segment(q, vec2<f32>(-2.6, -4.0), vec2<f32>(-2.6, -0.2));
-            let loop_bot = dist_segment(q, vec2<f32>(-2.6, -0.2), vec2<f32>(2.6, -0.2));
-            let v_upper = dist_segment(q, vec2<f32>(2.6, -4.0), vec2<f32>(2.6, 0.5));
-            let spine = dist_segment(q, vec2<f32>(2.6, 0.5), vec2<f32>(-1.8, 4.8));
-            d = min(min(loop_top, loop_side), min(loop_bot, min(v_upper, spine)));
+            let top_loop = abs(length(q - vec2<f32>(0.0, -1.8)) - 2.8);
+            let spine = dist_segment(q, vec2<f32>(-1.6, 5.0), vec2<f32>(2.8, -1.8));
+            d = min(top_loop, spine);
         }
         default: {}
     }
@@ -737,11 +734,11 @@ fn draw_apple_digit(p: vec2<f32>, dig: u32, scale: f32) -> f32 {
             d = min(top_ring, bot_ring);
         }
         case 9u: {
-            // Upper circular bowl with vertical right stem and sweeping curved baseline tail
-            let top_loop = abs(length(q - vec2<f32>(0.0, -2.3)) - 2.4);
-            let stem = dist_segment(q, vec2<f32>(2.4, -2.3), vec2<f32>(2.4, 1.4));
-            let tail = dist_arc(q, vec2<f32>(-1.2, 1.4), 3.6, 0.0, 1.5708);
-            d = min(min(top_loop, stem), tail);
+            // Precise 180-degree typographic rotational counterpart to digit 6
+            // Generous circular upper bowl tangent to sweeping diagonal spine
+            let top_loop = abs(length(q - vec2<f32>(0.0, -2.3)) - 2.5);
+            let spine = dist_segment(q, vec2<f32>(-1.4, 5.0), vec2<f32>(2.5, -2.3));
+            d = min(top_loop, spine);
         }
         default: {}
     }

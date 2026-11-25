@@ -95,16 +95,42 @@ impl OutputHandler for ShellApp {
         &mut self,
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
-        _output: wl_output::WlOutput,
+        output: wl_output::WlOutput,
     ) {
+        if let Some(info) = self.output_state.info(&output) {
+            let (w, h) = if let Some(logical) = info.logical_size {
+                (logical.0.max(1) as u32, logical.1.max(1) as u32)
+            } else if let Some(mode) = info.modes.iter().find(|m| m.current) {
+                (
+                    mode.dimensions.0.max(1) as u32,
+                    mode.dimensions.1.max(1) as u32,
+                )
+            } else {
+                (1920, 1080)
+            };
+            self.center_hero.set_screen_geometry(w, h);
+        }
     }
 
     fn update_output(
         &mut self,
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
-        _output: wl_output::WlOutput,
+        output: wl_output::WlOutput,
     ) {
+        if let Some(info) = self.output_state.info(&output) {
+            let (w, h) = if let Some(logical) = info.logical_size {
+                (logical.0.max(1) as u32, logical.1.max(1) as u32)
+            } else if let Some(mode) = info.modes.iter().find(|m| m.current) {
+                (
+                    mode.dimensions.0.max(1) as u32,
+                    mode.dimensions.1.max(1) as u32,
+                )
+            } else {
+                (1920, 1080)
+            };
+            self.center_hero.set_screen_geometry(w, h);
+        }
     }
 
     fn output_destroyed(
