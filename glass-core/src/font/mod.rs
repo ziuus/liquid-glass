@@ -1447,12 +1447,13 @@ impl UIFont {
         // Bolt if charging: crisp white lightning bolt
         if charging {
             let bolt_col = [255, 255, 255, alpha];
+            // Crisp 3-segment lightning bolt: top slant, middle zag, bottom point
             Self::draw_segment(
                 buf,
                 width,
                 height,
-                (cx - 1.5, cy - 3.5),
-                (cx, cy),
+                (cx + 0.5, cy - 3.2),
+                (cx - 1.2, cy - 0.2),
                 1.2,
                 bolt_col,
             );
@@ -1460,8 +1461,17 @@ impl UIFont {
                 buf,
                 width,
                 height,
-                (cx - 0.5, cy),
-                (cx + 1.2, cy + 3.5),
+                (cx - 1.5, cy - 0.2),
+                (cx + 1.2, cy + 0.2),
+                1.2,
+                bolt_col,
+            );
+            Self::draw_segment(
+                buf,
+                width,
+                height,
+                (cx + 0.8, cy + 0.2),
+                (cx - 0.8, cy + 3.2),
                 1.2,
                 bolt_col,
             );
