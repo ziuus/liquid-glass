@@ -29,7 +29,7 @@
 
 > [!TIP]
 > **Looking for the turnkey Wayland desktop environment & rice?**  
-> Check out [**Liquid Shell (`liquid-shell`)**](https://github.com/ziuus/liquid-shell) — the full desktop rice featuring the Dynamic Island, 3D Hero Clock, App Dock, Tasks Island, audio switcher, and `island-ctl` IPC, powered by this engine.
+> Check out [**🔱 Atlantis**](https://github.com/ziuus/atlantis) — the complete desktop rice featuring the Dynamic Island, 3D Hero Clock, App Dock, Tasks Island, audio switcher, and `island-ctl` IPC, powered by this engine.
 
 > Building this in the open — if it saves you time, a star helps others find it.
 > Found a bug, or have an idea? [Open an issue](https://github.com/ziuus/liquid-glass/issues).
