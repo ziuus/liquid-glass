@@ -9,8 +9,9 @@ Physical optical lensing and glassmorphism UI engine for Linux & Wayland in Rust
 - **Lint (zero warnings allowed)**: `cargo clippy --workspace --all-targets -- -D warnings`
 - **Format check**: `cargo fmt --all -- --check`
 - **Format fix**: `cargo fmt --all`
-- **Run floating Wayland demo**: `cargo run --release -p glass-panel`
 - **Run cross-platform demo**: `cargo run --release -p simple-window`
+- **Run refraction showcase**: `cargo run --release -p simple-demo`
+- **Run SDL2 widget demo**: `cargo run --release -p sdl-widget`
 
 ## Workspace Structure
 
@@ -21,8 +22,8 @@ liquid-glass/
 ├── glass-ui/          # High-level declarative UI widgets (GlassCard, GlassButton, GlassToggle, GlassSlider)
 ├── glass-platform/    # Wayland/X11 compositor capability detection and adapters
 ├── examples/
-│   ├── glass-panel/   # Wayland layer-shell floating media control island
 │   ├── simple-window/ # Cross-platform winit window demo
+│   ├── simple-demo/   # Optical refraction and material showcase
 │   └── sdl-widget/    # SDL2 embedded widget example
 ├── benchmarks/        # bench-surfaces multi-quad benchmark
 └── docs/              # Architectural docs, research, and visual assets

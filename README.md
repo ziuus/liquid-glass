@@ -69,24 +69,14 @@ liquid-glass/
 ├── glass-platform/    # Wayland/X11 layer-shell protocols, awww/swww inotify wallpaper sync, luminance detection
 ├── glass-ui/          # Declarative retained-mode UI widgets (GlassCard, GlassButton, GlassToggle, GlassSlider)
 └── examples/
-    ├── liquid-shell/  # Flagship desktop shell: Dynamic Island, Swiss Analog Dial, Digital Clock, Tasks panel
-    ├── glass-panel/   # Wayland layer-shell floating media island
-    ├── glass-clock/   # Standalone physical liquid glass clock widget
-    ├── glass-todo/    # Standalone glass task management widget
-    └── simple-window/ # Cross-platform desktop window playground (winit + wgpu)
+    ├── simple-window/ # Cross-platform desktop window playground (winit + wgpu)
+    ├── simple-demo/   # Refraction & physical optical parameter showcase
+    └── sdl-widget/    # SDL2 embedded widget integration example
 ```
 
 <br />
 
 ## ⚡ Quickstart
-
-### Arch Linux (AUR)
-Install all liquid-glass demo binaries (`glass-panel`, `glass-clock`, `glass-todo`):
-```bash
-yay -S liquid-glass-git
-# Or using paru:
-paru -S liquid-glass-git
-```
 
 ### Rust Cargo Dependency
 Add `glass-core` and `glass-ui` to your `Cargo.toml`:
@@ -131,110 +121,38 @@ renderer.render(&surfaces)?;
 
 <br />
 
-## 🚀 Running & Installing
+## 🚀 Running Examples
 
-### 1. Liquid Shell (Flagship Wayland Desktop Shell)
-Features the Dynamic Island, System Clock, Task panel, Bottom Dock, and desktop widgets with real-time physical optical glass refraction:
-
-```bash
-# Build & install to ~/.local/bin/liquid-shell and set up ~/.config/liquid-glass/config.json
-./install.sh
-
-# Install with systemd autostart (recommended)
-./install.sh --systemd
-
-# Or run directly (without installing)
-cargo run --release -p liquid-shell
-```
-
-**Hyprland Autostart** (`~/.config/hypr/hyprland.conf`):
-```ini
-exec-once = liquid-shell
-```
-
-**Configuration** (`~/.config/liquid-glass/config.json`):
-*Monitored via inotify — updates styles, themes, and dimensions live without process restarts.*
-
-```json
-{
-  "theme_mode": 0,
-  "style_mode": 2.0,
-  "blur_radius": 0.0,
-  "animation_speed": 1.0,
-  "island": {
-    "edge_style": "curved",
-    "fillet_radius_compact": 10.0,
-    "fillet_radius_expanded": 24.0,
-    "hover_to_expand": true,
-    "style_mode": 2.0,
-    "quick_access": [
-      { "name": "Terminal", "command": "foot",    "icon": "terminal" },
-      { "name": "Browser",  "command": "brave",   "icon": "browser"  },
-      { "name": "Editor",   "command": "code",    "icon": "editor"   },
-      { "name": "Files",    "command": "thunar",  "icon": "files"    },
-      { "name": "Music",    "command": "spotify", "icon": "music"    }
-    ]
-  },
-  "clock": {
-    "enabled": true,
-    "edge_style": "curved",
-    "style_mode": 2.0
-  },
-  "dock": {
-    "enabled": true,
-    "hover_to_expand": true,
-    "style_mode": 2.0,
-    "apps": [
-      { "name": "Terminal", "command": "foot",    "icon": "terminal", "class": "foot"   },
-      { "name": "Browser",  "command": "brave",   "icon": "browser",  "class": "brave"  },
-      { "name": "Editor",   "command": "code",    "icon": "editor",   "class": "code"   },
-      { "name": "Files",    "command": "thunar",  "icon": "folder",   "class": "thunar" },
-      { "name": "Music",    "command": "spotify", "icon": "music",    "class": "spotify"}
-    ]
-  },
-  "todo": {
-    "enabled": true,
-    "edge_style": "straight",
-    "style_mode": 2.0
-  }
-}
-```
-
-**CLI Control** (`island-ctl` or `/tmp/liquid_island.fifo`):
-```bash
-# Fast control with the included CLI:
-island-ctl toggle              # Toggle island visibility
-island-ctl music               # Expand media player
-island-ctl apps                # Expand quick access app launcher
-island-ctl system              # Expand system resource monitor
-island-ctl power               # Expand power menu
-island-ctl tasks               # Toggle tasks / calendar panel
-island-ctl clock               # Toggle clock / hardware capsule
-island-ctl dock                # Toggle bottom app dock
-
-# Live optical & geometry adjustment
-island-ctl style liquid        # True liquid glass (2.0) | frosted (1.0) | obsidian (0.0)
-island-ctl theme auto          # Auto wallpaper luminance | dark | light
-island-ctl set_edge curved     # curved | straight | floating
-
-# Or send commands directly via FIFO:
-echo "toggle" > /tmp/liquid_island.fifo
-echo "music"  > /tmp/liquid_island.fifo
-```
-
-### 2. Floating Desktop Media Island
-Spawns a standalone floating Wayland layer-shell island:
-
-```bash
-cargo run --release -p glass-panel
-```
-
-### 3. Standalone Window Playground
-Cross-platform desktop window running on standard WGPU (no Wayland required):
+### 1. Cross-Platform Desktop Window (`winit`)
+Cross-platform desktop playground running on standard WGPU (Linux, macOS, Windows):
 
 ```bash
 cargo run --release -p simple-window
 ```
+
+### 2. Refraction & Optical Showcase
+Demonstrates Snell's law refraction, Cauchy chromatic dispersion, and lens curvature parameters:
+
+```bash
+cargo run --release -p simple-demo
+```
+
+### 3. Embedded SDL2 Widget
+Demonstrates embedding the liquid glass pipeline inside an existing SDL2 application:
+
+```bash
+cargo run --release -p sdl-widget
+```
+
+<br />
+
+## 🔱 Desktop Shell & Rice (Atlantis)
+
+If you are looking for the complete Wayland desktop suite (Dynamic Island, 3D Hero Clock, App Dock, Tasks Island, systemd service, and `atlantis-ctl` CLI), check out the standalone repository:
+
+👉 [**https://github.com/ziuus/atlantis**](https://github.com/ziuus/atlantis)
+
+Atlantis is a full-featured desktop environment built on top of `liquid-glass`.
 
 <br />
 
