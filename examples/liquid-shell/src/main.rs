@@ -809,6 +809,7 @@ fn main() {
 
     let mut last_minute = 999u32;
     let mut last_frame = Instant::now();
+    let mut last_draw = Instant::now();
     let mut last_config_check = Instant::now();
     let mut last_config_modified = std::fs::metadata(&conf_path)
         .and_then(|m| m.modified())
@@ -1025,45 +1026,65 @@ fn main() {
         let now_local = chrono::Local::now();
         let cur_min = now_local.minute();
         let minute_changed = cur_min != last_minute;
-        if minute_changed {
-            last_minute = cur_min;
-            app.clock.draw();
-            app.clock.needs_redraw = false;
-            app.center_hero.draw();
-            app.center_hero.needs_redraw = false;
-            let _ = conn.flush();
-        } else {
-            if clock_active || app.clock.needs_redraw {
+        let any_active = island_active || todo_active || clock_active || dock_active;
+        let any_dwelling = app.island.hover_dwell_start.is_some()
+            || app.island.hot_edge_dwell_start.is_some()
+            || app.dock.hot_edge_dwell_start.is_some();
+        let can_draw =
+            minute_changed || any_active || last_draw.elapsed() >= Duration::from_millis(8);
+
+        if can_draw {
+            let mut drawn = false;
+            if minute_changed {
+                last_minute = cur_min;
                 app.clock.draw();
                 app.clock.needs_redraw = false;
-                let _ = conn.flush();
-            }
-            if app.center_hero.needs_redraw {
                 app.center_hero.draw();
                 app.center_hero.needs_redraw = false;
+                drawn = true;
+            } else {
+                if clock_active || app.clock.needs_redraw {
+                    app.clock.draw();
+                    app.clock.needs_redraw = false;
+                    drawn = true;
+                }
+                if app.center_hero.needs_redraw {
+                    app.center_hero.draw();
+                    app.center_hero.needs_redraw = false;
+                    drawn = true;
+                }
+            }
+
+            if island_active || app.island.needs_redraw {
+                app.island.draw();
+                app.island.needs_redraw = false;
+                drawn = true;
+            }
+
+            if todo_active || app.todo.needs_redraw {
+                app.todo.draw();
+                app.todo.needs_redraw = false;
+                drawn = true;
+            }
+
+            if dock_active || app.dock.needs_redraw {
+                app.dock.draw();
+                app.dock.needs_redraw = false;
+                drawn = true;
+            }
+
+            if drawn {
+                last_draw = Instant::now();
                 let _ = conn.flush();
             }
         }
 
-        if island_active || app.island.needs_redraw {
-            app.island.draw();
-            app.island.needs_redraw = false;
-            let _ = conn.flush();
-        }
-
-        if todo_active || app.todo.needs_redraw {
-            app.todo.draw();
-            app.todo.needs_redraw = false;
-            let _ = conn.flush();
-        }
-
-        if dock_active || app.dock.needs_redraw {
-            app.dock.draw();
-            app.dock.needs_redraw = false;
-            let _ = conn.flush();
-        }
-
-        let animating = island_active || todo_active || clock_active || dock_active;
+        let pending_redraw = app.island.needs_redraw
+            || app.todo.needs_redraw
+            || app.clock.needs_redraw
+            || app.dock.needs_redraw
+            || app.center_hero.needs_redraw;
+        let animating = any_active || any_dwelling || pending_redraw;
 
         let timeout_ms = if animating {
             let elapsed = last_frame.elapsed();

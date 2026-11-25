@@ -849,9 +849,6 @@ impl IslandWidget {
                 self.hover_dwell_start = None;
                 self.cursor_pos = [-1.0, -1.0];
                 self.last_interaction = Instant::now();
-                if self.mode != IslandMode::CompactPill && self.mode != IslandMode::Hidden {
-                    self.set_mode(IslandMode::CompactPill);
-                }
                 true
             }
             PointerEventKind::Motion { .. } => {
@@ -873,7 +870,7 @@ impl IslandWidget {
                     self.last_interaction = Instant::now();
                     if self.hover_to_expand && self.mode == IslandMode::CompactPill {
                         if let Some(start) = self.hover_dwell_start {
-                            if start.elapsed() >= Duration::from_millis(350) {
+                            if start.elapsed() >= Duration::from_millis(70) {
                                 self.set_mode(IslandMode::MusicExpanded);
                                 self.hover_dwell_start = None;
                             }
@@ -1580,10 +1577,10 @@ impl IslandWidget {
                 (self.music.elapsed_sec / self.music.duration_sec).clamp(0.0, 1.0);
         }
 
-        // Hover to expand dwell trigger
+        // Hover to expand dwell trigger (crisp 70ms responsiveness)
         if self.hover_to_expand && self.is_hovered && self.mode == IslandMode::CompactPill {
             if let Some(start) = self.hover_dwell_start {
-                if start.elapsed() >= Duration::from_millis(150) {
+                if start.elapsed() >= Duration::from_millis(70) {
                     self.set_mode(IslandMode::MusicExpanded);
                     self.hover_dwell_start = None;
                 }
@@ -1629,6 +1626,7 @@ impl IslandWidget {
         let is_active = !settling
             || (self.music.is_playing && self.mode != IslandMode::Hidden)
             || self.mode == IslandMode::Notification
+            || (self.hover_dwell_start.is_some() && self.mode == IslandMode::CompactPill)
             || hold_active;
         self.animating = is_active;
         is_active
@@ -1751,6 +1749,17 @@ impl IslandWidget {
     }
 
     pub fn check_window_overlap(&mut self) {
+        // Never auto-collapse if user is actively interacting or looking at an expanded page!
+        if self.is_hovered
+            || self.is_pressed
+            || self.mode == IslandMode::MusicExpanded
+            || self.mode == IslandMode::SystemOverview
+            || self.mode == IslandMode::QuickAccess
+            || self.mode == IslandMode::PowerMenu
+        {
+            return;
+        }
+
         let check_interval = if self.mode == IslandMode::Hidden {
             Duration::from_millis(1500)
         } else {
@@ -1803,17 +1812,12 @@ impl IslandWidget {
                 } else if is_inside_island && self.mode != IslandMode::Hidden {
                     self.last_interaction = Instant::now();
                     self.hot_edge_dwell_start = None;
-                } else {
+                } else if self.mode != IslandMode::Hidden
+                    && self.last_interaction.elapsed() >= Duration::from_millis(3000)
+                {
                     self.hot_edge_dwell_start = None;
-                    // Outside the island while an app is underneath: auto-hide after brief idle
-                    if self.mode != IslandMode::Hidden
-                        && self.last_interaction.elapsed() >= Duration::from_millis(1200)
-                    {
-                        self.set_mode(IslandMode::Hidden);
-                    }
+                    self.set_mode(IslandMode::Hidden);
                 }
-            } else if self.mode != IslandMode::Hidden {
-                self.set_mode(IslandMode::Hidden);
             }
         }
     }
@@ -1830,7 +1834,7 @@ impl IslandWidget {
 
         if let Ok(mut lock) = CURSOR_CACHE.lock() {
             if let Some(ref c) = *lock {
-                if c.last_check.elapsed() < Duration::from_millis(500) {
+                if c.last_check.elapsed() < Duration::from_millis(250) {
                     return c.pos;
                 }
             }
@@ -1844,18 +1848,30 @@ impl IslandWidget {
                 });
                 let sock_path = format!("{}/hypr/{}/.socket.sock", xdg, his);
                 if let Ok(mut stream) = UnixStream::connect(&sock_path) {
-                    let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
-                    let _ = stream.set_write_timeout(Some(Duration::from_millis(100)));
-                    if stream.write_all(b"cursorpos").is_ok() {
+                    let _ = stream.set_read_timeout(Some(Duration::from_millis(80)));
+                    let _ = stream.set_write_timeout(Some(Duration::from_millis(80)));
+                    if stream.write_all(b"j/cursorpos").is_ok()
+                        || stream.write_all(b"cursorpos").is_ok()
+                    {
                         let mut resp = String::new();
                         if stream.read_to_string(&mut resp).is_ok() {
-                            let parts: Vec<&str> =
-                                resp.trim().split(',').map(|s| s.trim()).collect();
-                            if parts.len() == 2 {
-                                if let (Ok(x), Ok(y)) =
-                                    (parts[0].parse::<i32>(), parts[1].parse::<i32>())
-                                {
-                                    pos = Some((x, y));
+                            let trimmed = resp.trim();
+                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                                if let (Some(x), Some(y)) = (
+                                    val.get("x").and_then(|v| v.as_i64()),
+                                    val.get("y").and_then(|v| v.as_i64()),
+                                ) {
+                                    pos = Some((x as i32, y as i32));
+                                }
+                            } else {
+                                let parts: Vec<&str> =
+                                    trimmed.split(',').map(|s| s.trim()).collect();
+                                if parts.len() == 2 {
+                                    if let (Ok(x), Ok(y)) =
+                                        (parts[0].parse::<i32>(), parts[1].parse::<i32>())
+                                    {
+                                        pos = Some((x, y));
+                                    }
                                 }
                             }
                         }
@@ -3263,11 +3279,11 @@ impl IslandWidget {
 
         match self.mode {
             IslandMode::CompactPill => {
-                // On CompactPill, single click on the disc/icon toggles playback
+                // On CompactPill, single click on the disc/icon toggles playback if playing; clicking anywhere else expands
                 let disc_cx = island_cx - island_w * 0.5 + 20.0;
                 let island_cy = island_top + island_h * 0.5;
                 let d_disc = ((lx - disc_cx).powi(2) + (ly - island_cy).powi(2)).sqrt();
-                if d_disc <= 18.0 {
+                if d_disc <= 18.0 && self.music.is_playing {
                     let _ = Command::new("playerctl").args(["play-pause"]).spawn();
                     self.music.is_playing = !self.music.is_playing;
                 } else {

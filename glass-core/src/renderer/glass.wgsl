@@ -1816,8 +1816,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     } else {
         // ── DARK / VIBRANT BACKDROP (e.g. Ferns, Retro, Pitch Black): LIT SPECULAR + OPTICAL FROST ──
         // Pure frosted blurred glass: zero artificial flat color overlay, zero grey plastic lift
-        let digit_spec_boost = select(1.0, 2.2, is_liquid_text);
-        let dark_spec = spec_line * 0.85 * digit_spec_boost * effective_rim_boost;
+        let digit_spec_boost = select(1.0, 2.4, is_liquid_text);
+        let dark_spec = spec_line * 0.90 * digit_spec_boost * effective_rim_boost;
         let dark_rim = smoothstep(1.5, 0.0, depth) * (0.55 * light_facing) * top_flush * effective_rim_boost;
 
         // Crystalline 3D liquid glass transmission:
@@ -1829,23 +1829,30 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             // 3D cylindrical lens profile: convex curvature across the tube
             let cyl_bulge = sqrt(max(0.0, 1.0 - (1.0 - t_depth) * (1.0 - t_depth)));
             
-            // Cylindrical surface diffuse illumination from top-left key light
-            let cyl_diffuse = pow(light_facing, 1.3) * cyl_bulge * 0.35 * effective_rim_boost;
+            // Cylindrical surface diffuse illumination with 360-degree ambient wrap (never pure black in shadow)
+            let cyl_diffuse = (0.24 + 0.76 * pow(light_facing, 1.2)) * cyl_bulge * 0.45 * effective_rim_boost;
             
-            // Harmonic crystal tint: ethereal diamond-cyan [0.82, 0.92, 1.0] blended with ambient background hue
-            let ambient_hue = normalize(sharp_col + vec3<f32>(0.15, 0.20, 0.28));
-            let crystal_tint = mix(vec3<f32>(0.85, 0.94, 1.0), ambient_hue, 0.35);
+            // Sample wide-aperture wallpaper light: guides nearby vibrant wallpaper photons through the 3D tube
+            let wide_ambient = sample_frost_blur(uv, 48.0);
+            let ambient_photons = max(sharp_col, wide_ambient);
+            let light_guide = ambient_photons * cyl_bulge * 0.55;
+
+            // Harmonic crystal tint: luminous diamond-cyan [0.92, 0.96, 1.0] blended with ambient background hue
+            let ambient_hue = normalize(ambient_photons + vec3<f32>(0.20, 0.28, 0.38));
+            let crystal_tint = mix(vec3<f32>(0.92, 0.96, 1.0), ambient_hue, 0.30);
             
-            // Optical core: subtle luminous transmission concentrated in central axis
-            let core_glow = pow(cyl_bulge, 2.0) * (effective_inner_glow * 0.32);
+            // Optical core: luminous transmission adaptive to wallpaper darkness
+            let dark_factor = clamp((0.35 - local_luma) / 0.35, 0.0, 1.0);
+            let crystal_luminance = (0.42 + 0.45 * dark_factor) * effective_rim_boost;
+            let core_glow = pow(cyl_bulge, 1.6) * crystal_luminance;
             
-            // Razor crisp lit edge trace
-            let edge_crisp = smoothstep(1.2, 0.0, depth) * (0.85 * light_facing) * effective_rim_boost;
+            // Razor crisp 360-degree Fresnel edge ring ensuring full contour legibility against pitch black
+            let fresnel_360 = smoothstep(1.8, 0.0, depth) * (0.60 + 0.40 * light_facing) * effective_rim_boost;
             
-            // Shadow-side Fresnel grounding so contour is distinct against pure black
-            let shadow_grounding = smoothstep(1.5, 0.0, depth) * pow(shadow_facing, 2.0) * 0.22 * crystal_tint;
+            // Shadow-side Fresnel grounding
+            let shadow_grounding = smoothstep(1.6, 0.0, depth) * pow(shadow_facing, 2.0) * 0.30 * crystal_tint;
             
-            inner_luma_core = crystal_tint * (core_glow + cyl_diffuse) + vec3<f32>(edge_crisp) + shadow_grounding;
+            inner_luma_core = crystal_tint * (core_glow + cyl_diffuse) + light_guide + vec3<f32>(fresnel_360) + shadow_grounding;
         }
         base_surface = col + vec3<f32>(dark_spec + dark_rim) + inner_luma_core;
     }
