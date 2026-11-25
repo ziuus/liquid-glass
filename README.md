@@ -2,7 +2,9 @@
 
 # 🌊 Liquid Glass
 
-### Physical Optical Lensing & Glassmorphism UI Engine for Linux & Wayland
+### Cross-Platform Physical Optical Lensing & Glassmorphism UI Engine (Linux · Windows · macOS)
+
+> **Atlantis Shells**: [Linux / Wayland (`atlantis`)](https://github.com/ziuus/atlantis) · [Windows (`atlantis-win`)](https://github.com/ziuus/atlantis-win) · [macOS (`atlantis-mac`)](https://github.com/ziuus/atlantis-mac)
 
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange?style=flat-square&logo=rust)](https://www.rust-lang.org)
 [![AUR version](https://img.shields.io/aur/version/liquid-glass-git?color=1793d1&logo=arch-linux&logoColor=white&style=flat-square)](https://aur.archlinux.org/packages/liquid-glass-git)
