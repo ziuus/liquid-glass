@@ -318,35 +318,26 @@ impl PointerHandler for ShellApp {
     ) {
         for event in events {
             let sid = event.surface.id();
-            if sid == self.clock.surface_id() && self.clock.on_pointer_event(event) {
-                if self.clock.needs_input_region_update {
-                    self.clock.apply_input_region(&self.compositor_state, _qh);
+            if sid == self.clock.surface_id() {
+                if self.clock.on_pointer_event(event) {
+                    self.clock.needs_redraw = true;
                 }
-                self.clock.draw();
-                self.clock.needs_redraw = false;
-            } else if sid == self.island.surface_id() && self.island.on_pointer_event(event) {
-                if self.island.needs_input_region_update {
-                    self.island.apply_input_region(&self.compositor_state, _qh);
+            } else if sid == self.island.surface_id() {
+                if self.island.on_pointer_event(event) {
+                    self.island.needs_redraw = true;
                 }
-                self.island.draw();
-                self.island.needs_redraw = false;
-            } else if sid == self.todo.surface_id() && self.todo.on_pointer_event(event) {
-                if self.todo.needs_input_region_update {
-                    self.todo.apply_input_region(&self.compositor_state, _qh);
+            } else if sid == self.todo.surface_id() {
+                if self.todo.on_pointer_event(event) {
+                    self.todo.needs_redraw = true;
                 }
-                self.todo.draw();
-                self.todo.needs_redraw = false;
-            } else if sid == self.dock.surface_id() && self.dock.on_pointer_event(event) {
-                if self.dock.needs_input_region_update {
-                    self.dock.apply_input_region(&self.compositor_state, _qh);
+            } else if sid == self.dock.surface_id() {
+                if self.dock.on_pointer_event(event) {
+                    self.dock.needs_redraw = true;
                 }
-                self.dock.draw();
-                self.dock.needs_redraw = false;
             } else if sid == self.center_hero.surface_id()
                 && self.center_hero.on_pointer_event(event)
             {
-                self.center_hero.draw();
-                self.center_hero.needs_redraw = false;
+                self.center_hero.needs_redraw = true;
             }
         }
     }
@@ -1074,15 +1065,14 @@ fn main() {
 
         let animating = island_active || todo_active || clock_active || dock_active;
 
-        if animating {
-            let elapsed = last_frame.elapsed();
-            if elapsed < Duration::from_millis(16) {
-                std::thread::sleep(Duration::from_millis(16) - elapsed);
-            }
-        }
-
         let timeout_ms = if animating {
-            0
+            let elapsed = last_frame.elapsed();
+            let target_frame_ms = 16u64; // ~60fps smooth animation pacing
+            if elapsed < Duration::from_millis(target_frame_ms) {
+                (target_frame_ms - elapsed.as_millis() as u64).max(1) as i32
+            } else {
+                0
+            }
         } else {
             let sec = now_local.second();
             let sub_ms = now_local.timestamp_subsec_millis();

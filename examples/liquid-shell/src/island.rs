@@ -513,6 +513,48 @@ impl IslandWidget {
             _ => self.sample_island_is_light(),
         }
     }
+
+    pub fn toggle_audio_sink() {
+        if let Ok(output) = Command::new("wpctl").args(["status"]).output() {
+            let text = String::from_utf8_lossy(&output.stdout);
+            let mut sinks = Vec::new();
+            let mut in_sinks = false;
+            for line in text.lines() {
+                if line.contains("Sinks:") {
+                    in_sinks = true;
+                    continue;
+                } else if in_sinks
+                    && (line.contains("Sink endpoints:")
+                        || line.contains("Sources:")
+                        || line.trim().is_empty())
+                {
+                    in_sinks = false;
+                }
+                if in_sinks {
+                    let trimmed = line.trim();
+                    let is_active = trimmed.contains('*');
+                    for word in trimmed.split_whitespace() {
+                        let clean = word.trim_matches(|c: char| !c.is_ascii_digit());
+                        if let Ok(id) = clean.parse::<u32>() {
+                            sinks.push((id, is_active));
+                            break;
+                        }
+                    }
+                }
+            }
+            if sinks.len() >= 2 {
+                if let Some(pos) = sinks.iter().position(|(_, active)| *active) {
+                    let next_idx = (pos + 1) % sinks.len();
+                    let target_id = sinks[next_idx].0;
+                    let _ = Command::new("wpctl")
+                        .args(["set-default", &target_id.to_string()])
+                        .spawn();
+                    return;
+                }
+            }
+        }
+        let _ = Command::new("pavucontrol").spawn();
+    }
     pub fn new<D>(
         qh: &QueueHandle<D>,
         compositor: &CompositorState,
@@ -825,6 +867,7 @@ impl IslandWidget {
                 }
 
                 let inside = self.is_inside_island(lx, ly);
+                let prev_hover = self.is_hovered;
                 if inside {
                     self.is_hovered = true;
                     self.last_interaction = Instant::now();
@@ -864,7 +907,9 @@ impl IslandWidget {
                         }
                     }
                 }
-                true
+                !(self.mode == IslandMode::CompactPill
+                    && !self.is_pressed
+                    && prev_hover == self.is_hovered)
             }
             PointerEventKind::Press { button, .. } => {
                 let lx = event.position.0 as f32;
@@ -2095,7 +2140,30 @@ impl IslandWidget {
                         FontWeight::Bold,
                     );
 
-                    // Right: Crisp Live Battery Indicator
+                    // Right: pocket-dots Network status dot + Crisp Live Battery Indicator
+                    let dot_x = right_x - 18.0;
+                    let is_online = std::path::Path::new("/sys/class/net/wlan0/carrier").exists()
+                        || std::path::Path::new("/sys/class/net/eth0/carrier").exists()
+                        || std::fs::read_to_string("/sys/class/net/wlan0/operstate")
+                            .map(|s| s.trim() == "up")
+                            .unwrap_or(false);
+                    let net_col = if is_online {
+                        [52, 199, 89, 230] // Emerald Green online dot
+                    } else {
+                        [255, 159, 10, 230] // Amber offline dot
+                    };
+                    UIFont::draw_rounded_rect_fill(
+                        buf,
+                        self.width,
+                        self.height,
+                        dot_x,
+                        island_cy,
+                        2.5,
+                        2.5,
+                        2.5,
+                        net_col,
+                    );
+
                     UIFont::draw_battery_icon(
                         buf,
                         self.width,
@@ -3225,7 +3293,7 @@ impl IslandWidget {
                     self.music.elapsed_sec = 0.0;
                     self.music.progress = 0.0;
                 } else if d_output <= 20.0 {
-                    let _ = Command::new("pavucontrol").spawn();
+                    Self::toggle_audio_sink();
                 } else if ly >= island_top + 68.0 && ly <= island_top + 98.0 {
                     let bar_left = island_cx - bar_w * 0.5;
                     let ratio = ((lx - bar_left) / bar_w).clamp(0.0, 1.0);
