@@ -677,16 +677,61 @@ impl WallpaperManager {
                 }
             }
 
-            // 3. Live query to awww daemon (fallback)
-            if let Ok(out) = std::process::Command::new("awww").arg("query").output() {
-                let s = String::from_utf8_lossy(&out.stdout);
-                for line in s.lines() {
-                    if line.contains("image:") {
+            // 3. Live query to awww / swww daemon (fallback)
+            for bin in ["awww", "swww"] {
+                if let Ok(out) = std::process::Command::new(bin).arg("query").output() {
+                    let s = String::from_utf8_lossy(&out.stdout);
+                    for line in s.lines() {
                         if let Some(p) = line.split("image:").nth(1) {
                             let path = p.trim().to_string();
                             if std::path::Path::new(&path).exists() {
                                 return Some(path);
                             }
+                        }
+                    }
+                }
+            }
+
+            // 4. KDE Plasma wallpaper config
+            let home = std::env::var("HOME").unwrap_or_default();
+            let kde_cfg = format!("{}/.config/plasma-org.kde.plasma.desktop-appletsrc", home);
+            if let Ok(content) = std::fs::read_to_string(&kde_cfg) {
+                for line in content.lines() {
+                    if let Some(rest) = line.trim().strip_prefix("Image=") {
+                        let p = rest.trim().trim_start_matches("file://").to_string();
+                        if std::path::Path::new(&p).exists() {
+                            return Some(p);
+                        }
+                    }
+                }
+            }
+
+            // 5. GNOME / Cinnamon / Cosmic gsettings fallback
+            if let Ok(out) = std::process::Command::new("gsettings")
+                .args(["get", "org.gnome.desktop.background", "picture-uri"])
+                .output()
+            {
+                if out.status.success() {
+                    let raw = String::from_utf8_lossy(&out.stdout);
+                    let p = raw
+                        .trim()
+                        .trim_matches('\'')
+                        .trim_start_matches("file://")
+                        .to_string();
+                    if std::path::Path::new(&p).exists() {
+                        return Some(p);
+                    }
+                }
+            }
+
+            // 6. Nitrogen fallback
+            let nitro_cfg = format!("{}/.config/nitrogen/bg-saved.cfg", home);
+            if let Ok(content) = std::fs::read_to_string(&nitro_cfg) {
+                for line in content.lines() {
+                    if let Some(rest) = line.trim().strip_prefix("file=") {
+                        let p = rest.trim().to_string();
+                        if std::path::Path::new(&p).exists() {
+                            return Some(p);
                         }
                     }
                 }
