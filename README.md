@@ -14,10 +14,13 @@
 
 <br />
 
-| Crystalline Light Mode (Physical Refraction & Specular Glint) | Deep Dark Foliage Mode (Chlorophyll Backing & Ambient Rim) |
+| Crystalline Light Optical Refraction | Deep Dark Foliage Optical Refraction |
 | :---: | :---: |
-| <img src="assets/photo_2026-11-10_12-42-23.jpg" alt="Dynamic Island Light" width="380" /> | <img src="assets/photo_2026-11-10_12-41-34.jpg" alt="Quick Access Island Dark" width="380" /> |
-| <img src="assets/photo_2026-11-10_12-33-31.jpg" alt="Digital Clock Light" width="380" /> | <img src="assets/photo_2026-11-10_12-41-51.jpg" alt="Tasks & Agenda Dark" width="380" /> |
+| <img src="docs/screenshots/glass-showcase-1.png" alt="Liquid Glass Crystalline Light" width="480" /> | <img src="docs/screenshots/glass-showcase-2.png" alt="Liquid Glass Deep Dark" width="480" /> |
+
+<br />
+
+<img src="docs/screenshots/glass-showcase-3.png" alt="Liquid Glass Desktop Optical Lensing" width="100%" />
 
 *Physical plano-convex Snell refraction, Cauchy chromatic dispersion (RGB edge separation), directional 7px contact shadows, and tactile spring kinetics running natively on Wayland.*
 
@@ -146,13 +149,10 @@ cargo run --release -p sdl-widget
 
 <br />
 
-## 🔱 Desktop Shell & Rice (Atlantis)
+## 🔱 Related Repositories
 
-If you are looking for the complete Wayland desktop suite (Dynamic Island, 3D Hero Clock, App Dock, Tasks Island, systemd service, and `atlantis-ctl` CLI), check out the standalone repository:
-
-👉 [**https://github.com/ziuus/atlantis**](https://github.com/ziuus/atlantis)
-
-Atlantis is a full-featured desktop environment built on top of `liquid-glass`.
+- **Desktop Shell & Complete Rice**: [**🔱 Atlantis**](https://github.com/ziuus/atlantis) — Turnkey Wayland desktop environment with Dynamic Island, 3D Hero Clock, App Dock, and Agenda Island built on this engine.
+- **Design Research & Promotional Lab**: [**🗃️ liquid-glass-archive**](https://github.com/ziuus/liquid-glass-archive) — Historical Snell refraction papers, early UI mockups, launch kits, and promotional media archives.
 
 <br />
 
