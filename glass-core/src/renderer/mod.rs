@@ -49,6 +49,7 @@ pub struct GlassRenderer {
     query_resolve_buffer: Option<wgpu::Buffer>,
     query_destination_buffer: Option<wgpu::Buffer>,
     frame_count: u32,
+    power_save: bool,
 }
 
 impl GlassRenderer {
@@ -377,7 +378,16 @@ impl GlassRenderer {
             query_resolve_buffer,
             query_destination_buffer,
             frame_count: 0,
+            power_save: false,
         })
+    }
+
+    pub fn set_power_save(&mut self, enabled: bool) {
+        self.power_save = enabled;
+    }
+
+    pub fn is_power_save(&self) -> bool {
+        self.power_save
     }
 
     pub fn device(&self) -> &wgpu::Device {
@@ -474,16 +484,17 @@ impl GlassRenderer {
                 _ => 16.0,
             };
 
+            let ps = self.power_save;
             let uniforms = GlassUniforms {
                 bounds: glass.bounds,
                 tint: params.tint,
                 ior: params.ior,
                 roughness: params.roughness,
-                refraction_strength: params.refraction_strength,
-                dispersion: params.dispersion,
-                fresnel_strength: params.fresnel_strength,
-                specular_strength: params.specular_strength,
-                blur_radius: params.blur_radius,
+                refraction_strength: if ps { 0.0 } else { params.refraction_strength },
+                dispersion: if ps { 0.0 } else { params.dispersion },
+                fresnel_strength: if ps { 0.0 } else { params.fresnel_strength },
+                specular_strength: if ps { 0.0 } else { params.specular_strength },
+                blur_radius: if ps { 0.0 } else { params.blur_radius },
                 curvature: glass.curvature,
                 bevel: glass.bevel,
                 time,
@@ -502,7 +513,7 @@ impl GlassRenderer {
                 ],
                 is_light: params.tint[3].max(0.0),
                 padding: glass.element_type,
-                _pad: [glass.style_mode, 0.0],
+                _pad: [if ps { 0.0 } else { glass.style_mode }, 0.0],
                 contrast_mode: glass.contrast_mode,
                 rim_boost: if glass.rim_boost != 0.0 {
                     glass.rim_boost
