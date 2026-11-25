@@ -3,6 +3,9 @@
 //! Provides clean, professional, neo-grotesque typography matching Apple SF Pro.
 
 use ab_glyph::{point, Font, FontRef, PxScale, ScaleFont};
+use std::sync::atomic::{AtomicU32, Ordering};
+
+static GLOBAL_FONT_SCALE: AtomicU32 = AtomicU32::new(1.12f32.to_bits());
 
 const FONT_BOLD: &[u8] = include_bytes!("../../../assets/fonts/Inter-Bold.ttf");
 const FONT_SEMIBOLD: &[u8] = include_bytes!("../../../assets/fonts/Inter-SemiBold.ttf");
@@ -43,6 +46,15 @@ impl UIFont {
         }
     }
 
+    pub fn set_global_scale(scale: f32) {
+        let clamped = scale.clamp(0.75, 1.60);
+        GLOBAL_FONT_SCALE.store(clamped.to_bits(), Ordering::Relaxed);
+    }
+
+    pub fn global_scale() -> f32 {
+        f32::from_bits(GLOBAL_FONT_SCALE.load(Ordering::Relaxed)).clamp(0.75, 1.60)
+    }
+
     fn get_font(&self, weight: FontWeight) -> &FontRef<'static> {
         match weight {
             FontWeight::Bold => &self.bold,
@@ -54,7 +66,7 @@ impl UIFont {
 
     pub fn measure_text(&self, text: &str, size: f32, weight: FontWeight) -> f32 {
         let font = self.get_font(weight);
-        let scale = PxScale::from(size);
+        let scale = PxScale::from(size * Self::global_scale());
         let scaled = font.as_scaled(scale);
         let mut width = 0.0;
         for ch in text.chars() {
@@ -67,7 +79,7 @@ impl UIFont {
     /// Calculate the baseline y coordinate that centers text vertically around `cy`.
     pub fn vertical_center_baseline(&self, cy: f32, size: f32, weight: FontWeight) -> f32 {
         let font = self.get_font(weight);
-        let scale = PxScale::from(size);
+        let scale = PxScale::from(size * Self::global_scale());
         let scaled = font.as_scaled(scale);
         cy + (scaled.ascent() + scaled.descent()) * 0.5
     }
@@ -182,7 +194,7 @@ impl UIFont {
         weight: FontWeight,
     ) -> f32 {
         let font = self.get_font(weight);
-        let scale = PxScale::from(size);
+        let scale = PxScale::from(size * Self::global_scale());
         let scaled = font.as_scaled(scale);
         let mut pen_x = x;
 
