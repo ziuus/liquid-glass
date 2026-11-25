@@ -204,7 +204,14 @@ fn sample_frost_blur(uv: vec2<f32>, radius: f32) -> vec3<f32> {
         let r = sqrt(t);
         let theta = i * golden_angle;
         let offset = vec2<f32>(r * cos(theta), r * sin(theta)) * rad_uv;
-        let sample_uv = clamp(uv + offset, vec2<f32>(0.001), vec2<f32>(0.999));
+        let raw_uv = uv + offset;
+        let mx = select(raw_uv.x, -raw_uv.x, raw_uv.x < 0.0);
+        let my = select(raw_uv.y, -raw_uv.y, raw_uv.y < 0.0);
+        let sample_uv = clamp(
+            vec2<f32>(select(mx, 2.0 - mx, mx > 1.0), select(my, 2.0 - my, my > 1.0)),
+            vec2<f32>(0.001),
+            vec2<f32>(0.999),
+        );
         let s = textureSampleLevel(background_texture, background_sampler, sample_uv, 0.0).rgb;
         let w = exp(-r * r * 1.6);
         col += s * w;
@@ -1710,7 +1717,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     for (var i = 0; i < 7; i += 1) {
         let f = f32(i) / 6.0; // 0 = red end, 1 = blue end
         let w = vec3<f32>(1.0 - f, 1.0 - abs(2.0 * f - 1.0), f);
-        let sample_uv = clamp(uv + off_uv * (1.0 + (f - 0.5) * 2.0 * disp), vec2<f32>(0.001), vec2<f32>(0.999));
+        let raw_uv = uv + off_uv * (1.0 + (f - 0.5) * 2.0 * disp);
+        let mx = select(raw_uv.x, -raw_uv.x, raw_uv.x < 0.0);
+        let my = select(raw_uv.y, -raw_uv.y, raw_uv.y < 0.0);
+        let sample_uv = clamp(
+            vec2<f32>(select(mx, 2.0 - mx, mx > 1.0), select(my, 2.0 - my, my > 1.0)),
+            vec2<f32>(0.001),
+            vec2<f32>(0.999),
+        );
         sharp_col += w * textureSampleLevel(background_texture, background_sampler, sample_uv, 0.0).rgb;
         wsum += w;
     }
@@ -1862,6 +1876,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let side_rim_flare = 0.0;
 
     var fin = base_surface;
+
+    // Dynamic Island (element_type 27.0): Apple smoked-obsidian glass base so HUD/text/sliders pop on any wallpaper
+    let is_dynamic_island = (params.padding >= 26.5 && params.padding <= 27.5);
+    if is_dynamic_island && style_mode >= 0.5 {
+        let island_tint = select(vec3<f32>(0.035, 0.042, 0.058), vec3<f32>(0.96, 0.97, 0.99), effective_light > 0.5);
+        let island_mix = select(0.76, 0.72, effective_light > 0.5);
+        let rim_preserve = smoothstep(2.0, 0.0, depth) * 0.35;
+        fin = mix(fin, island_tint, island_mix * (1.0 - rim_preserve));
+        // Subtle 1px crisp inner rim along the whole bottom/side capsule edge
+        let capsule_rim = smoothstep(1.2, 0.0, depth) * top_flush * select(0.14, 0.10, effective_light > 0.5);
+        fin += select(vec3<f32>(1.0), vec3<f32>(0.0), effective_light > 0.5) * capsule_rim;
+    }
 
     let flare_mag = (side_bevel_flare + side_rim_flare) * mix(1.0, 0.25, effective_light);
     let flare_rgb = vec3<f32>(flare_mag * 1.02, flare_mag * 0.99, flare_mag * 1.04);
