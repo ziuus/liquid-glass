@@ -514,7 +514,17 @@ impl IslandWidget {
         }
     }
 
-    pub fn toggle_audio_sink() {
+    pub fn show_toast(&mut self, app: &str, summary: &str, body: &str) {
+        self.active_notif = Some(NotificationData {
+            app: app.to_string(),
+            summary: summary.to_string(),
+            body: body.to_string(),
+            timestamp: Instant::now(),
+        });
+        self.set_mode(IslandMode::Notification);
+    }
+
+    pub fn toggle_audio_sink(&mut self) {
         if let Ok(output) = Command::new("wpctl").args(["status"]).output() {
             let text = String::from_utf8_lossy(&output.stdout);
             let mut sinks = Vec::new();
@@ -533,22 +543,35 @@ impl IslandWidget {
                 if in_sinks {
                     let trimmed = line.trim();
                     let is_active = trimmed.contains('*');
+                    let name = trimmed
+                        .trim_start_matches('*')
+                        .trim()
+                        .split_once('.')
+                        .map(|(_, r)| r)
+                        .unwrap_or(trimmed)
+                        .split('[')
+                        .next()
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
                     for word in trimmed.split_whitespace() {
                         let clean = word.trim_matches(|c: char| !c.is_ascii_digit());
                         if let Ok(id) = clean.parse::<u32>() {
-                            sinks.push((id, is_active));
+                            sinks.push((id, is_active, name));
                             break;
                         }
                     }
                 }
             }
             if sinks.len() >= 2 {
-                if let Some(pos) = sinks.iter().position(|(_, active)| *active) {
+                if let Some(pos) = sinks.iter().position(|(_, active, _)| *active) {
                     let next_idx = (pos + 1) % sinks.len();
                     let target_id = sinks[next_idx].0;
+                    let target_name = sinks[next_idx].2.clone();
                     let _ = Command::new("wpctl")
                         .args(["set-default", &target_id.to_string()])
                         .spawn();
+                    self.show_toast("Audio Output", "Switched to", &target_name);
                     return;
                 }
             }
@@ -1013,6 +1036,15 @@ impl IslandWidget {
                 } else {
                     0.0
                 };
+
+                // Wheel scroll on CompactPill adjusts volume via wpctl with immediate feedback
+                if self.mode == IslandMode::CompactPill && delta.abs() > 0.1 {
+                    let step = if delta > 0.0 { "5%-" } else { "5%+" };
+                    let _ = Command::new("wpctl")
+                        .args(["set-volume", "-l", "1.5", "@DEFAULT_AUDIO_SINK@", step])
+                        .spawn();
+                    return true;
+                }
 
                 if delta.abs() > 0.1 && self.last_mode_cycle.elapsed() >= Duration::from_millis(220)
                 {
@@ -3309,7 +3341,7 @@ impl IslandWidget {
                     self.music.elapsed_sec = 0.0;
                     self.music.progress = 0.0;
                 } else if d_output <= 20.0 {
-                    Self::toggle_audio_sink();
+                    self.toggle_audio_sink();
                 } else if ly >= island_top + 68.0 && ly <= island_top + 98.0 {
                     let bar_left = island_cx - bar_w * 0.5;
                     let ratio = ((lx - bar_left) / bar_w).clamp(0.0, 1.0);
@@ -3345,7 +3377,50 @@ impl IslandWidget {
                     }
                 }
             }
-            IslandMode::SystemOverview => {}
+            IslandMode::SystemOverview => {
+                let item_w = (island_w - 52.0) / 4.0;
+                let start_x = island_cx - island_w * 0.5 + 26.0 + item_w * 0.5;
+                let cy = island_top + 78.0;
+
+                for idx in 0..4 {
+                    let cx = start_x + (idx as f32) * item_w;
+                    if (lx - cx).abs() <= (item_w - 10.0) * 0.5 && (ly - cy).abs() <= 28.0 {
+                        match idx {
+                            0 | 1 => {
+                                let _ = Command::new("foot").args(["-e", "btop"]).spawn();
+                                self.set_mode(IslandMode::CompactPill);
+                            }
+                            2 => {
+                                self.show_toast(
+                                    "Power",
+                                    "Battery Status",
+                                    &format!(
+                                        "{}% ({})",
+                                        self.sys_stats.bat_pct,
+                                        if self.sys_stats.bat_charging {
+                                            "Charging"
+                                        } else {
+                                            "Discharging"
+                                        }
+                                    ),
+                                );
+                            }
+                            3 => {
+                                self.show_toast(
+                                    "System",
+                                    "System Uptime",
+                                    &format!(
+                                        "Up {}h {}m",
+                                        self.sys_stats.uptime_hrs, self.sys_stats.uptime_mins
+                                    ),
+                                );
+                            }
+                            _ => {}
+                        }
+                        break;
+                    }
+                }
+            }
             IslandMode::PowerMenu => {
                 let item_w = (island_w - 52.0) / 4.0;
                 let start_x = island_cx - island_w * 0.5 + 26.0 + item_w * 0.5;
