@@ -1829,11 +1829,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         base_surface = col + vec3<f32>(lit_highlight) - vec3<f32>(shadow_meniscus + glass_grounding);
     } else {
         // ── DARK / VIBRANT BACKDROP (e.g. Ferns, Retro, Pitch Black): LIT SPECULAR + OPTICAL FROST ──
-        // Pure crystal-clear glass (zero grey plastic lift!) + subtle 360-degree ambient Fresnel rim
+        // Pure crystal-clear glass with directional angled top-left specular rim (zero full border)
         let digit_spec_boost = select(1.0, 2.4, is_liquid_text);
         let dark_spec = spec_line * 0.90 * digit_spec_boost * effective_rim_boost;
-        let ambient_fresnel = select(0.24, 0.0, is_liquid_text);
-        let dark_rim = smoothstep(1.5, 0.0, depth) * (ambient_fresnel + 0.45 * light_facing) * top_flush * effective_rim_boost;
+        let dark_rim = smoothstep(1.5, 0.0, depth) * (0.55 * light_facing) * top_flush * effective_rim_boost;
         let glass_sheen = vec3<f32>(0.0);
 
         // Crystalline 3D liquid glass transmission:
