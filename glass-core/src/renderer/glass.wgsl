@@ -1877,18 +1877,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     var fin = base_surface;
 
-    // Dynamic Island (element_type 27.0): Apple smoked-obsidian glass base so HUD/text/sliders pop on any wallpaper
-    let is_dynamic_island = (params.padding >= 26.5 && params.padding <= 27.5);
-    if is_dynamic_island && style_mode >= 0.5 {
-        let island_tint = select(vec3<f32>(0.035, 0.042, 0.058), vec3<f32>(0.96, 0.97, 0.99), effective_light > 0.5);
-        let island_mix = select(0.76, 0.72, effective_light > 0.5);
-        let rim_preserve = smoothstep(2.0, 0.0, depth) * 0.35;
-        fin = mix(fin, island_tint, island_mix * (1.0 - rim_preserve));
-        // Subtle 1px crisp inner rim along the whole bottom/side capsule edge
-        let capsule_rim = smoothstep(1.2, 0.0, depth) * top_flush * select(0.14, 0.10, effective_light > 0.5);
-        fin += select(vec3<f32>(1.0), vec3<f32>(0.0), effective_light > 0.5) * capsule_rim;
-    }
-
     let flare_mag = (side_bevel_flare + side_rim_flare) * mix(1.0, 0.25, effective_light);
     let flare_rgb = vec3<f32>(flare_mag * 1.02, flare_mag * 0.99, flare_mag * 1.04);
     fin += flare_rgb;
