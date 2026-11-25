@@ -7,6 +7,8 @@
 > **Atlantis Shells**: [Linux / Wayland (`atlantis`)](https://github.com/ziuus/atlantis) · [Windows (`atlantis-win`)](https://github.com/ziuus/atlantis-win)
 
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange?style=flat-square&logo=rust)](https://www.rust-lang.org)
+[![Crates.io](https://img.shields.io/crates/v/glass-core?style=flat-square&color=fc8d62)](https://crates.io/crates/glass-core)
+[![CI](https://img.shields.io/github/actions/workflow/status/ziuus/liquid-glass/ci-release.yml?style=flat-square&label=CI)](https://github.com/ziuus/liquid-glass/actions)
 [![AUR version](https://img.shields.io/aur/version/liquid-glass-git?color=1793d1&logo=arch-linux&logoColor=white&style=flat-square)](https://aur.archlinux.org/packages/liquid-glass-git)
 [![WGPU](https://img.shields.io/badge/WGPU-0.19-blue?style=flat-square&logo=webgpu)](https://wgpu.rs)
 [![Wayland](https://img.shields.io/badge/Wayland-Layer--Shell-2B3A42?style=flat-square&logo=linux)](https://wayland.freedesktop.org)
