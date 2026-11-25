@@ -2,6 +2,12 @@
 name = "glass-platform"
 version = "0.1.0"
 edition = "2021"
+description = "Cross-platform wallpaper & compositor capability adapter for the Liquid Glass UI engine"
+license = "MIT"
+repository = "https://github.com/ziuus/liquid-glass"
+readme = "../README.md"
+keywords = ["wayland", "wallpaper", "glassmorphism", "linux", "desktop"]
+categories = ["os", "gui"]
 
 [dependencies]
 log = { workspace = true }

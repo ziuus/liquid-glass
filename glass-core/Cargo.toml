@@ -2,6 +2,12 @@
 name = "glass-core"
 version = "0.1.0"
 edition = "2021"
+description = "Physical optical lensing & liquid glass GPU rendering engine (WGPU + WGSL + RK4 springs)"
+license = "MIT"
+repository = "https://github.com/ziuus/liquid-glass"
+readme = "../README.md"
+keywords = ["glassmorphism", "wgpu", "shader", "ui", "wayland"]
+categories = ["graphics", "gui", "rendering"]
 
 [dependencies]
 wgpu = { workspace = true }
