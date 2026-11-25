@@ -1913,5 +1913,5 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     let aa = 1.0 - smoothstep(-1.0, 0.0, sdf);
-    return vec4<f32>(fin * aa, fin_a * aa);
+    return vec4<f32>(fin * fin_a * aa, fin_a * aa);
 }
