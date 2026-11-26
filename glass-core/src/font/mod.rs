@@ -824,14 +824,16 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
+        // Crisp rounded terminal frame
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 8.5, 7.0, 2.5, 1.3, color);
         // Chevron '>'
         Self::draw_segment(
             buf,
             width,
             height,
-            (cx - 6.0, cy - 4.5),
+            (cx - 5.0, cy - 3.2),
             (cx - 1.5, cy),
-            1.5,
+            1.4,
             color,
         );
         Self::draw_segment(
@@ -839,8 +841,8 @@ impl UIFont {
             width,
             height,
             (cx - 1.5, cy),
-            (cx - 6.0, cy + 4.5),
-            1.5,
+            (cx - 5.0, cy + 3.2),
+            1.4,
             color,
         );
         // Underline cursor '_'
@@ -848,9 +850,9 @@ impl UIFont {
             buf,
             width,
             height,
-            (cx + 1.0, cy + 4.5),
-            (cx + 6.5, cy + 4.5),
-            1.5,
+            (cx + 0.8, cy + 3.2),
+            (cx + 5.2, cy + 3.2),
+            1.4,
             color,
         );
     }
@@ -1753,8 +1755,8 @@ impl UIFont {
 
         for py in y_min..=y_max {
             for px in x_min..=x_max {
-                let dx = px as f32 - cx;
-                let dy = py as f32 - cy;
+                let dx = (px as f32 + 0.5) - cx;
+                let dy = (py as f32 + 0.5) - cy;
                 let dist = (dx * dx + dy * dy).sqrt();
 
                 if dist > radius + 1.0 {
@@ -1784,13 +1786,21 @@ impl UIFont {
                     let mix_b = (core_color[2] as f32 * (1.0 - hole_aa)
                         + hole_color[2] as f32 * hole_aa) as u8;
                     [mix_r, mix_g, mix_b]
-                } else if dist <= core_r {
-                    // Center label / core with subtle rotating marker notch
+                } else if dist <= core_r + 1.0 {
+                    // Center label / core with smooth 1px AA edge + rotating marker notch
+                    let core_aa = (core_r + 0.5 - dist).clamp(0.0, 1.0);
                     let notch_angle = (rel_angle.cos() * 0.5 + 0.5).powi(12) * 0.15;
-                    let r = (core_color[0] as f32 * (1.0 - notch_angle)).clamp(0.0, 255.0) as u8;
-                    let g = (core_color[1] as f32 * (1.0 - notch_angle)).clamp(0.0, 255.0) as u8;
-                    let b = (core_color[2] as f32 * (1.0 - notch_angle)).clamp(0.0, 255.0) as u8;
-                    [r, g, b]
+                    let cr = core_color[0] as f32 * (1.0 - notch_angle);
+                    let cg = core_color[1] as f32 * (1.0 - notch_angle);
+                    let cb = core_color[2] as f32 * (1.0 - notch_angle);
+                    let br = (base_body[0] as f32 + (sheen + groove) * 255.0).min(255.0);
+                    let bg = (base_body[1] as f32 + (sheen + groove) * 255.0).min(255.0);
+                    let bb = (base_body[2] as f32 + (sheen + groove) * 255.0).min(255.0);
+                    [
+                        (br * (1.0 - core_aa) + cr * core_aa).clamp(0.0, 255.0) as u8,
+                        (bg * (1.0 - core_aa) + cg * core_aa).clamp(0.0, 255.0) as u8,
+                        (bb * (1.0 - core_aa) + cb * core_aa).clamp(0.0, 255.0) as u8,
+                    ]
                 } else {
                     // Vinyl grooves + rotating specular reflection
                     let light_boost = (sheen + groove).clamp(0.0, 0.45);
