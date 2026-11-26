@@ -869,10 +869,34 @@ impl UIFont {
         // Outer spherical circle (17px)
         Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 8.5, 8.5, 8.5, 1.5, color);
         // Horizontal equator
-        Self::draw_segment(buf, width, height, (cx - 8.2, cy), (cx + 8.2, cy), 1.3, color);
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 8.2, cy),
+            (cx + 8.2, cy),
+            1.3,
+            color,
+        );
         // Upper & lower latitude lines
-        Self::draw_segment(buf, width, height, (cx - 6.6, cy - 4.2), (cx + 6.6, cy - 4.2), 1.1, color);
-        Self::draw_segment(buf, width, height, (cx - 6.6, cy + 4.2), (cx + 6.6, cy + 4.2), 1.1, color);
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 6.6, cy - 4.2),
+            (cx + 6.6, cy - 4.2),
+            1.1,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 6.6, cy + 4.2),
+            (cx + 6.6, cy + 4.2),
+            1.1,
+            color,
+        );
         // Vertical meridian ellipse
         Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 4.0, 8.3, 4.0, 1.3, color);
     }
@@ -919,13 +943,53 @@ impl UIFont {
     ) {
         Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 9.0, 7.2, 2.5, 1.3, color);
         // Left bracket '<'
-        Self::draw_segment(buf, width, height, (cx - 2.6, cy - 3.0), (cx - 5.6, cy), 1.4, color);
-        Self::draw_segment(buf, width, height, (cx - 5.6, cy), (cx - 2.6, cy + 3.0), 1.4, color);
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 2.6, cy - 3.0),
+            (cx - 5.6, cy),
+            1.4,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 5.6, cy),
+            (cx - 2.6, cy + 3.0),
+            1.4,
+            color,
+        );
         // Right bracket '>'
-        Self::draw_segment(buf, width, height, (cx + 2.6, cy - 3.0), (cx + 5.6, cy), 1.4, color);
-        Self::draw_segment(buf, width, height, (cx + 5.6, cy), (cx + 2.6, cy + 3.0), 1.4, color);
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx + 2.6, cy - 3.0),
+            (cx + 5.6, cy),
+            1.4,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx + 5.6, cy),
+            (cx + 2.6, cy + 3.0),
+            1.4,
+            color,
+        );
         // Center slash '/'
-        Self::draw_segment(buf, width, height, (cx + 1.0, cy - 3.8), (cx - 1.0, cy + 3.8), 1.3, color);
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx + 1.0, cy - 3.8),
+            (cx - 1.0, cy + 3.8),
+            1.3,
+            color,
+        );
     }
 
     /// Draw a high-clarity Lucide-grade folder icon (seamless tab + body + inner crease)
@@ -940,12 +1004,49 @@ impl UIFont {
         // Outer folder body
         Self::draw_rounded_rect_stroke(buf, width, height, cx, cy + 1.0, 8.5, 5.5, 2.0, 1.4, color);
         // Top folder tab
-        Self::draw_segment(buf, width, height, (cx - 8.0, cy - 4.5), (cx - 8.0, cy - 6.2), 1.4, color);
-        Self::draw_segment(buf, width, height, (cx - 8.0, cy - 6.2), (cx - 2.4, cy - 6.2), 1.4, color);
-        Self::draw_segment(buf, width, height, (cx - 2.4, cy - 6.2), (cx - 0.6, cy - 4.5), 1.4, color);
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 8.0, cy - 4.5),
+            (cx - 8.0, cy - 6.2),
+            1.4,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 8.0, cy - 6.2),
+            (cx - 2.4, cy - 6.2),
+            1.4,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 2.4, cy - 6.2),
+            (cx - 0.6, cy - 4.5),
+            1.4,
+            color,
+        );
         // Subtle inner crease line
-        let crease = [color[0], color[1], color[2], (color[3] as u16 * 140 / 255) as u8];
-        Self::draw_segment(buf, width, height, (cx - 6.2, cy - 1.5), (cx + 6.2, cy - 1.5), 1.1, crease);
+        let crease = [
+            color[0],
+            color[1],
+            color[2],
+            (color[3] as u16 * 140 / 255) as u8,
+        ];
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 6.2, cy - 1.5),
+            (cx + 6.2, cy - 1.5),
+            1.1,
+            crease,
+        );
     }
 
     /// Draw a high-clarity double-beamed music note icon
@@ -961,11 +1062,43 @@ impl UIFont {
         Self::draw_rounded_rect_fill(buf, width, height, cx - 4.5, cy + 4.0, 2.7, 2.0, 2.0, color);
         Self::draw_rounded_rect_fill(buf, width, height, cx + 4.0, cy + 2.5, 2.7, 2.0, 2.0, color);
         // Stems
-        Self::draw_segment(buf, width, height, (cx - 2.1, cy + 3.8), (cx - 2.1, cy - 5.8), 1.5, color);
-        Self::draw_segment(buf, width, height, (cx + 6.4, cy + 2.3), (cx + 6.4, cy - 7.3), 1.5, color);
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 2.1, cy + 3.8),
+            (cx - 2.1, cy - 5.8),
+            1.5,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx + 6.4, cy + 2.3),
+            (cx + 6.4, cy - 7.3),
+            1.5,
+            color,
+        );
         // Double top cross-beam
-        Self::draw_segment(buf, width, height, (cx - 2.1, cy - 5.8), (cx + 6.4, cy - 7.3), 2.1, color);
-        Self::draw_segment(buf, width, height, (cx - 2.1, cy - 3.2), (cx + 6.4, cy - 4.7), 1.4, color);
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 2.1, cy - 5.8),
+            (cx + 6.4, cy - 7.3),
+            2.1,
+            color,
+        );
+        Self::draw_segment(
+            buf,
+            width,
+            height,
+            (cx - 2.1, cy - 3.2),
+            (cx + 6.4, cy - 4.7),
+            1.4,
+            color,
+        );
     }
 
     #[inline]
