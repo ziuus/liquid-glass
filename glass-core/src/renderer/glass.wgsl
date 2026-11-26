@@ -1812,13 +1812,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var base_surface: vec3<f32>;
 
     if style_mode < 0.5 {
-        // ── 0.0: SOLID CLEAN BACKGROUND (Uniform Light or Dark when above apps) ──
+        // ── 0.0: SOLID CLEAN BACKGROUND (Pure White / Pure Black) ──
         if is_light > 0.5 {
-            let edge_subtle = smoothstep(1.5, 0.0, depth) * 0.06 * top_flush;
-            base_surface = vec3<f32>(0.96, 0.97, 0.99) - vec3<f32>(edge_subtle);
+            let edge_subtle = smoothstep(1.5, 0.0, depth) * 0.08 * top_flush;
+            base_surface = vec3<f32>(1.0, 1.0, 1.0) - vec3<f32>(edge_subtle);
         } else {
-            let edge_rim = smoothstep(1.5, 0.0, depth) * 0.12 * top_flush;
-            base_surface = vec3<f32>(0.05, 0.06, 0.08) + vec3<f32>(edge_rim);
+            let edge_rim = smoothstep(1.5, 0.0, depth) * 0.08 * top_flush;
+            base_surface = vec3<f32>(0.0, 0.0, 0.0) + vec3<f32>(edge_rim);
         }
     } else if effective_light > 0.5 {
         // ── LIGHT / WHITE BACKDROP: CRYSTALLINE SPECULAR GLINT + SHADOW-SIDE OPTICAL GROUNDING ──
