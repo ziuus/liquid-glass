@@ -370,16 +370,16 @@ impl UIFont {
 
         for py in y_min..=y_max {
             for px in x_min..=x_max {
-                let dx = (px as f32 - cx).abs() - (half_w - radius);
-                let dy = (py as f32 - cy).abs() - (half_h - radius);
+                let dx = ((px as f32 + 0.5) - cx).abs() - (half_w - radius);
+                let dy = ((py as f32 + 0.5) - cy).abs() - (half_h - radius);
                 let d_sdf = if dx > 0.0 && dy > 0.0 {
                     (dx * dx + dy * dy).sqrt() - radius
                 } else {
                     dx.max(dy) - radius
                 };
                 let dist_to_boundary = d_sdf.abs() - half_sw;
-                if dist_to_boundary < 1.0 {
-                    let cov = (1.0 - dist_to_boundary).clamp(0.0, 1.0);
+                if dist_to_boundary < 0.5 {
+                    let cov = (0.5 - dist_to_boundary).clamp(0.0, 1.0);
                     let alpha = ((cov * color[3] as f32).round() as u32).min(255);
                     if alpha > 0 {
                         let idx = ((py as usize) * (width as usize) + (px as usize)) * 4;
@@ -789,15 +789,15 @@ impl UIFont {
 
         for py in y_min..=y_max {
             for px in x_min..=x_max {
-                let pax = px as f32 - p0.0;
-                let pay = py as f32 - p0.1;
+                let pax = (px as f32 + 0.5) - p0.0;
+                let pay = (py as f32 + 0.5) - p0.1;
                 let h = ((pax * bax + pay * bay) / l2).clamp(0.0, 1.0);
                 let qx = pax - bax * h;
                 let qy = pay - bay * h;
                 let dist = (qx * qx + qy * qy).sqrt();
                 let d = dist - half_s;
-                if d < 1.0 {
-                    let cov = (1.0 - d).clamp(0.0, 1.0);
+                if d < 0.5 {
+                    let cov = (0.5 - d).clamp(0.0, 1.0);
                     let alpha = ((cov * color[3] as f32).round() as u32).min(255);
                     if alpha > 0 {
                         let idx = ((py as usize) * (width as usize) + (px as usize)) * 4;
@@ -857,7 +857,7 @@ impl UIFont {
         );
     }
 
-    /// Draw a precision browser globe icon with meridian arcs (reads clearly as a 3D globe)
+    /// Draw a high-clarity browser globe icon with latitude parallels & meridian arc
     pub fn draw_browser_icon(
         buf: &mut [u8],
         width: u32,
@@ -866,20 +866,15 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        // Outer spherical circle
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 7.0, 7.0, 7.0, 1.4, color);
-        // Horizontal equator line
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx - 6.8, cy),
-            (cx + 6.8, cy),
-            1.2,
-            color,
-        );
-        // Vertical meridian curved ellipse
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 3.4, 6.8, 3.4, 1.2, color);
+        // Outer spherical circle (17px)
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 8.5, 8.5, 8.5, 1.5, color);
+        // Horizontal equator
+        Self::draw_segment(buf, width, height, (cx - 8.2, cy), (cx + 8.2, cy), 1.3, color);
+        // Upper & lower latitude lines
+        Self::draw_segment(buf, width, height, (cx - 6.6, cy - 4.2), (cx + 6.6, cy - 4.2), 1.1, color);
+        Self::draw_segment(buf, width, height, (cx - 6.6, cy + 4.2), (cx + 6.6, cy + 4.2), 1.1, color);
+        // Vertical meridian ellipse
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 4.0, 8.3, 4.0, 1.3, color);
     }
 
     /// Draw a precision close/dismiss icon (X)
@@ -913,7 +908,7 @@ impl UIFont {
         );
     }
 
-    /// Draw a precision editor code brackets icon (< / >)
+    /// Draw a high-clarity editor window icon with `< / >` inside
     pub fn draw_editor_icon(
         buf: &mut [u8],
         width: u32,
@@ -922,57 +917,18 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 9.0, 7.2, 2.5, 1.3, color);
         // Left bracket '<'
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx - 3.0, cy - 5.0),
-            (cx - 7.0, cy),
-            1.4,
-            color,
-        );
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx - 7.0, cy),
-            (cx - 3.0, cy + 5.0),
-            1.4,
-            color,
-        );
+        Self::draw_segment(buf, width, height, (cx - 2.6, cy - 3.0), (cx - 5.6, cy), 1.4, color);
+        Self::draw_segment(buf, width, height, (cx - 5.6, cy), (cx - 2.6, cy + 3.0), 1.4, color);
         // Right bracket '>'
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx + 3.0, cy - 5.0),
-            (cx + 7.0, cy),
-            1.4,
-            color,
-        );
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx + 7.0, cy),
-            (cx + 3.0, cy + 5.0),
-            1.4,
-            color,
-        );
+        Self::draw_segment(buf, width, height, (cx + 2.6, cy - 3.0), (cx + 5.6, cy), 1.4, color);
+        Self::draw_segment(buf, width, height, (cx + 5.6, cy), (cx + 2.6, cy + 3.0), 1.4, color);
         // Center slash '/'
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx + 1.2, cy - 6.0),
-            (cx - 1.2, cy + 6.0),
-            1.3,
-            color,
-        );
+        Self::draw_segment(buf, width, height, (cx + 1.0, cy - 3.8), (cx - 1.0, cy + 3.8), 1.3, color);
     }
 
-    /// Draw a precision Lucide-grade folder icon (clean tab + body outline)
+    /// Draw a high-clarity Lucide-grade folder icon (seamless tab + body + inner crease)
     pub fn draw_folder_icon(
         buf: &mut [u8],
         width: u32,
@@ -981,39 +937,18 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        // Tab: top left
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx - 7.0, cy - 4.5),
-            (cx - 3.0, cy - 4.5),
-            1.4,
-            color,
-        );
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx - 3.0, cy - 4.5),
-            (cx - 1.5, cy - 2.5),
-            1.4,
-            color,
-        );
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx - 1.5, cy - 2.5),
-            (cx + 7.0, cy - 2.5),
-            1.4,
-            color,
-        );
-        // Folder body outline
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy + 1.5, 7.0, 4.5, 1.5, 1.3, color);
+        // Outer folder body
+        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy + 1.0, 8.5, 5.5, 2.0, 1.4, color);
+        // Top folder tab
+        Self::draw_segment(buf, width, height, (cx - 8.0, cy - 4.5), (cx - 8.0, cy - 6.2), 1.4, color);
+        Self::draw_segment(buf, width, height, (cx - 8.0, cy - 6.2), (cx - 2.4, cy - 6.2), 1.4, color);
+        Self::draw_segment(buf, width, height, (cx - 2.4, cy - 6.2), (cx - 0.6, cy - 4.5), 1.4, color);
+        // Subtle inner crease line
+        let crease = [color[0], color[1], color[2], (color[3] as u16 * 140 / 255) as u8];
+        Self::draw_segment(buf, width, height, (cx - 6.2, cy - 1.5), (cx + 6.2, cy - 1.5), 1.1, crease);
     }
 
-    /// Draw a precision Lucide-grade music note icon
+    /// Draw a high-clarity double-beamed music note icon
     pub fn draw_music_icon(
         buf: &mut [u8],
         width: u32,
@@ -1022,40 +957,15 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        // Left note head
-        Self::draw_rounded_rect_fill(buf, width, height, cx - 4.0, cy + 3.0, 2.4, 1.8, 1.8, color);
-        // Right note head
-        Self::draw_rounded_rect_fill(buf, width, height, cx + 4.0, cy + 1.0, 2.4, 1.8, 1.8, color);
-        // Left stem
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx - 2.0, cy + 3.0),
-            (cx - 2.0, cy - 5.5),
-            1.4,
-            color,
-        );
-        // Right stem
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx + 6.0, cy + 1.0),
-            (cx + 6.0, cy - 7.5),
-            1.4,
-            color,
-        );
-        // Connecting top cross-beam
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx - 2.0, cy - 5.5),
-            (cx + 6.0, cy - 7.5),
-            2.0,
-            color,
-        );
+        // Left & right note heads
+        Self::draw_rounded_rect_fill(buf, width, height, cx - 4.5, cy + 4.0, 2.7, 2.0, 2.0, color);
+        Self::draw_rounded_rect_fill(buf, width, height, cx + 4.0, cy + 2.5, 2.7, 2.0, 2.0, color);
+        // Stems
+        Self::draw_segment(buf, width, height, (cx - 2.1, cy + 3.8), (cx - 2.1, cy - 5.8), 1.5, color);
+        Self::draw_segment(buf, width, height, (cx + 6.4, cy + 2.3), (cx + 6.4, cy - 7.3), 1.5, color);
+        // Double top cross-beam
+        Self::draw_segment(buf, width, height, (cx - 2.1, cy - 5.8), (cx + 6.4, cy - 7.3), 2.1, color);
+        Self::draw_segment(buf, width, height, (cx - 2.1, cy - 3.2), (cx + 6.4, cy - 4.7), 1.4, color);
     }
 
     #[inline]
