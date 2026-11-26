@@ -5,6 +5,8 @@
 use ab_glyph::{point, Font, FontRef, PxScale, ScaleFont};
 use std::sync::atomic::{AtomicU32, Ordering};
 
+mod icons;
+
 static GLOBAL_FONT_SCALE: AtomicU32 = AtomicU32::new(1.12f32.to_bits());
 
 const FONT_BOLD: &[u8] = include_bytes!("../../assets/fonts/Inter-Bold.ttf");
@@ -728,41 +730,17 @@ impl UIFont {
         r: f32,
         color: [u8; 4],
     ) {
-        // Bell dome: rounded rectangle upper body
-        Self::draw_rounded_rect_fill(
+        let size = (r * 2.1).clamp(14.0, 24.0);
+        icons::draw_vector_icon(
             buf,
             width,
             height,
             cx,
-            cy - r * 0.15,
-            r * 0.50,
-            r * 0.55,
-            r * 0.45,
+            cy,
+            size,
+            1.45,
             color,
-        );
-        // Bell rim flare at bottom
-        Self::draw_rounded_rect_fill(
-            buf,
-            width,
-            height,
-            cx,
-            cy + r * 0.40,
-            r * 0.72,
-            r * 0.16,
-            r * 0.16,
-            color,
-        );
-        // Bell clapper at bottom center
-        Self::draw_rounded_rect_fill(
-            buf,
-            width,
-            height,
-            cx,
-            cy + r * 0.68,
-            r * 0.22,
-            r * 0.22,
-            r * 0.22,
-            color,
+            icons::ICON_BELL,
         );
     }
 
@@ -824,36 +802,16 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        // Crisp rounded terminal frame
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 8.5, 7.0, 2.5, 1.3, color);
-        // Chevron '>'
-        Self::draw_segment(
+        icons::draw_vector_icon(
             buf,
             width,
             height,
-            (cx - 5.0, cy - 3.2),
-            (cx - 1.5, cy),
-            1.4,
+            cx,
+            cy,
+            20.0,
+            1.5,
             color,
-        );
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx - 1.5, cy),
-            (cx - 5.0, cy + 3.2),
-            1.4,
-            color,
-        );
-        // Underline cursor '_'
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx + 0.8, cy + 3.2),
-            (cx + 5.2, cy + 3.2),
-            1.4,
-            color,
+            icons::ICON_TERMINAL,
         );
     }
 
@@ -866,39 +824,17 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        // Outer spherical circle (17px)
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 8.5, 8.5, 8.5, 1.5, color);
-        // Horizontal equator
-        Self::draw_segment(
+        icons::draw_vector_icon(
             buf,
             width,
             height,
-            (cx - 8.2, cy),
-            (cx + 8.2, cy),
-            1.3,
+            cx,
+            cy,
+            20.0,
+            1.45,
             color,
+            icons::ICON_BROWSER,
         );
-        // Upper & lower latitude lines
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx - 6.6, cy - 4.2),
-            (cx + 6.6, cy - 4.2),
-            1.1,
-            color,
-        );
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx - 6.6, cy + 4.2),
-            (cx + 6.6, cy + 4.2),
-            1.1,
-            color,
-        );
-        // Vertical meridian ellipse
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 4.0, 8.3, 4.0, 1.3, color);
     }
 
     /// Draw a precision close/dismiss icon (X)
@@ -941,54 +877,16 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 9.0, 7.2, 2.5, 1.3, color);
-        // Left bracket '<'
-        Self::draw_segment(
+        icons::draw_vector_icon(
             buf,
             width,
             height,
-            (cx - 2.6, cy - 3.0),
-            (cx - 5.6, cy),
-            1.4,
+            cx,
+            cy,
+            20.0,
+            1.45,
             color,
-        );
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx - 5.6, cy),
-            (cx - 2.6, cy + 3.0),
-            1.4,
-            color,
-        );
-        // Right bracket '>'
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx + 2.6, cy - 3.0),
-            (cx + 5.6, cy),
-            1.4,
-            color,
-        );
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx + 5.6, cy),
-            (cx + 2.6, cy + 3.0),
-            1.4,
-            color,
-        );
-        // Center slash '/'
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx + 1.0, cy - 3.8),
-            (cx - 1.0, cy + 3.8),
-            1.3,
-            color,
+            icons::ICON_EDITOR,
         );
     }
 
@@ -1001,51 +899,16 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        // Outer folder body
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy + 1.0, 8.5, 5.5, 2.0, 1.4, color);
-        // Top folder tab
-        Self::draw_segment(
+        icons::draw_vector_icon(
             buf,
             width,
             height,
-            (cx - 8.0, cy - 4.5),
-            (cx - 8.0, cy - 6.2),
-            1.4,
+            cx,
+            cy,
+            20.0,
+            1.45,
             color,
-        );
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx - 8.0, cy - 6.2),
-            (cx - 2.4, cy - 6.2),
-            1.4,
-            color,
-        );
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx - 2.4, cy - 6.2),
-            (cx - 0.6, cy - 4.5),
-            1.4,
-            color,
-        );
-        // Subtle inner crease line
-        let crease = [
-            color[0],
-            color[1],
-            color[2],
-            (color[3] as u16 * 140 / 255) as u8,
-        ];
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx - 6.2, cy - 1.5),
-            (cx + 6.2, cy - 1.5),
-            1.1,
-            crease,
+            icons::ICON_FOLDER,
         );
     }
 
@@ -1058,46 +921,16 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        // Left & right note heads
-        Self::draw_rounded_rect_fill(buf, width, height, cx - 4.5, cy + 4.0, 2.7, 2.0, 2.0, color);
-        Self::draw_rounded_rect_fill(buf, width, height, cx + 4.0, cy + 2.5, 2.7, 2.0, 2.0, color);
-        // Stems
-        Self::draw_segment(
+        icons::draw_vector_icon(
             buf,
             width,
             height,
-            (cx - 2.1, cy + 3.8),
-            (cx - 2.1, cy - 5.8),
+            cx,
+            cy,
+            20.0,
             1.5,
             color,
-        );
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx + 6.4, cy + 2.3),
-            (cx + 6.4, cy - 7.3),
-            1.5,
-            color,
-        );
-        // Double top cross-beam
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx - 2.1, cy - 5.8),
-            (cx + 6.4, cy - 7.3),
-            2.1,
-            color,
-        );
-        Self::draw_segment(
-            buf,
-            width,
-            height,
-            (cx - 2.1, cy - 3.2),
-            (cx + 6.4, cy - 4.7),
-            1.4,
-            color,
+            icons::ICON_MUSIC,
         );
     }
 
@@ -1116,13 +949,17 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        // Body (half_w = 6.0, half_h = 4.5, radius = 2.0)
-        Self::draw_rounded_rect_fill(buf, width, height, cx, cy + 2.5, 6.0, 4.5, 2.0, color);
-        // Shackle (arched stroke, half_w = 3.6, half_h = 4.0, radius = 3.6)
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy - 3.5, 3.6, 4.0, 3.6, 1.4, color);
-        // Keyhole dot (contrast negative dot inside body)
-        let inv_color = [20, 25, 35, 255];
-        Self::draw_rounded_rect_fill(buf, width, height, cx, cy + 2.0, 1.2, 1.6, 1.0, inv_color);
+        icons::draw_vector_icon(
+            buf,
+            width,
+            height,
+            cx,
+            cy,
+            18.0,
+            1.45,
+            color,
+            icons::ICON_LOCK,
+        );
     }
 
     /// Draw a precision Lucide-grade Moon icon (crescent moon for Suspend)
@@ -1134,41 +971,17 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        let r = 7.0f32;
-        let r_in = 6.2f32;
-        let off_x = 3.2f32;
-        let off_y = -1.8f32;
-
-        let min_x = (cx - r - 1.0).max(0.0) as u32;
-        let max_x = (cx + r + 1.0).min(width as f32 - 1.0) as u32;
-        let min_y = (cy - r - 1.0).max(0.0) as u32;
-        let max_y = (cy + r + 1.0).min(height as f32 - 1.0) as u32;
-
-        for y in min_y..=max_y {
-            for x in min_x..=max_x {
-                let px = x as f32 + 0.5;
-                let py = y as f32 + 0.5;
-                let d_outer = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt() - r;
-                let d_inner =
-                    ((px - (cx + off_x)).powi(2) + (py - (cy + off_y)).powi(2)).sqrt() - r_in;
-
-                let d_crescent = d_outer.max(-d_inner);
-                let alpha =
-                    (1.0 - Self::smoothstep(-0.4, 0.4, d_crescent)) * (color[3] as f32 / 255.0);
-                if alpha > 0.01 {
-                    let idx = ((y * width + x) * 4) as usize;
-                    if idx + 3 < buf.len() {
-                        let inv_a = 1.0 - alpha;
-                        buf[idx] = (color[0] as f32 * alpha + buf[idx] as f32 * inv_a) as u8;
-                        buf[idx + 1] =
-                            (color[1] as f32 * alpha + buf[idx + 1] as f32 * inv_a) as u8;
-                        buf[idx + 2] =
-                            (color[2] as f32 * alpha + buf[idx + 2] as f32 * inv_a) as u8;
-                        buf[idx + 3] = (alpha * 255.0).max(buf[idx + 3] as f32) as u8;
-                    }
-                }
-            }
-        }
+        icons::draw_vector_icon(
+            buf,
+            width,
+            height,
+            cx,
+            cy,
+            18.0,
+            1.45,
+            color,
+            icons::ICON_MOON,
+        );
     }
 
     /// Draw a precision Lucide-grade Restart icon (circular arrow)
@@ -1389,50 +1202,16 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        let r = 6.2f32;
-        let min_x = (cx - r - 2.0).max(0.0) as u32;
-        let max_x = (cx + r + 2.0).min(width as f32 - 1.0) as u32;
-        let min_y = (cy - r - 2.0).max(0.0) as u32;
-        let max_y = (cy + r + 2.0).min(height as f32 - 1.0) as u32;
-
-        for y in min_y..=max_y {
-            for x in min_x..=max_x {
-                let px = x as f32 + 0.5;
-                let py = y as f32 + 0.5;
-                let dist = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
-                let d_ring = (dist - r).abs() - 0.75;
-
-                let angle = (py - cy).atan2(px - cx); // [-pi, pi]
-                                                      // Open at top (-1.9 to -1.2 rad)
-                let in_top_gap = angle > -1.95 && angle < -1.19;
-                if !in_top_gap {
-                    let alpha =
-                        (1.0 - Self::smoothstep(-0.4, 0.4, d_ring)) * (color[3] as f32 / 255.0);
-                    if alpha > 0.01 {
-                        let idx = ((y * width + x) * 4) as usize;
-                        if idx + 3 < buf.len() {
-                            let inv_a = 1.0 - alpha;
-                            buf[idx] = (color[0] as f32 * alpha + buf[idx] as f32 * inv_a) as u8;
-                            buf[idx + 1] =
-                                (color[1] as f32 * alpha + buf[idx + 1] as f32 * inv_a) as u8;
-                            buf[idx + 2] =
-                                (color[2] as f32 * alpha + buf[idx + 2] as f32 * inv_a) as u8;
-                            buf[idx + 3] = (alpha * 255.0).max(buf[idx + 3] as f32) as u8;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Center vertical power pin
-        Self::draw_segment(
+        icons::draw_vector_icon(
             buf,
             width,
             height,
-            (cx, cy - 7.5),
-            (cx, cy - 1.0),
+            cx,
+            cy,
+            18.0,
             1.5,
             color,
+            icons::ICON_POWER,
         );
     }
 
@@ -1544,61 +1323,17 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        // Outer chip package (half = 4.2 x 4.2, r = 1.0, stroke = 1.0)
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 4.2, 4.2, 1.0, 1.0, color);
-        // Core die outline
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy, 1.8, 1.8, 0.5, 0.8, color);
-
-        // 2 precision pins per side (stroke = 0.8, length = 1.2)
-        let pin_len = 1.2f32;
-        let pin_col = [
-            color[0],
-            color[1],
-            color[2],
-            ((color[3] as f32) * 0.75) as u8,
-        ];
-        for &offset in &[-1.8f32, 1.8f32] {
-            // Top pins
-            Self::draw_segment(
-                buf,
-                width,
-                height,
-                (cx + offset, cy - 4.2),
-                (cx + offset, cy - 4.2 - pin_len),
-                0.8,
-                pin_col,
-            );
-            // Bottom pins
-            Self::draw_segment(
-                buf,
-                width,
-                height,
-                (cx + offset, cy + 4.2),
-                (cx + offset, cy + 4.2 + pin_len),
-                0.8,
-                pin_col,
-            );
-            // Left pins
-            Self::draw_segment(
-                buf,
-                width,
-                height,
-                (cx - 4.2, cy + offset),
-                (cx - 4.2 - pin_len, cy + offset),
-                0.8,
-                pin_col,
-            );
-            // Right pins
-            Self::draw_segment(
-                buf,
-                width,
-                height,
-                (cx + 4.2, cy + offset),
-                (cx + 4.2 + pin_len, cy + offset),
-                0.8,
-                pin_col,
-            );
-        }
+        icons::draw_vector_icon(
+            buf,
+            width,
+            height,
+            cx,
+            cy,
+            15.0,
+            1.2,
+            color,
+            icons::ICON_CPU,
+        );
     }
 
     /// Draw a precision Lucide-grade RAM memory stick icon
@@ -1610,34 +1345,17 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        // Outer stick module: half_w = 5.6, half_h = 3.6, r = 1.0, stroke = 1.1
-        Self::draw_rounded_rect_stroke(buf, width, height, cx, cy - 0.4, 5.6, 3.6, 1.0, 1.1, color);
-        // 3 memory chip blocks inside
-        for &ox in &[-3.0f32, 0.0f32, 3.0f32] {
-            Self::draw_rounded_rect_fill(
-                buf,
-                width,
-                height,
-                cx + ox,
-                cy - 0.7,
-                0.9,
-                1.6,
-                0.4,
-                color,
-            );
-        }
-        // Bottom contact notch / pins (subtle)
-        for &ox in &[-3.5f32, -1.2f32, 1.2f32, 3.5f32] {
-            Self::draw_segment(
-                buf,
-                width,
-                height,
-                (cx + ox, cy + 3.2),
-                (cx + ox, cy + 4.4),
-                1.0,
-                color,
-            );
-        }
+        icons::draw_vector_icon(
+            buf,
+            width,
+            height,
+            cx,
+            cy,
+            15.0,
+            1.2,
+            color,
+            icons::ICON_RAM,
+        );
     }
 
     /// Draw a precision Lucide-grade Clock / Uptime icon (circle + hands)
@@ -1649,40 +1367,17 @@ impl UIFont {
         cy: f32,
         color: [u8; 4],
     ) {
-        let r = 6.5f32;
-        let min_x = (cx - r - 2.0).max(0.0) as u32;
-        let max_x = (cx + r + 2.0).min(width as f32 - 1.0) as u32;
-        let min_y = (cy - r - 2.0).max(0.0) as u32;
-        let max_y = (cy + r + 2.0).min(height as f32 - 1.0) as u32;
-
-        for y in min_y..=max_y {
-            for x in min_x..=max_x {
-                let px = x as f32 + 0.5;
-                let py = y as f32 + 0.5;
-                let dist = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
-                let d_ring = (dist - r).abs() - 0.75;
-                let alpha = (1.0 - Self::smoothstep(-0.4, 0.4, d_ring)) * (color[3] as f32 / 255.0);
-                if alpha > 0.01 {
-                    let idx = ((y * width + x) * 4) as usize;
-                    if idx + 3 < buf.len() {
-                        let inv_a = 1.0 - alpha;
-                        buf[idx] = (color[0] as f32 * alpha + buf[idx] as f32 * inv_a) as u8;
-                        buf[idx + 1] =
-                            (color[1] as f32 * alpha + buf[idx + 1] as f32 * inv_a) as u8;
-                        buf[idx + 2] =
-                            (color[2] as f32 * alpha + buf[idx + 2] as f32 * inv_a) as u8;
-                        buf[idx + 3] = (alpha * 255.0).max(buf[idx + 3] as f32) as u8;
-                    }
-                }
-            }
-        }
-
-        // Center dot
-        Self::draw_rounded_rect_fill(buf, width, height, cx, cy, 0.9, 0.9, 0.9, color);
-        // Hour hand: center to 12 o'clock (stroke = 1.5)
-        Self::draw_segment(buf, width, height, (cx, cy), (cx, cy - 3.4), 1.5, color);
-        // Minute hand: center to 3 o'clock (stroke = 1.5)
-        Self::draw_segment(buf, width, height, (cx, cy), (cx + 3.4, cy), 1.5, color);
+        icons::draw_vector_icon(
+            buf,
+            width,
+            height,
+            cx,
+            cy,
+            16.0,
+            1.35,
+            color,
+            icons::ICON_CLOCK,
+        );
     }
 
     /// Draw a precision Lucide-grade Settings / More Ellipsis icon (3 balanced dots)
