@@ -389,7 +389,7 @@ impl GlassSlider {
     }
 }
 
-/// An interactive liquid glass text input field with animated focus, cursor blink, and text editing.
+/// An interactive liquid glass text input field with animated focus, cursor blink, selection highlight, and text editing.
 #[derive(Debug, Clone)]
 pub struct GlassTextInput {
     pub bounds: [f32; 4],
@@ -397,7 +397,9 @@ pub struct GlassTextInput {
     pub placeholder: String,
     pub is_focused: bool,
     pub is_hovered: bool,
+    pub is_selecting: bool,
     pub cursor_pos: usize,
+    pub selection_anchor: Option<usize>,
     pub cursor_visible: bool,
     pub cursor_blink_timer: f32,
     pub focus_spring: Spring,
@@ -419,7 +421,9 @@ impl GlassTextInput {
             placeholder: placeholder.to_string(),
             is_focused: false,
             is_hovered: false,
+            is_selecting: false,
             cursor_pos: 0,
+            selection_anchor: None,
             cursor_visible: true,
             cursor_blink_timer: 0.0,
             focus_spring: Spring::with_params(0.0, SpringParams::smooth()),
@@ -439,6 +443,7 @@ impl GlassTextInput {
     pub fn with_text(mut self, text: &str) -> Self {
         self.text = text.to_string();
         self.cursor_pos = self.text.chars().count();
+        self.selection_anchor = None;
         self
     }
 
@@ -454,14 +459,90 @@ impl GlassTextInput {
             && py <= self.bounds[1] + self.bounds[3]
     }
 
+    fn char_to_byte_index(&self, char_idx: usize) -> usize {
+        self.text
+            .char_indices()
+            .map(|(i, _)| i)
+            .nth(char_idx)
+            .unwrap_or(self.text.len())
+    }
+
+    fn hit_test_char_index(&self, px: f32) -> usize {
+        let rel_x = (px - self.bounds[0] - self.pad_x).max(0.0);
+        let target_idx = (rel_x / self.char_width).round() as usize;
+        target_idx.min(self.text.chars().count())
+    }
+
+    fn reset_cursor_blink(&mut self) {
+        self.cursor_visible = true;
+        self.cursor_blink_timer = 0.0;
+    }
+
+    /// Returns the ordered `(start, end)` character indices of the current selection, if non-empty.
+    pub fn selection_range(&self) -> Option<(usize, usize)> {
+        let anchor = self.selection_anchor?;
+        if anchor == self.cursor_pos {
+            None
+        } else {
+            Some((anchor.min(self.cursor_pos), anchor.max(self.cursor_pos)))
+        }
+    }
+
+    /// Returns the currently selected substring, or `""` when nothing is selected.
+    pub fn selected_text(&self) -> &str {
+        let Some((start, end)) = self.selection_range() else {
+            return "";
+        };
+        let start_b = self.char_to_byte_index(start);
+        let end_b = self.char_to_byte_index(end);
+        &self.text[start_b..end_b]
+    }
+
+    pub fn clear_selection(&mut self) {
+        self.selection_anchor = None;
+    }
+
+    pub fn select_all(&mut self) {
+        let len = self.text.chars().count();
+        self.selection_anchor = if len > 0 { Some(0) } else { None };
+        self.cursor_pos = len;
+        self.reset_cursor_blink();
+    }
+
+    pub fn select_range(&mut self, start: usize, end: usize) {
+        let len = self.text.chars().count();
+        let s = start.min(len);
+        let e = end.min(len);
+        self.selection_anchor = if s != e { Some(s) } else { None };
+        self.cursor_pos = e;
+        self.reset_cursor_blink();
+    }
+
+    /// Deletes the active selection if one exists, returning `true` if text was removed.
+    pub fn delete_selection(&mut self) -> bool {
+        let Some((start, end)) = self.selection_range() else {
+            self.selection_anchor = None;
+            return false;
+        };
+        let start_b = self.char_to_byte_index(start);
+        let end_b = self.char_to_byte_index(end);
+        self.text.replace_range(start_b..end_b, "");
+        self.cursor_pos = start;
+        self.selection_anchor = None;
+        self.reset_cursor_blink();
+        true
+    }
+
     pub fn set_focused(&mut self, focused: bool) {
         if self.is_focused != focused {
             self.is_focused = focused;
             self.focus_spring
                 .set_target(if focused { 1.0 } else { 0.0 });
             if focused {
-                self.cursor_visible = true;
-                self.cursor_blink_timer = 0.0;
+                self.reset_cursor_blink();
+            } else {
+                self.is_selecting = false;
+                self.selection_anchor = None;
             }
         }
     }
@@ -472,14 +553,20 @@ impl GlassTextInput {
             self.is_hovered = inside;
             self.hover_spring.set_target(if inside { 1.0 } else { 0.0 });
         }
+        if self.is_selecting && self.is_focused {
+            self.cursor_pos = self.hit_test_char_index(px);
+            self.reset_cursor_blink();
+        }
     }
 
     pub fn on_pointer_down(&mut self, px: f32, py: f32) -> bool {
         if self.contains(px, py) {
             self.set_focused(true);
-            let rel_x = (px - self.bounds[0] - self.pad_x).max(0.0);
-            let target_idx = (rel_x / self.char_width).round() as usize;
-            self.cursor_pos = target_idx.min(self.text.chars().count());
+            let idx = self.hit_test_char_index(px);
+            self.cursor_pos = idx;
+            self.selection_anchor = Some(idx);
+            self.is_selecting = true;
+            self.reset_cursor_blink();
             true
         } else {
             self.set_focused(false);
@@ -487,43 +574,55 @@ impl GlassTextInput {
         }
     }
 
+    pub fn on_pointer_up(&mut self) {
+        self.is_selecting = false;
+        if self.selection_anchor == Some(self.cursor_pos) {
+            self.selection_anchor = None;
+        }
+    }
+
     pub fn insert_char(&mut self, c: char) {
+        self.delete_selection();
         if self
             .max_length
             .is_some_and(|max| self.text.chars().count() >= max)
         {
             return;
         }
-        let byte_pos = self
-            .text
-            .char_indices()
-            .map(|(i, _)| i)
-            .nth(self.cursor_pos)
-            .unwrap_or(self.text.len());
+        let byte_pos = self.char_to_byte_index(self.cursor_pos);
         self.text.insert(byte_pos, c);
         self.cursor_pos += 1;
-        self.cursor_visible = true;
-        self.cursor_blink_timer = 0.0;
+        self.reset_cursor_blink();
     }
 
     pub fn insert_text(&mut self, s: &str) {
-        for c in s.chars() {
-            self.insert_char(c);
+        if s.is_empty() {
+            return;
         }
+        self.delete_selection();
+        for c in s.chars() {
+            if self
+                .max_length
+                .is_some_and(|max| self.text.chars().count() >= max)
+            {
+                break;
+            }
+            let byte_pos = self.char_to_byte_index(self.cursor_pos);
+            self.text.insert(byte_pos, c);
+            self.cursor_pos += 1;
+        }
+        self.reset_cursor_blink();
     }
 
     pub fn delete_backward(&mut self) -> bool {
+        if self.delete_selection() {
+            return true;
+        }
         if self.cursor_pos > 0 {
             self.cursor_pos -= 1;
-            let byte_pos = self
-                .text
-                .char_indices()
-                .map(|(i, _)| i)
-                .nth(self.cursor_pos)
-                .unwrap_or(self.text.len());
+            let byte_pos = self.char_to_byte_index(self.cursor_pos);
             self.text.remove(byte_pos);
-            self.cursor_visible = true;
-            self.cursor_blink_timer = 0.0;
+            self.reset_cursor_blink();
             true
         } else {
             false
@@ -531,16 +630,13 @@ impl GlassTextInput {
     }
 
     pub fn delete_forward(&mut self) -> bool {
+        if self.delete_selection() {
+            return true;
+        }
         if self.cursor_pos < self.text.chars().count() {
-            let byte_pos = self
-                .text
-                .char_indices()
-                .map(|(i, _)| i)
-                .nth(self.cursor_pos)
-                .unwrap_or(self.text.len());
+            let byte_pos = self.char_to_byte_index(self.cursor_pos);
             self.text.remove(byte_pos);
-            self.cursor_visible = true;
-            self.cursor_blink_timer = 0.0;
+            self.reset_cursor_blink();
             true
         } else {
             false
@@ -548,31 +644,79 @@ impl GlassTextInput {
     }
 
     pub fn move_cursor_left(&mut self) {
+        if let Some((start, _)) = self.selection_range() {
+            self.cursor_pos = start;
+            self.selection_anchor = None;
+            self.reset_cursor_blink();
+            return;
+        }
+        self.selection_anchor = None;
         if self.cursor_pos > 0 {
             self.cursor_pos -= 1;
-            self.cursor_visible = true;
-            self.cursor_blink_timer = 0.0;
+            self.reset_cursor_blink();
         }
     }
 
     pub fn move_cursor_right(&mut self) {
+        if let Some((_, end)) = self.selection_range() {
+            self.cursor_pos = end;
+            self.selection_anchor = None;
+            self.reset_cursor_blink();
+            return;
+        }
+        self.selection_anchor = None;
         if self.cursor_pos < self.text.chars().count() {
             self.cursor_pos += 1;
-            self.cursor_visible = true;
-            self.cursor_blink_timer = 0.0;
+            self.reset_cursor_blink();
         }
     }
 
     pub fn move_cursor_start(&mut self) {
+        self.selection_anchor = None;
         self.cursor_pos = 0;
-        self.cursor_visible = true;
-        self.cursor_blink_timer = 0.0;
+        self.reset_cursor_blink();
     }
 
     pub fn move_cursor_end(&mut self) {
+        self.selection_anchor = None;
         self.cursor_pos = self.text.chars().count();
-        self.cursor_visible = true;
-        self.cursor_blink_timer = 0.0;
+        self.reset_cursor_blink();
+    }
+
+    pub fn select_left(&mut self) {
+        if self.selection_anchor.is_none() {
+            self.selection_anchor = Some(self.cursor_pos);
+        }
+        if self.cursor_pos > 0 {
+            self.cursor_pos -= 1;
+        }
+        self.reset_cursor_blink();
+    }
+
+    pub fn select_right(&mut self) {
+        if self.selection_anchor.is_none() {
+            self.selection_anchor = Some(self.cursor_pos);
+        }
+        if self.cursor_pos < self.text.chars().count() {
+            self.cursor_pos += 1;
+        }
+        self.reset_cursor_blink();
+    }
+
+    pub fn select_start(&mut self) {
+        if self.selection_anchor.is_none() {
+            self.selection_anchor = Some(self.cursor_pos);
+        }
+        self.cursor_pos = 0;
+        self.reset_cursor_blink();
+    }
+
+    pub fn select_end(&mut self) {
+        if self.selection_anchor.is_none() {
+            self.selection_anchor = Some(self.cursor_pos);
+        }
+        self.cursor_pos = self.text.chars().count();
+        self.reset_cursor_blink();
     }
 
     pub fn update(&mut self, dt: f32) {
@@ -643,7 +787,31 @@ impl GlassTextInput {
             surfaces.push(rim);
         }
 
-        // 3. Blinking cursor indicator bar when focused and visible
+        // 3. Selection highlight pill when focused and text is selected
+        if self.is_focused
+            && let Some((sel_start, sel_end)) = self.selection_range()
+        {
+            let accent = accent_rgb();
+            let content_left = self.bounds[0] + self.pad_x;
+            let content_right = (self.bounds[0] + self.bounds[2] - self.pad_x).max(content_left);
+            let sel_x = (content_left + sel_start as f32 * self.char_width).min(content_right);
+            let raw_w = (sel_end - sel_start) as f32 * self.char_width;
+            let sel_w = raw_w.min(content_right - sel_x).max(2.0);
+            let sel_h = self.bounds[3] * 0.62;
+            let sel_y = self.bounds[1] + (self.bounds[3] - sel_h) * 0.5;
+
+            let highlight = GlassSurface::new()
+                .material(Material::Acrylic)
+                .shape(Shape::RoundedRectangle { radius: 4.0 })
+                .bounds(sel_x, sel_y, sel_w, sel_h)
+                .blur(4.0)
+                .refraction(0.20)
+                .specular(0.30)
+                .tint(accent[0], accent[1], accent[2], 0.28);
+            surfaces.push(highlight);
+        }
+
+        // 4. Blinking cursor indicator bar when focused and visible
         if self.is_focused && self.cursor_visible {
             let accent = accent_rgb();
             let cursor_x = self.bounds[0] + self.pad_x + self.cursor_pos as f32 * self.char_width;
@@ -1304,6 +1472,52 @@ mod tests {
         let outside = input.on_pointer_down(500.0, 500.0);
         assert!(!outside);
         assert!(!input.is_focused);
+    }
+
+    #[test]
+    fn test_glass_text_input_selection_and_highlight() {
+        let mut input =
+            GlassTextInput::new(10.0, 10.0, 240.0, 40.0, "Type...").with_text("Liquid Glass");
+
+        // Click at char 0, drag to char 6 ("Liquid")
+        let start_x = input.bounds[0] + input.pad_x;
+        let end_x = start_x + 6.0 * input.char_width;
+        assert!(input.on_pointer_down(start_x, 25.0));
+        input.on_pointer_move(end_x, 25.0);
+        input.on_pointer_up();
+
+        assert_eq!(input.selection_range(), Some((0, 6)));
+        assert_eq!(input.selected_text(), "Liquid");
+
+        // Step focus spring so rim is active; surfaces should include base + rim + selection + cursor = 4
+        for _ in 0..10 {
+            input.update(0.016);
+        }
+        input.cursor_visible = true;
+        let surfaces = input.to_surfaces();
+        assert_eq!(surfaces.len(), 4);
+
+        // Replacing selection via insert_text
+        input.insert_text("Solid");
+        assert_eq!(input.text, "Solid Glass");
+        assert_eq!(input.selection_range(), None);
+        assert_eq!(input.cursor_pos, 5);
+
+        // Select all and delete backward
+        input.select_all();
+        assert_eq!(input.selected_text(), "Solid Glass");
+        assert!(input.delete_backward());
+        assert_eq!(input.text, "");
+        assert_eq!(input.cursor_pos, 0);
+
+        // Keyboard shift-selection helpers
+        input.insert_text("Hello");
+        input.move_cursor_start();
+        input.select_right();
+        input.select_right();
+        assert_eq!(input.selected_text(), "He");
+        input.select_end();
+        assert_eq!(input.selected_text(), "Hello");
     }
 
     #[test]
